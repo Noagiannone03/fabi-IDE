@@ -27,6 +27,7 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
 
     protected override showInitialWindow(urlToOpen: string | undefined): void {
         electron.app.whenReady().then(async () => {
+            this.applyBranding();
             try {
                 if (!this.launcherHandled && this.shouldRunLauncher()) {
                     this.launcherHandled = true;
@@ -38,6 +39,25 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
             // Boot normal de Theia (fenêtre IDE + splash).
             super.showInitialWindow(urlToOpen);
         });
+    }
+
+    /**
+     * Force le nom + l'icône Fabi sur le dock/menu, même en DEV (où l'app tourne
+     * depuis le binaire Electron générique). En app packagée, electron-builder
+     * grave déjà tout dans le bundle — ceci ne fait alors que confirmer.
+     */
+    protected applyBranding(): void {
+        try {
+            electron.app.setName('Fabi');
+            if (process.platform === 'darwin' && electron.app.dock) {
+                const img = electron.nativeImage.createFromDataURL(FABI_FOX_DATA_URI);
+                if (!img.isEmpty()) {
+                    electron.app.dock.setIcon(img);
+                }
+            }
+        } catch {
+            /* best-effort — ne jamais bloquer le boot pour du cosmétique */
+        }
     }
 
     /** Lance le launcher ? Non si désactivé, en dev, déjà installé, ou machine non éligible. */

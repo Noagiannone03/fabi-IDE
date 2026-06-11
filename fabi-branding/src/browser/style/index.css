@@ -1,3 +1,4 @@
+
 /*
  * Fabi — feuille de style de marque.
  *
@@ -100,21 +101,39 @@
 }
 
 .fabi-wordmark {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    font-size: 46px;
-    font-weight: 600;
-    letter-spacing: 0;
-    margin: 12px 0 6px;
+    /* La police par défaut de l'IDE (celle utilisée partout dans Theia). */
+    font-family: var(--theia-ui-font-family);
+    font-size: 60px;
+    font-weight: 700;
+    letter-spacing: -1px;
+    margin: 16px 0 10px;
     line-height: 1;
+    color: var(--fabi-orange);
 }
 
-.fabi-wordmark .fa { color: var(--fabi-orange); }
-.fabi-wordmark .bi { color: var(--fabi-blue); }
+/* Wordmark uniforme : MÊME police, MÊME poids, MÊME couleur orange pour
+   « Fa » et « bi » — aucune différence de style entre les deux. */
+.fabi-wordmark .fa,
+.fabi-wordmark .bi {
+    font-family: inherit;
+    font-weight: inherit;
+    color: var(--fabi-orange);
+}
 
 .fabi-tagline {
     font-size: 15px;
-    opacity: 0.75;
-    margin: 0;
+    font-weight: 500;
+    opacity: 0.9;
+    margin: 0 auto;
+    max-width: 460px;
+    line-height: 1.5;
+}
+
+.fabi-next-note {
+    margin: 14px 0 0;
+    font-size: 12.5px;
+    opacity: 0.6;
+    line-height: 1.5;
 }
 
 .fabi-section {

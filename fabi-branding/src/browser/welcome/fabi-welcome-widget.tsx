@@ -100,7 +100,7 @@ export class FabiWelcomeWidget extends ReactWidget {
                 <div className="fabi-welcome-hero">
                     {this.renderFox()}
                     <h1 className="fabi-wordmark"><span className="fa">Fa</span><span className="bi">bi</span></h1>
-                    <p className="fabi-tagline">Ton IDE. Modulaire. Pensé pour brancher tes IA.</p>
+                    <p className="fabi-tagline">Peer-to-peer AI for your code.</p>
                 </div>
 
                 <div className="fabi-section">
@@ -124,12 +124,16 @@ export class FabiWelcomeWidget extends ReactWidget {
                     </div>
                 </div>
 
-                <div className="fabi-section fabi-next">
-                    <h2>À venir</h2>
-                    <p>Les modules IA (chat, complétion, agents, MCP) viendront se brancher ici — Fabi est construit sur Eclipse Theia précisément pour ça.</p>
+                <div className="fabi-section">
+                    <h2>L’IA Fabi</h2>
+                    <div className="fabi-actions">
+                        {this.renderAction('codicon-broadcast', 'Fabi Swarm', 'Choisis un modèle, prête ton GPU, code avec', () => this.openView('fabi.swarm'))}
+                        {this.renderAction('codicon-comment-discussion', 'Chat IA', 'Discuter avec le modèle du swarm', () => this.run(['aiChat:open', 'ai-chat-ui:open', 'workbench.action.chat.open'], 'Ouvre le chat IA depuis la barre latérale.'))}
+                    </div>
+                    <p className="fabi-next-note">Le swarm est un réseau pair-à-pair : ton worker fait tourner une part du modèle, et tu peux consommer le modèle complet réparti sur tous les contributeurs.</p>
                 </div>
 
-                <div className="fabi-footer">Fabi — basé sur Eclipse Theia · 🦊 Distributed AI</div>
+                <div className="fabi-footer">Fabi — basé sur Eclipse Theia · 🦊 Peer-to-peer AI</div>
             </div>
         );
     }

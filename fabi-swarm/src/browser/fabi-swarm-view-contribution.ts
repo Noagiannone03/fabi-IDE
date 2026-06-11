@@ -16,4 +16,13 @@ export class FabiSwarmViewContribution extends AbstractViewContribution<FabiSwar
             toggleCommandId: 'fabi-swarm:toggle'
         });
     }
+
+    /**
+     * Ouvre le panneau Fabi Swarm par défaut au tout premier lancement (layout
+     * vierge). Les lancements suivants respectent la disposition de l'utilisateur —
+     * `initializeLayout` ne s'exécute que quand aucune disposition n'est sauvegardée.
+     */
+    async initializeLayout(): Promise<void> {
+        await this.openView({ reveal: true, activate: false });
+    }
 }
