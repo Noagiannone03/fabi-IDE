@@ -1,0 +1,40 @@
+{
+  "name": "fabi-swarm",
+  "keywords": [
+    "theia-extension"
+  ],
+  "version": "0.0.0",
+  "description": "Fabi Swarm — provider d'inférence LLM P2P (Parallax) branché dans Theia AI",
+  "author": "Noa Giannone",
+  "license": "MIT",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/ai-core": "1.72.2",
+    "@theia/ai-openai": "1.72.2",
+    "@theia/core": "1.72.2"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.0",
+    "typescript": "~5.4.5"
+  },
+  "scripts": {
+    "prepare": "yarn run clean && yarn run build",
+    "clean": "rimraf lib",
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/fabi-swarm-frontend-module"
+    },
+    {
+      "backend": "lib/node/fabi-swarm-backend-module"
+    },
+    {
+      "electronMain": "lib/electron-main/fabi-electron-main-module"
+    }
+  ]
+}

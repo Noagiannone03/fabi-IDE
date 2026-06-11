@@ -1,0 +1,132 @@
+/*
+ * Fabi — polish UI : adoucir l'interface (coins arrondis, surfaces plus douces).
+ *
+ * Approche « overlay » assumée : on ne touche pas au CSS de Theia, on superpose
+ * un jeu de rayons cohérent via des variables, en ciblant les VRAIS sélecteurs
+ * du shell Theia (préfixes `lm-` Lumino et `theia-`) et les classes Monaco
+ * stables. On évite tout ce qui change la géométrie (position/taille) des
+ * éléments tuilés (panneaux, lignes d'arbre) pour ne rien casser.
+ */
+
+:root {
+    --fabi-radius: 10px;
+    --fabi-radius-sm: 7px;
+    --fabi-radius-lg: 14px;
+
+    /* arrondit la search-box (variable native Theia) */
+    --theia-search-box-radius: var(--fabi-radius-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/* Champs, sélecteurs, boutons                                         */
+/* ------------------------------------------------------------------ */
+.theia-input,
+.theia-select,
+.theia-select-component,
+.theia-select-component-container,
+.monaco-inputbox,
+.monaco-inputbox > .ibwrapper > .input,
+.monaco-findInput .monaco-inputbox {
+    border-radius: var(--fabi-radius-sm) !important;
+}
+
+.theia-button,
+.theia-button.main,
+.theia-button.secondary,
+button.theia-button {
+    border-radius: var(--fabi-radius-sm) !important;
+    padding: 5px 14px;
+}
+
+.theia-select-component-dropdown {
+    border-radius: var(--fabi-radius) !important;
+    overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Arbres & listes : sélection / survol arrondis (sans toucher au flux) */
+/* ------------------------------------------------------------------ */
+.theia-TreeNode:hover,
+.theia-Tree .theia-TreeNode.theia-mod-selected,
+.theia-Tree:focus-within .theia-TreeNode.theia-mod-selected,
+.theia-TreeNode.theia-mod-focus {
+    border-radius: var(--fabi-radius-sm);
+}
+
+.monaco-list .monaco-list-row {
+    border-radius: var(--fabi-radius-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/* Onglets : coins supérieurs adoucis                                  */
+/* ------------------------------------------------------------------ */
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab {
+    border-top-left-radius: var(--fabi-radius-sm);
+    border-top-right-radius: var(--fabi-radius-sm);
+}
+
+/* Icônes de la barre latérale (activity bar) : fond de survol arrondi */
+.theia-app-left .lm-TabBar .lm-TabBar-tab,
+.theia-app-right .lm-TabBar .lm-TabBar-tab {
+    border-radius: var(--fabi-radius-sm);
+}
+
+/* ------------------------------------------------------------------ */
+/* Menus contextuels & barre de menus                                  */
+/* ------------------------------------------------------------------ */
+.lm-Menu {
+    border-radius: var(--fabi-radius) !important;
+    padding: 5px !important;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42) !important;
+}
+
+.lm-Menu .lm-Menu-item {
+    border-radius: var(--fabi-radius-sm);
+    margin: 1px 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Palette de commandes / quick input + widgets éditeur (Monaco)       */
+/* ------------------------------------------------------------------ */
+.quick-input-widget,
+.monaco-quick-input-widget {
+    border-radius: var(--fabi-radius-lg) !important;
+    overflow: hidden;
+    box-shadow: 0 18px 52px rgba(0, 0, 0, 0.5) !important;
+}
+
+.monaco-editor .suggest-widget,
+.monaco-editor .find-widget,
+.monaco-editor .parameter-hints-widget,
+.monaco-hover,
+.monaco-menu .monaco-action-bar.vertical {
+    border-radius: var(--fabi-radius) !important;
+    overflow: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Survols / infobulles, dialogues                                     */
+/* ------------------------------------------------------------------ */
+.theia-hover {
+    border-radius: var(--fabi-radius-sm) !important;
+}
+
+.lm-Widget.dialogOverlay .dialogBlock {
+    border-radius: var(--fabi-radius-lg) !important;
+    overflow: hidden;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+/* ------------------------------------------------------------------ */
+/* Barres de défilement : plus fines et arrondies                      */
+/* ------------------------------------------------------------------ */
+::-webkit-scrollbar-thumb {
+    border-radius: 8px !important;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+/* curseur de scroll Monaco (éditeur) */
+.monaco-scrollable-element > .scrollbar > .slider {
+    border-radius: 8px !important;
+}

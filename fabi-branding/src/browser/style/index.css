@@ -1,0 +1,209 @@
+/*
+ * Fabi — feuille de style de marque.
+ *
+ * 1) Retint « par-dessus » : on surcharge un jeu ciblé de variables de couleur
+ *    Theia avec !important. Comme Theia injecte ses variables sans !important,
+ *    les nôtres gagnent quel que soit l'ordre du cascade — sans casser le thème.
+ * 2) Styles propres à nos composants (page d'accueil, en-tête À-propos).
+ */
+
+/* ------------------------------------------------------------------ */
+/* 1) Accents de marque Fabi (orange #EC5B2B, hover #FF7A4F)           */
+/* ------------------------------------------------------------------ */
+:root {
+    --fabi-orange: #EC5B2B;
+    --fabi-orange-hover: #FF7A4F;
+    --fabi-orange-deep: #A03A18;
+    --fabi-cream: #FFF7F1;
+    --fabi-yellow: #FFC58A;
+    --fabi-blue: #94A3B8;
+    --fabi-ink: #1b1206;
+
+    /* boutons primaires */
+    --theia-button-background: #EC5B2B !important;
+    --theia-button-hoverBackground: #FF7A4F !important;
+    --theia-button-foreground: #1b1206 !important;
+
+    /* focus : orange TRÈS doux et translucide (plus de contour dur immonde) */
+    --theia-focusBorder: rgba(236, 91, 43, 0.40) !important;
+    --theia-progressBar-background: #EC5B2B !important;
+
+    /* badges */
+    --theia-activityBarBadge-background: #EC5B2B !important;
+    --theia-activityBarBadge-foreground: #1b1206 !important;
+    --theia-badge-background: #EC5B2B !important;
+    --theia-badge-foreground: #1b1206 !important;
+
+    /* on supprime les LISERÉS orange (activity bar + haut d'onglet) :
+       remplacés par des fonds glass / différences de couleur */
+    --theia-activityBar-activeBorder: transparent !important;
+    --theia-tab-activeBorderTop: transparent !important;
+    --theia-tab-activeBorder: transparent !important;
+
+    /* onglets éditeur : l'actif est un gris nettement PLUS CLAIR (carte qui
+       ressort), les inactifs sombres. Délimitation forte par la couleur,
+       zéro orange. */
+    --theia-tab-activeBackground: #2f333b !important;
+    --theia-tab-inactiveBackground: #131316 !important;
+    --theia-tab-hoverBackground: #1d1f24 !important;
+    --theia-tab-border: #0c0c0f !important;
+    --theia-tab-activeForeground: #ffffff !important;
+    --theia-tab-inactiveForeground: #797d87 !important;
+    --theia-editorGroupHeader-tabsBackground: #0d0d10 !important;
+
+    /* liens & accents de liste */
+    --theia-textLink-foreground: #FF7A4F !important;
+    --theia-textLink-activeForeground: #FFC58A !important;
+    --theia-list-highlightForeground: #FF7A4F !important;
+    --theia-pickerGroup-foreground: #FF7A4F !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Icône d'onglet « renard » pour la page d'accueil                    */
+/* ------------------------------------------------------------------ */
+.fabi-fox-tab-icon {
+    background-image: url('./fox.svg');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    min-width: 16px;
+    min-height: 16px;
+}
+
+/* ------------------------------------------------------------------ */
+/* 2) Page d'accueil Fabi                                              */
+/* ------------------------------------------------------------------ */
+.fabi-welcome {
+    overflow: auto;
+    background:
+        radial-gradient(120% 80% at 50% -10%, rgba(236, 91, 43, 0.16), transparent 60%),
+        var(--theia-editor-background);
+    color: var(--theia-foreground);
+}
+
+.fabi-welcome-scroll {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 32px 64px;
+    box-sizing: border-box;
+}
+
+.fabi-welcome-hero {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.fabi-welcome-fox {
+    width: 132px;
+    height: 113px;
+    filter: drop-shadow(0 10px 26px rgba(236, 91, 43, 0.35));
+}
+
+.fabi-wordmark {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 46px;
+    font-weight: 600;
+    letter-spacing: 0;
+    margin: 12px 0 6px;
+    line-height: 1;
+}
+
+.fabi-wordmark .fa { color: var(--fabi-orange); }
+.fabi-wordmark .bi { color: var(--fabi-blue); }
+
+.fabi-tagline {
+    font-size: 15px;
+    opacity: 0.75;
+    margin: 0;
+}
+
+.fabi-section {
+    margin-top: 32px;
+}
+
+.fabi-section > h2 {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    opacity: 0.55;
+    margin: 0 0 14px;
+}
+
+.fabi-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.fabi-action {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid var(--theia-editorWidget-border, rgba(255, 255, 255, 0.08));
+    border-radius: 12px;
+    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.03));
+    color: inherit;
+    transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+}
+
+.fabi-action:hover {
+    border-color: var(--fabi-orange);
+    background: rgba(236, 91, 43, 0.10);
+    transform: translateY(-1px);
+}
+
+.fabi-action-icon {
+    font-size: 22px !important;
+    color: var(--fabi-orange);
+    flex: 0 0 auto;
+}
+
+.fabi-action-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.fabi-action-title { font-weight: 600; font-size: 14px; }
+.fabi-action-sub { font-size: 12px; opacity: 0.6; }
+
+.fabi-next p {
+    font-size: 13px;
+    line-height: 1.6;
+    opacity: 0.75;
+    border-left: 3px solid var(--fabi-orange);
+    padding-left: 14px;
+    margin: 0;
+}
+
+.fabi-footer {
+    margin-top: 48px;
+    text-align: center;
+    font-size: 12px;
+    opacity: 0.4;
+}
+
+/* ------------------------------------------------------------------ */
+/* En-tête du dialog « À propos »                                      */
+/* ------------------------------------------------------------------ */
+.fabi-about-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 12px;
+}
+
+.fabi-about-logo {
+    width: 72px;
+    height: 62px;
+    flex: 0 0 auto;
+}
+
+.fabi-about-logo svg { width: 100%; height: 100%; }
+
+.fabi-about-titles .fabi-wordmark { font-size: 34px; margin: 0; }
+.fabi-about-tagline { font-size: 13px; opacity: 0.7; margin: 4px 0 0; }
+.fabi-about-version { font-size: 12px; opacity: 0.5; margin: 4px 0 0; }

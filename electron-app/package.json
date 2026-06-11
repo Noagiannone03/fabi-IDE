@@ -1,0 +1,120 @@
+{
+  "private": true,
+  "name": "electron-app",
+  "version": "0.0.0",
+  "main": "lib/backend/electron-main.js",
+  "dependencies": {
+    "@theia/ai-anthropic": "1.72.2",
+    "@theia/ai-chat": "1.72.2",
+    "@theia/ai-chat-ui": "1.72.2",
+    "@theia/ai-claude-code": "1.72.2",
+    "@theia/ai-code-completion": "1.72.2",
+    "@theia/ai-copilot": "1.72.2",
+    "@theia/ai-core": "1.72.2",
+    "@theia/ai-editor": "1.72.2",
+    "@theia/ai-google": "1.72.2",
+    "@theia/ai-history": "1.72.2",
+    "@theia/ai-huggingface": "1.72.2",
+    "@theia/ai-ide": "1.72.2",
+    "@theia/ai-llamafile": "1.72.2",
+    "@theia/ai-mcp": "1.72.2",
+    "@theia/ai-mcp-ui": "1.72.2",
+    "@theia/ai-ollama": "1.72.2",
+    "@theia/ai-openai": "1.72.2",
+    "@theia/ai-scanoss": "1.72.2",
+    "@theia/ai-terminal": "1.72.2",
+    "@theia/ai-vercel-ai": "1.72.2",
+    "@theia/bulk-edit": "1.72.2",
+    "@theia/callhierarchy": "1.72.2",
+    "@theia/dev-container": "1.72.2",
+    "@theia/notebook": "1.72.2",
+    "@theia/remote": "1.72.2",
+    "@theia/test": "1.72.2",
+    "@theia/console": "1.72.2",
+    "@theia/core": "1.72.2",
+    "@theia/debug": "1.72.2",
+    "@theia/editor": "1.72.2",
+    "@theia/editor-preview": "1.72.2",
+    "@theia/electron": "1.72.2",
+    "@theia/external-terminal": "1.72.2",
+    "@theia/file-search": "1.72.2",
+    "@theia/filesystem": "1.72.2",
+    "@theia/keymaps": "1.72.2",
+    "@theia/markers": "1.72.2",
+    "@theia/messages": "1.72.2",
+    "@theia/metrics": "1.72.2",
+    "@theia/mini-browser": "1.72.2",
+    "@theia/monaco": "1.72.2",
+    "@theia/navigator": "1.72.2",
+    "@theia/outline-view": "1.72.2",
+    "@theia/output": "1.72.2",
+    "@theia/plugin-ext": "1.72.2",
+    "@theia/plugin-ext-vscode": "1.72.2",
+    "@theia/preferences": "1.72.2",
+    "@theia/preview": "1.72.2",
+    "@theia/process": "1.72.2",
+    "@theia/property-view": "1.72.2",
+    "@theia/scm": "1.72.2",
+    "@theia/scm-extra": "1.72.2",
+    "@theia/search-in-workspace": "1.72.2",
+    "@theia/secondary-window": "1.72.2",
+    "@theia/task": "1.72.2",
+    "@theia/terminal": "1.72.2",
+    "@theia/timeline": "1.72.2",
+    "@theia/toolbar": "1.72.2",
+    "@theia/typehierarchy": "1.72.2",
+    "@theia/userstorage": "1.72.2",
+    "@theia/variable-resolver": "1.72.2",
+    "@theia/vsx-registry": "1.72.2",
+    "@theia/workspace": "1.72.2",
+    "fabi-branding": "0.0.0",
+    "fabi-swarm": "0.0.0"
+  },
+  "devDependencies": {
+    "@theia/cli": "1.72.2",
+    "electron": "^30.1.2",
+    "electron-builder": "^24.13.3"
+  },
+  "scripts": {
+    "bundle": "yarn rebuild && theia build --mode development",
+    "rebuild": "theia rebuild:electron --cacheRoot ..",
+    "start": "theia start --plugins=local-dir:plugins",
+    "watch": "yarn rebuild && theia build --watch --mode development",
+    "download:plugins": "theia download:plugins",
+    "package": "yarn download:plugins && yarn bundle && electron-builder --publish never -c electron-builder.yml",
+    "package:dir": "yarn download:plugins && yarn bundle && electron-builder --dir --publish never -c electron-builder.yml",
+    "package:mac": "yarn download:plugins && yarn bundle && electron-builder --mac --publish never -c electron-builder.yml"
+  },
+  "theiaPluginsDir": "plugins",
+  "theiaPlugins": {
+    "PKief.material-icon-theme": "https://open-vsx.org/api/PKief/material-icon-theme/5.35.0/file/PKief.material-icon-theme-5.35.0.vsix",
+    "alexdauenhauer.catppuccin-noctis-icons": "https://open-vsx.org/api/alexdauenhauer/catppuccin-noctis-icons/0.3.0/file/alexdauenhauer.catppuccin-noctis-icons-0.3.0.vsix"
+  },
+  "theia": {
+    "target": "electron",
+    "frontend": {
+      "config": {
+        "applicationName": "Fabi",
+        "defaultIconTheme": "material-icon-theme",
+        "preferences": {
+          "workbench.colorTheme": "fabi-islands",
+          "workbench.iconTheme": "material-icon-theme",
+          "files.autoSave": "afterDelay",
+          "editor.minimap.enabled": true,
+          "security.workspace.trust.enabled": false,
+          "breadcrumbs.enabled": false
+        },
+        "electron": {
+          "splashScreenOptions": {
+            "content": "resources/splash.html",
+            "width": 560,
+            "height": 360,
+            "minDuration": 1500,
+            "maxDuration": 30000
+          },
+          "showWindowEarly": false
+        }
+      }
+    }
+  }
+}

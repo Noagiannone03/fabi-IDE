@@ -1,0 +1,193 @@
+/*
+ * Fabi — design « dynamic islands » (panneaux flottants arrondis).
+ *
+ * Adapté de bwya77/vscode-dark-islands MAIS retravaillé pour le shell Theia
+ * (Lumino, positionnement absolu) — on ne copie pas les sélecteurs VS Code.
+ *
+ * Technique clé : les widgets Lumino sont déjà en `box-sizing: border-box`.
+ * On donne donc à chaque « île » une BORDURE de la couleur du canvas profond :
+ * la bordure creuse le panneau vers l'intérieur (révélant le canvas autour)
+ * sans changer la box que Lumino positionne en absolu → des gaps propres,
+ * zéro layout cassé. + border-radius + lumière de verre (box-shadow inset).
+ */
+
+:root {
+    --fabi-canvas: #0b0b0e;        /* fond profond derrière les îles */
+    --fabi-surface: #181a1d;       /* surface des îles */
+    --fabi-gap: 9px;               /* écart entre les îles */
+    --fabi-island-radius: 17px;
+    /* Material : hairline subtil UNIFORME (pas de reflet verre directionnel)
+       + élévation douce par ombre portée. */
+    --fabi-hairline: rgba(255, 255, 255, 0.05);
+    --fabi-island-shadow:
+        inset 0 0 0 1px var(--fabi-hairline),
+        0 2px 10px 0 rgba(0, 0, 0, 0.30);
+
+    /* en-têtes de section un peu plus hauts → les îlots respirent */
+    --theia-view-container-title-height: 32px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Canvas profond derrière tout (visible dans les gaps)                */
+/* ------------------------------------------------------------------ */
+#theia-app-shell,
+#theia-top-panel,
+#theia-left-right-split-panel,
+#theia-bottom-split-panel,
+.theia-app-sides,
+.theia-app-sidebar-container,
+#theia-statusBar {
+    background-color: var(--fabi-canvas) !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Les îles : zone d'édition, panneau du bas, panneaux latéraux        */
+/* ------------------------------------------------------------------ */
+/* Île = le CONTENEUR entier (titre "Explorer"/"Outline" + contenu), pas juste
+   la surface — sinon le bandeau de titre reste carré au-dessus. */
+#theia-main-content-panel,
+#theia-bottom-content-panel,
+#theia-left-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container),
+#theia-right-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
+    border: var(--fabi-gap) solid var(--fabi-canvas) !important;
+    border-radius: var(--fabi-island-radius) !important;
+    box-shadow: var(--fabi-island-shadow) !important;
+    overflow: hidden !important;
+    background-color: var(--fabi-surface);
+}
+
+/* la surface interne ne redessine pas de bord ; le bandeau de titre prend la
+   couleur de surface pour s'unifier dans l'île */
+.theia-side-panel {
+    background-color: transparent !important;
+}
+
+.theia-sidepanel-toolbar {
+    background-color: var(--fabi-surface) !important;
+    border: none !important;
+}
+
+/* En-têtes de sections (OPEN EDITORS / projet / OUTLINE) : vrais îlots détachés.
+   La marge fonctionne (position: static) ; il manquait juste un FOND distinct
+   du panneau pour qu'on voie le décrochement. */
+.theia-view-container-part-header {
+    background-color: #22252b !important;
+    border-radius: 8px !important;
+    margin: 7px 6px !important;
+    width: auto !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Activity bar : sélection en pastille « glass » (plus de liseré orange) */
+/* ------------------------------------------------------------------ */
+.theia-app-sidebar-container .lm-TabBar-tab {
+    border-radius: 12px !important;
+    margin: 3px 7px !important;
+}
+
+.theia-app-sidebar-container .lm-TabBar-tab:hover {
+    background: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* tue le liseré orange inset (box-shadow) du core */
+.theia-app-left .lm-TabBar-tab.lm-mod-current,
+.theia-app-right .lm-TabBar-tab.lm-mod-current {
+    box-shadow: none !important;
+}
+
+/* item actif : conteneur GRIS neutre élevé (état "selected" Material),
+   icône simplement éclaircie. Pas d'orange, pas de dégradé, pas de verre. */
+.theia-app-sidebar-container .lm-TabBar-tab.lm-mod-current {
+    background: rgba(255, 255, 255, 0.09) !important;
+    box-shadow: none !important;
+}
+
+.theia-app-sidebar-container .lm-TabBar-tab.lm-mod-current .lm-TabBar-tabIcon,
+.theia-app-sidebar-container .lm-TabBar-tab.lm-mod-current .codicon {
+    color: #e6e8ec !important;
+}
+
+/* icône Settings (bas de l'activity bar) : le carré venait du FOND de l'icône
+   elle-même (i.codicon, 44×46, fond solide). On le rend transparent et on fait
+   un vrai bouton rond 40×40 avec survol arrondi. */
+.theia-app-sidebar-container .theia-sidebar-menu {
+    background: transparent !important;
+}
+
+.theia-app-sidebar-container .theia-sidebar-menu .theia-sidebar-menu-item {
+    width: 40px !important;
+    height: 40px !important;
+    margin: 6px auto !important;
+    padding: 0 !important;
+    border-radius: 12px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.theia-app-sidebar-container .theia-sidebar-menu .theia-sidebar-menu-item i,
+.theia-app-sidebar-container .theia-sidebar-menu i.codicon {
+    background: transparent !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    font-size: 20px !important;
+}
+
+.theia-app-sidebar-container .theia-sidebar-menu .theia-sidebar-menu-item:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Onglets éditeur : îlots flottants (chips), marges égales → zéro saut.     */
+/* ------------------------------------------------------------------ */
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab {
+    border-radius: 9px !important;
+    margin: 4px 3px !important;
+    transition: background-color 0.12s ease !important;
+}
+
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.lm-mod-current {
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Onglets du panneau du BAS (Terminal/Problems/Output/Debug + terminaux) :  */
+/* de vrais îlots BIEN MARQUÉS — fond explicite, marges larges, AUCUN        */
+/* contour orange (on tue le focus border).                                  */
+/* ------------------------------------------------------------------ */
+/* Hauteur FIXE du chip (27) + marge (4) = 35 = hauteur de la barre → le chip
+   rentre pile, flotte, et n'est plus rogné par l'overflow du panneau. */
+#theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab {
+    height: 27px !important;
+    border-radius: 9px !important;
+    margin: 4px 4px !important;
+    padding: 0 12px !important;
+    background: #16181c !important;
+    border: 1px solid transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    transition: background-color 0.12s ease !important;
+}
+
+#theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:hover {
+    background: #1e2127 !important;
+}
+
+#theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current {
+    background: #2b2f37 !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Scrollbars : pilule                                                 */
+/* ------------------------------------------------------------------ */
+::-webkit-scrollbar-thumb {
+    border-radius: 9999px !important;
+}
+
+.monaco-scrollable-element > .scrollbar > .slider {
+    border-radius: 9999px !important;
+}

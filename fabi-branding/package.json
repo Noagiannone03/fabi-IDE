@@ -1,0 +1,34 @@
+{
+  "name": "fabi-branding",
+  "keywords": [
+    "theia-extension"
+  ],
+  "version": "0.0.0",
+  "description": "Fabi — IDE IA modulaire base sur Eclipse Theia",
+  "author": "Noa Giannone",
+  "license": "MIT",
+  "files": [
+    "lib",
+    "src"
+  ],
+  "dependencies": {
+    "@theia/core": "1.72.2",
+    "@theia/monaco": "1.72.2",
+    "@theia/workspace": "1.72.2"
+  },
+  "devDependencies": {
+    "rimraf": "^5.0.0",
+    "typescript": "~5.4.5"
+  },
+  "scripts": {
+    "prepare": "yarn run clean && yarn run build",
+    "clean": "rimraf lib",
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "theiaExtensions": [
+    {
+      "frontend": "lib/browser/fabi-branding-frontend-module"
+    }
+  ]
+}
