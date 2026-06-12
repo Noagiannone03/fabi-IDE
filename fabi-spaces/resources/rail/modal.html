@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; img-src 'self' data:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <link rel="stylesheet" href="codicon.css" />
+    <link rel="stylesheet" href="modal.css" />
+    <title>Nouvel espace</title>
+</head>
+<body>
+    <div class="scrim" id="scrim"></div>
+
+    <section class="card" role="dialog" aria-label="Nouvel espace">
+        <header class="card-head">
+            <div class="preview" id="preview"><span class="preview-glyph" id="previewGlyph"></span></div>
+            <div class="head-text">
+                <h1>Nouvel espace</h1>
+                <p class="preview-name" id="previewName">Espace</p>
+            </div>
+        </header>
+
+        <div class="field">
+            <span class="label">Nom</span>
+            <input id="nameInput" class="input" type="text" spellcheck="false" placeholder="Nom de l'espace" />
+        </div>
+
+        <div class="field">
+            <span class="label">Dossier</span>
+            <div class="folder-row">
+                <i class="codicon codicon-folder"></i>
+                <span class="folder-path" id="folderPath"></span>
+                <button class="folder-change" id="changeFolder">Changer</button>
+            </div>
+        </div>
+
+        <div class="field">
+            <span class="label">Icône</span>
+            <div class="icon-grid" id="iconGrid"></div>
+        </div>
+
+        <div class="field">
+            <span class="label">Couleur</span>
+            <div class="swatches" id="swatches"></div>
+        </div>
+
+        <footer class="card-foot">
+            <button class="btn ghost" id="cancelBtn">Annuler</button>
+            <button class="btn primary" id="createBtn">Créer l'espace</button>
+        </footer>
+    </section>
+
+    <script src="modal.js"></script>
+</body>
+</html>

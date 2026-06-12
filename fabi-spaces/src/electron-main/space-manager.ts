@@ -14,7 +14,10 @@
 import { app, BaseWindow, WebContentsView, dialog, ipcMain, screen, Rectangle, IpcMainEvent } from 'electron';
 import { basename } from 'path';
 import { CHANNEL_REQUEST_RELOAD } from '@theia/core/lib/electron-common/electron-api';
-import { SpaceDescriptor, SpacesState, SpacesIpc, SPACE_COLORS } from '../common/space-types';
+import {
+    SpaceDescriptor, SpacesState, SpacesIpc, SPACE_COLORS,
+    NewSpaceModalInit, NewSpaceModalResult
+} from '../common/space-types';
 import { SpaceStore } from './space-store';
 import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './frontend-url';
 
@@ -38,7 +41,9 @@ export interface SpaceManagerOptions extends FrontendUrlContext {
     railHtmlPath: string;
     /** Chemin FS du topbar.html (la barre de titre déplaçable). */
     topbarHtmlPath: string;
-    /** Chemin FS du preload partagé (rail + topbar). */
+    /** Chemin FS du modal.html (popup de création de Space). */
+    modalHtmlPath: string;
+    /** Chemin FS du preload partagé (rail + topbar + modal). */
     railPreloadPath: string;
 }
 
@@ -48,6 +53,8 @@ export class SpaceManager {
     protected host!: BaseWindow;
     protected railView!: WebContentsView;
     protected topbarView!: WebContentsView;
+    /** Modal de création (popup centré), présent uniquement pendant la création. */
+    protected modalView: WebContentsView | undefined;
     /** Vues matérialisées (frontends vivants), par id de Space. */
     protected readonly views = new Map<string, WebContentsView>();
     protected activeId: string | undefined;
@@ -185,6 +192,12 @@ export class SpaceManager {
         // Topbar : pleine largeur, tout en haut, au sommet.
         this.topbarView.setBounds({ x: 0, y: 0, width: W, height: TOPBAR_HEIGHT });
         this.host.contentView.addChildView(this.topbarView);
+
+        // Modal de création : plein écran, AU-DESSUS de tout.
+        if (this.modalView && !this.modalView.webContents.isDestroyed()) {
+            this.modalView.setBounds({ x: 0, y: 0, width: W, height: H });
+            this.host.contentView.addChildView(this.modalView);
+        }
     }
 
     // ----------------------------------------------------------------------
@@ -277,19 +290,99 @@ export class SpaceManager {
         ).catch(() => { /* frontend pas prêt */ });
     }
 
-    /** Crée un nouveau Space : choisit un dossier puis l'ouvre. */
+    /** Crée un nouveau Space : choix du dossier (OS) → popup de config → création. */
     async create(): Promise<void> {
         const dir = await this.pickFolder();
+        if (dir === undefined) {
+            return; // sélection de dossier annulée
+        }
+        const config = await this.promptNewSpace(dir);
+        if (!config) {
+            return; // popup annulé
+        }
         const space: SpaceDescriptor = {
             id: this.newId(),
-            name: dir ? basename(dir) : '',
-            emoji: '',
-            color: this.nextColor(),
-            workspacePath: dir ?? '',
+            name: config.name,
+            emoji: config.icon,
+            color: config.color,
+            workspacePath: config.dir,
             lastActive: Date.now()
         };
         this.store.add(space);
         await this.open(space.id);
+    }
+
+    /**
+     * Affiche le popup de création (vue modale plein écran centrée) et résout avec la
+     * config choisie (nom/icône/couleur/dossier) ou `undefined` si annulé.
+     */
+    protected promptNewSpace(dir: string): Promise<(NewSpaceModalResult & { dir: string }) | undefined> {
+        return new Promise(resolve => {
+            let currentDir = dir;
+            let settled = false;
+            const view = new WebContentsView({
+                webPreferences: {
+                    preload: this.opts.railPreloadPath,
+                    contextIsolation: true,
+                    nodeIntegration: false,
+                    sandbox: false,
+                    backgroundThrottling: false
+                }
+            });
+            view.setBackgroundColor('#00000000');
+            this.modalView = view;
+            const wc = view.webContents;
+
+            const finish = (result: (NewSpaceModalResult & { dir: string }) | undefined): void => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                ipcMain.removeListener(SpacesIpc.MODAL_CREATE, onCreate);
+                ipcMain.removeListener(SpacesIpc.MODAL_CANCEL, onCancel);
+                ipcMain.removeListener(SpacesIpc.MODAL_PICK_FOLDER, onPick);
+                this.modalView = undefined;
+                try { this.host.contentView.removeChildView(view); } catch { /* déjà détaché */ }
+                if (!wc.isDestroyed()) {
+                    wc.close();
+                }
+                this.layout();
+                resolve(result);
+            };
+
+            const onCreate = (e: IpcMainEvent, data: NewSpaceModalResult): void => {
+                if (e.sender.id === wc.id) { finish({ ...data, dir: currentDir }); }
+            };
+            const onCancel = (e: IpcMainEvent): void => {
+                if (e.sender.id === wc.id) { finish(undefined); }
+            };
+            const onPick = (e: IpcMainEvent): void => {
+                if (e.sender.id !== wc.id) {
+                    return;
+                }
+                void this.pickFolder().then(d => {
+                    if (d) {
+                        currentDir = d;
+                        if (!wc.isDestroyed()) {
+                            wc.send(SpacesIpc.MODAL_FOLDER, d);
+                        }
+                    }
+                });
+            };
+
+            ipcMain.on(SpacesIpc.MODAL_CREATE, onCreate);
+            ipcMain.on(SpacesIpc.MODAL_CANCEL, onCancel);
+            ipcMain.on(SpacesIpc.MODAL_PICK_FOLDER, onPick);
+
+            wc.once('did-finish-load', () => {
+                const init: NewSpaceModalInit = { folder: currentDir, defaultName: basename(currentDir), color: this.nextColor() };
+                wc.send(SpacesIpc.MODAL_OPEN, init);
+            });
+
+            this.host.contentView.addChildView(view);
+            this.layout();
+            wc.loadFile(this.opts.modalHtmlPath);
+        });
     }
 
     /** Détache et détruit la vue d'un Space (sans toucher au descripteur persistant). */
@@ -510,7 +603,7 @@ export class SpaceManager {
             }
         }
         this.views.clear();
-        for (const chrome of [this.railView, this.topbarView]) {
+        for (const chrome of [this.railView, this.topbarView, this.modalView]) {
             if (chrome && !chrome.webContents.isDestroyed()) {
                 chrome.webContents.close();
             }

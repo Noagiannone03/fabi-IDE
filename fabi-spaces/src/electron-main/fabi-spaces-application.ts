@@ -49,6 +49,7 @@ export class FabiSpacesApplication extends FabiElectronMainApplication {
                 preloadPath: resolve(this.globals.THEIA_APP_PROJECT_PATH, 'lib', 'frontend', 'preload.js'),
                 railHtmlPath: join(railDir, 'rail.html'),
                 topbarHtmlPath: join(railDir, 'topbar.html'),
+                modalHtmlPath: join(railDir, 'modal.html'),
                 railPreloadPath: join(railDir, 'preload.js')
             });
             await this.spaceManager.boot();

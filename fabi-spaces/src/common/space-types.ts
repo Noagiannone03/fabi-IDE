@@ -38,6 +38,20 @@ export interface SpaceDescriptor {
     lastActive: number;
 }
 
+/** Données envoyées au modal de création à son ouverture. */
+export interface NewSpaceModalInit {
+    folder: string;
+    defaultName: string;
+    color: string;
+}
+
+/** Résultat renvoyé par le modal de création (« Créer »). */
+export interface NewSpaceModalResult {
+    name: string;
+    icon: string;
+    color: string;
+}
+
 /** État complet envoyé au chrome (rail + topbar) à chaque changement (idempotent). */
 export interface SpacesState {
     spaces: SpaceDescriptor[];
@@ -74,4 +88,11 @@ export namespace SpacesIpc {
     export const REORDER = 'fabi-spaces:reorder';        // (orderedIds[])
     export const TOGGLE_SIDEBAR = 'fabi-spaces:toggle-sidebar'; // () déplie/replie la sidebar
     export const WINDOW = 'fabi-spaces:window';          // ('minimize'|'maximize'|'close') contrôles fenêtre hôte
+
+    // --- Modal de création d'un Space (popup centré) ---
+    export const MODAL_OPEN = 'fabi-spaces:modal-open';        // main → modal : {folder, defaultName, color}
+    export const MODAL_FOLDER = 'fabi-spaces:modal-folder';    // main → modal : (folderPath) après re-sélection
+    export const MODAL_CREATE = 'fabi-spaces:modal-create';    // modal → main : {name, icon, color}
+    export const MODAL_CANCEL = 'fabi-spaces:modal-cancel';    // modal → main : ()
+    export const MODAL_PICK_FOLDER = 'fabi-spaces:modal-pick-folder'; // modal → main : () ré-ouvre le picker OS
 }

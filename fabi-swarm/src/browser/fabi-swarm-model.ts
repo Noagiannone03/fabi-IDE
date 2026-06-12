@@ -1,10 +1,22 @@
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { FrontendApplicationContribution } from '@theia/core/lib/browser';
+import { PreferenceService } from '@theia/core/lib/common/preferences/preference-service';
+import { PreferenceScope } from '@theia/core/lib/common/preferences/preference-scope';
 import { OpenAiLanguageModelsManager } from '@theia/ai-openai/lib/common/openai-language-models-manager';
 import { AgentService } from '@theia/ai-core/lib/common/agent-service';
 import { AISettingsService } from '@theia/ai-core/lib/common/settings-service';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
 import { SwarmEntry, FABI_MODEL_ID } from '../common/fabi-swarm-protocol';
+
+/** Préférence Theia AI : l'agent (par id) qui traite un message du chat quand
+ *  aucun @agent n'est mentionné. Sans elle (ni mention, ni fallback) le chat
+ *  répond « No agent was found to handle this request ». Clé stable de
+ *  @theia/ai-chat (ai-chat-preferences) — codée en dur pour éviter une dépendance. */
+const DEFAULT_CHAT_AGENT_PREF = 'ai-features.chat.defaultChatAgent';
+/** Ordre de préférence pour le défaut (par id ou nom). `Universal` d'abord :
+ *  chat direct, prompt léger, AUCUN appel de routage — bien plus rapide que
+ *  l'Orchestrator (qui fait un LLM call de routage avant de répondre). */
+const PREFERRED_DEFAULT_AGENTS = ['Universal', 'Coder', 'Orchestrator'];
 
 /**
  * Câble le swarm ACTIF comme modèle OpenAI-compatible dans Theia AI ET l'assigne
@@ -26,6 +38,9 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
     @inject(AISettingsService)
     protected readonly aiSettings: AISettingsService;
 
+    @inject(PreferenceService)
+    protected readonly preferences: PreferenceService;
+
     @inject(FabiSwarmFrontend)
     protected readonly frontend: FabiSwarmFrontend;
 
@@ -33,6 +48,9 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
     protected agentsAssigned = false;
 
     async onStart(): Promise<void> {
+        // Agent par défaut dès le boot (indépendant du swarm) → le chat sait
+        // toujours qui traite un message sans @mention.
+        this.ensureDefaultChatAgent();
         // Re-câble dès que le swarm actif change (connexion / switch).
         this.frontend.onActiveChangedEvent(swarm => void this.wire(swarm));
         // État initial (le backend a pu pousser avant qu'on s'abonne).
@@ -101,9 +119,45 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
                 const requirements = purposes.map(purpose => ({ purpose, identifier: FABI_MODEL_ID }));
                 await this.aiSettings.updateAgentSettings(agent.id, { languageModelRequirements: requirements });
             }
+            // Au cas où les agents n'étaient pas prêts au boot.
+            this.ensureDefaultChatAgent();
         } catch (e) {
             this.agentsAssigned = false; // on réessaiera au prochain câblage
             console.warn('[fabi-swarm] assignation du modèle aux agents échouée :', e);
+        }
+    }
+
+    /**
+     * Configure l'agent de chat par défaut (préférence Theia) si l'utilisateur
+     * n'en a pas choisi. Sans ça, un message sans `@agent` n'est routé vers
+     * personne → « No agent was found to handle this request ». On prend un agent
+     * généraliste ACTIVÉ (Orchestrator > Universal > Coder > 1er dispo). On
+     * respecte un choix existant (on n'écrase pas).
+     */
+    protected ensureDefaultChatAgent(): void {
+        try {
+            const agents = this.agentService.getAllAgents();
+            if (agents.length === 0) {
+                return; // pas encore prêts → on réessaiera depuis assignToAgents
+            }
+            const enabled = (a: { id: string }) => this.agentService.isEnabled(a.id);
+            const byKey = (key: string) => agents.find(a => (a.id === key || a.name === key) && enabled(a));
+            const current = this.preferences.get<string>(DEFAULT_CHAT_AGENT_PREF, '');
+            // Si l'utilisateur a explicitement choisi un agent HORS de notre liste,
+            // on le respecte. Sinon (vide, ou un défaut qu'on avait posé nous-même
+            // comme Orchestrator) on (ré)applique le meilleur = Universal (rapide).
+            const currentIsCustom = !!current && !PREFERRED_DEFAULT_AGENTS.some(k => byKey(k)?.id === current);
+            if (currentIsCustom) {
+                return;
+            }
+            const pick = PREFERRED_DEFAULT_AGENTS.map(byKey).find(Boolean)
+                ?? agents.find(enabled)
+                ?? agents[0];
+            if (pick && pick.id !== current) {
+                void this.preferences.set(DEFAULT_CHAT_AGENT_PREF, pick.id, PreferenceScope.User);
+            }
+        } catch (e) {
+            console.warn('[fabi-swarm] configuration de l\'agent par défaut échouée :', e);
         }
     }
 }

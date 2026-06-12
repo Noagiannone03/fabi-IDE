@@ -14,7 +14,12 @@ const C = {
     SET_EMOJI: 'fabi-spaces:set-emoji',
     REORDER: 'fabi-spaces:reorder',
     TOGGLE_SIDEBAR: 'fabi-spaces:toggle-sidebar',
-    WINDOW: 'fabi-spaces:window'
+    WINDOW: 'fabi-spaces:window',
+    MODAL_OPEN: 'fabi-spaces:modal-open',
+    MODAL_FOLDER: 'fabi-spaces:modal-folder',
+    MODAL_CREATE: 'fabi-spaces:modal-create',
+    MODAL_CANCEL: 'fabi-spaces:modal-cancel',
+    MODAL_PICK_FOLDER: 'fabi-spaces:modal-pick-folder'
 };
 
 contextBridge.exposeInMainWorld('fabiSpaces', {
@@ -29,5 +34,11 @@ contextBridge.exposeInMainWorld('fabiSpaces', {
     reorder: ids => ipcRenderer.send(C.REORDER, ids),
     toggleSidebar: () => ipcRenderer.send(C.TOGGLE_SIDEBAR),
     windowControl: action => ipcRenderer.send(C.WINDOW, action),
+    // Modal de création
+    onModalOpen: cb => ipcRenderer.on(C.MODAL_OPEN, (_e, init) => cb(init)),
+    onModalFolder: cb => ipcRenderer.on(C.MODAL_FOLDER, (_e, folder) => cb(folder)),
+    modalCreate: result => ipcRenderer.send(C.MODAL_CREATE, result),
+    modalCancel: () => ipcRenderer.send(C.MODAL_CANCEL),
+    modalPickFolder: () => ipcRenderer.send(C.MODAL_PICK_FOLDER),
     platform: process.platform
 });
