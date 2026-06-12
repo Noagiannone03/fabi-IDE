@@ -24,8 +24,13 @@ const RAIL_COLLAPSED = 58;
 const RAIL_EXPANDED = 250;
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
 const TOPBAR_HEIGHT = 36;
-/** Nombre max de frontends Theia gardés vivants en même temps (le reste est suspendu → RAM). */
-const MAX_LIVE = Math.max(1, Number(process.env.FABI_SPACES_MAX_LIVE) || 3);
+/**
+ * Nombre max de frontends Theia gardés VIVANTS en même temps. Au-delà, le Space le
+ * moins récemment utilisé est suspendu (détruit → rechargé au retour, façon onglet
+ * endormi). Réglé haut par défaut → en usage normal (quelques espaces) AUCUN reload
+ * au switch, tout reste chargé. Baisser via `FABI_SPACES_MAX_LIVE` si RAM limitée.
+ */
+const MAX_LIVE = Math.max(1, Number(process.env.FABI_SPACES_MAX_LIVE) || 8);
 
 export interface SpaceManagerOptions extends FrontendUrlContext {
     appName: string;
