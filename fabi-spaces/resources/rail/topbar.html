@@ -3,7 +3,8 @@
 <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+        content="default-src 'none'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+    <link rel="stylesheet" href="codicon.css" />
     <title>Fabi</title>
     <style>
         * { box-sizing: border-box; }
@@ -35,6 +36,21 @@
         .toggle .panel { transition: fill .15s ease; }
         body.sb-expanded .toggle { color: #f3ece6; }
         body.sb-expanded .toggle .panel { opacity: 1; }
+        /* Îlot-nom de l'espace actif (avec sa couleur). */
+        .space-pill {
+            -webkit-app-region: no-drag;
+            display: inline-flex; align-items: center; gap: 7px;
+            height: 24px; margin: 0 4px; padding: 0 11px;
+            border-radius: 8px; max-width: 240px;
+            background: color-mix(in srgb, var(--accent) 16%, transparent);
+            color: #f3ece6; font-size: 12px; font-weight: 600;
+            transition: background-color .4s ease;
+        }
+        .space-pill .badge { display: grid; place-items: center; flex: 0 0 auto; color: var(--accent); }
+        .space-pill .badge .codicon { font-size: 14px; }
+        .space-pill .dot { width: 8px; height: 8px; border-radius: 50%;
+            background: var(--accent); transition: background-color .4s ease; }
+        .space-pill .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .drag { flex: 1 1 auto; height: 100%; -webkit-app-region: drag; }
         .win-controls { display: none; height: 100%; -webkit-app-region: no-drag; }
         body:not(.mac) .win-controls { display: flex; align-items: center; }
@@ -61,6 +77,7 @@
                 <rect class="panel" x="3" y="4" width="7" height="16" rx="2.5" fill="currentColor" opacity="0.85"/>
             </svg>
         </button>
+        <div class="space-pill" id="spacePill"><span class="badge" id="spaceBadge"></span><span class="name" id="spaceName"></span></div>
         <div class="drag" id="drag"></div>
         <div class="win-controls" id="winControls">
             <button class="win-btn min" data-act="minimize" aria-label="Réduire"></button>

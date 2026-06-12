@@ -8,6 +8,29 @@
     'use strict';
     const api = window.fabiSpaces;
     const SPACE_COLORS = ['#EC5B2B', '#E0A82E', '#4Fae6e', '#3B9CCB', '#7C6BD6', '#D45A8A', '#94A3B8'];
+    // Librairie d'icônes = les CODICONS natifs de l'IDE (mêmes icônes que Theia/VS Code).
+    const CODICONS = [
+        'folder', 'file', 'terminal', 'server', 'server-environment', 'vm', 'remote',
+        'remote-explorer', 'rocket', 'flame', 'star', 'gear', 'tools', 'beaker',
+        'paintcan', 'book', 'bookmark', 'lightbulb', 'globe', 'database', 'cloud',
+        'github', 'heart', 'key', 'lock', 'package', 'symbol-class', 'code', 'browser',
+        'window', 'dashboard', 'organization', 'project', 'notebook', 'bug'
+    ];
+    const isCodicon = v => !!v && CODICONS.includes(v);
+    // Pose dans `el` (vidé) l'icône d'un space : codicon, sinon emoji legacy, sinon initiale.
+    function setGlyph(glyphEl, space) {
+        glyphEl.innerHTML = '';
+        if (isCodicon(space.emoji)) {
+            const i = document.createElement('i');
+            i.className = 'codicon codicon-' + space.emoji;
+            glyphEl.appendChild(i);
+        } else if (space.emoji) {
+            glyphEl.textContent = space.emoji;
+        } else {
+            const n = (space.name || '').trim();
+            glyphEl.textContent = n ? n[0].toUpperCase() : '•';
+        }
+    }
 
     let state = { spaces: [], activeId: undefined, liveIds: [], expanded: false, activeColor: undefined };
     let expanded = false;
@@ -19,14 +42,6 @@
         addBtn: document.getElementById('addBtn'),
         ctx: document.getElementById('ctxmenu')
     };
-
-    // ------------------------------------------------------------ helpers
-
-    function glyphFor(space) {
-        if (space.emoji) { return space.emoji; }
-        const n = (space.name || '').trim();
-        return n ? n[0].toUpperCase() : '•';
-    }
 
     // ------------------------------------------------------------- rendu
 
@@ -85,7 +100,7 @@
         row.classList.toggle('active', space.id === state.activeId);
         row.style.setProperty('--accent', space.color);
         row.querySelector('.tile').classList.toggle('live', isLive);
-        row.querySelector('.glyph').textContent = glyphFor(space);
+        setGlyph(row.querySelector('.glyph'), space);
         const nameEl = row.querySelector('.space-name'); // absent pendant un renommage inline
         if (nameEl) { nameEl.textContent = space.name || 'Espace'; }
     }
@@ -179,16 +194,25 @@
         const iconLabel = document.createElement('div');
         iconLabel.className = 'ctx-label'; iconLabel.textContent = 'Icône';
         m.appendChild(iconLabel);
-        const emoji = document.createElement('input');
-        emoji.className = 'ctx-emoji';
-        emoji.value = space.emoji || '';
-        emoji.placeholder = 'Emoji ou lettre';
-        emoji.spellcheck = false;
-        emoji.addEventListener('click', ev => ev.stopPropagation());
-        emoji.addEventListener('keydown', ev => {
-            if (ev.key === 'Enter') { api.setEmoji(space.id, emoji.value.trim().slice(0, 2)); closeContextMenu(); }
-        });
-        m.appendChild(emoji);
+        const grid = document.createElement('div');
+        grid.className = 'ctx-emoji-grid';
+        // « Aa » = revenir à l'initiale (pas d'icône).
+        const clear = document.createElement('button');
+        clear.className = 'ctx-emoji-btn clear' + (!space.emoji ? ' sel' : '');
+        clear.textContent = 'Aa'; clear.title = 'Initiale';
+        clear.addEventListener('click', ev => { ev.stopPropagation(); api.setEmoji(space.id, ''); });
+        grid.appendChild(clear);
+        for (const name of CODICONS) {
+            const b = document.createElement('button');
+            b.className = 'ctx-emoji-btn' + (name === space.emoji ? ' sel' : '');
+            b.title = name;
+            const i = document.createElement('i');
+            i.className = 'codicon codicon-' + name;
+            b.appendChild(i);
+            b.addEventListener('click', ev => { ev.stopPropagation(); api.setEmoji(space.id, name); });
+            grid.appendChild(b);
+        }
+        m.appendChild(grid);
 
         const colorLabel = document.createElement('div');
         colorLabel.className = 'ctx-label'; colorLabel.textContent = 'Couleur';

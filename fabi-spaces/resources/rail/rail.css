@@ -40,13 +40,14 @@ html, body {
 
 .fox-btn {
     flex: 0 0 auto;
-    width: 42px; height: 42px;
-    margin: 0 0 2px;
-    border: none; padding: 7px; border-radius: 12px;
+    width: 34px; height: 34px;
+    margin: 0 0 4px 5px;            /* aligné sur la colonne des tuiles */
+    border: none; padding: 6px; border-radius: 10px;
     background: transparent; cursor: pointer;
     display: grid; place-items: center;
-    transition: background .15s ease, transform .15s ease;
+    transition: background .15s ease, transform .15s ease, width .18s ease, height .18s ease;
 }
+body.expanded .fox-btn { width: 40px; height: 40px; }
 .fox-btn.pinned { background: var(--tile-hover); }
 .fox-btn img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;
     filter: drop-shadow(0 3px 6px rgba(236, 91, 43, 0.30)); }
@@ -61,26 +62,31 @@ html, body {
 }
 .tiles::-webkit-scrollbar { width: 0; }
 
-/* Une rangée d'espace : [tuile-icône] [nom]. Le nom n'apparaît qu'en mode déplié. */
+/* Une rangée d'espace : [tuile-icône] [nom]. Le nom n'apparaît qu'en mode déplié.
+   Repliée = compacte ; dépliée = un peu plus grande. Pas de fond au survol (seule la
+   tuile réagit). */
 .space-row {
     display: flex; align-items: center; gap: 10px;
-    height: 46px; flex: 0 0 auto;
+    height: 40px; flex: 0 0 auto;
     padding: 0 5px; border-radius: 11px;
     cursor: pointer;
 }
-.space-row:hover { background: rgba(255, 255, 255, 0.05); }
+body.expanded .space-row { height: 46px; }
 .space-row.dragging { opacity: 0.4; }
 
 .tile {
     position: relative;
-    width: 42px; height: 42px; flex: 0 0 auto;
-    border: 1px solid transparent; border-radius: 12px;
+    width: 34px; height: 34px; flex: 0 0 auto;
+    border: 1px solid transparent; border-radius: 11px;
     background: var(--tile); color: var(--muted);
     display: grid; place-items: center;
-    font-size: 16px; font-weight: 640;
-    transition: background-color .32s ease, color .22s ease;
+    font-size: 14px; font-weight: 640;
+    transition: background-color .32s ease, color .22s ease, width .18s ease, height .18s ease;
 }
-.tile .glyph { line-height: 1; pointer-events: none; }
+body.expanded .tile { width: 40px; height: 40px; font-size: 16px; }
+.tile .glyph { line-height: 1; pointer-events: none; display: grid; place-items: center; }
+.tile .glyph .codicon { font-size: 17px; }
+body.expanded .tile .glyph .codicon { font-size: 19px; }
 .space-row:hover .tile { background: var(--tile-hover); color: var(--text); }
 
 /* Espace actif : LA TUILE (le composant à la lettre) prend la couleur de l'espace —
@@ -163,13 +169,21 @@ body.expanded .add-row .add-label { opacity: 1; }
 .ctx-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
     color: var(--muted-2); padding: 4px 9px 2px; }
 
-.ctx-emoji {
-    width: 100%; background: rgba(255,255,255,0.06);
-    border: 1px solid var(--hairline); border-radius: 7px;
-    padding: 6px 8px; color: var(--text); font-size: 14px; outline: none;
-    -webkit-user-select: text; user-select: text;
+.ctx-emoji-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
+    max-height: 134px; overflow-y: auto; padding: 2px;
+    scrollbar-width: thin;
 }
-.ctx-emoji:focus { border-color: color-mix(in srgb, var(--orange) 50%, transparent); }
+.ctx-emoji-btn {
+    width: 28px; height: 28px; border: none; border-radius: 7px;
+    background: transparent; cursor: pointer; font-size: 16px;
+    color: var(--text);                 /* sinon couleur bouton par défaut = noir sur noir */
+    display: grid; place-items: center; line-height: 1;
+}
+.ctx-emoji-btn:hover { background: rgba(255, 255, 255, 0.09); }
+.ctx-emoji-btn.sel { background: color-mix(in srgb, var(--orange) 32%, transparent); }
+.ctx-emoji-btn.clear { font-size: 12px; font-weight: 700; color: var(--muted); }
+.ctx-emoji-btn .codicon { font-size: 17px; }
 
 .ctx-swatches { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 4px 2px; }
 .ctx-swatch {

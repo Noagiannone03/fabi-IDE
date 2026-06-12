@@ -49,6 +49,10 @@ export interface SpacesState {
     expanded: boolean;
     /** Couleur d'accent du Space actif (pour teinter le chrome + l'IDE, façon « relié »). */
     activeColor: string | undefined;
+    /** Nom affiché du Space actif (pour l'îlot-nom dans la barre de titre). */
+    activeName: string | undefined;
+    /** Icône du Space actif (codicon name ou emoji) — affichée dans le badge du haut. */
+    activeIcon: string | undefined;
 }
 
 /**

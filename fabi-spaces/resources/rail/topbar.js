@@ -14,9 +14,35 @@
     });
     document.getElementById('drag').addEventListener('dblclick', () => api.windowControl('maximize'));
 
-    // La barre de titre reste neutre : on ne suit que l'état déplié (pour l'icône toggle).
+    const spacePill = document.getElementById('spacePill');
+    const spaceName = document.getElementById('spaceName');
+    const spaceBadge = document.getElementById('spaceBadge');
+
+    // Pose l'icône du space dans le badge : codicon (nom ascii), emoji, sinon une boule.
+    function setBadge(icon) {
+        spaceBadge.innerHTML = '';
+        if (icon && /^[a-z][a-z0-9-]*$/.test(icon)) {
+            const i = document.createElement('i');
+            i.className = 'codicon codicon-' + icon;
+            spaceBadge.appendChild(i);
+        } else if (icon) {
+            spaceBadge.textContent = icon;
+        } else {
+            const dot = document.createElement('span');
+            dot.className = 'dot';
+            spaceBadge.appendChild(dot);
+        }
+    }
+
+    // Barre neutre, SAUF l'îlot-nom (pastille) qui porte la couleur + l'icône + le nom.
     api.onState(state => {
         if (!state) { return; }
         document.body.classList.toggle('sb-expanded', !!state.expanded);
+        if (state.activeColor) {
+            document.documentElement.style.setProperty('--accent', state.activeColor);
+        }
+        spaceName.textContent = state.activeName || '';
+        setBadge(state.activeIcon);
+        spacePill.style.display = state.activeName ? 'inline-flex' : 'none';
     });
 })();

@@ -166,13 +166,12 @@ export class SpaceManager {
         const { width: W, height: H } = this.contentBounds();
         const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
-        // L'IDE : flush sous la topbar, à droite de la colonne d'espaces (pas de gap,
-        // pas de coins arrondis). Position FIXE au repos → pas de reflow quand le rail
-        // se déplie (il overlay).
+        // L'IDE : flush sous la topbar, à droite de la sidebar. Sa largeur SUIT celle du
+        // rail → déplier la sidebar POUSSE l'IDE (reflow), comme le panneau IA. Pas d'overlay.
         const spaceRect: Rectangle = {
-            x: RAIL_COLLAPSED,
+            x: railW,
             y: TOPBAR_HEIGHT,
-            width: Math.max(0, W - RAIL_COLLAPSED),
+            width: Math.max(0, W - railW),
             height: Math.max(0, H - TOPBAR_HEIGHT)
         };
         for (const view of this.views.values()) {
@@ -261,8 +260,21 @@ export class SpaceManager {
         }
         this.layout();
         this.applyAccent(id);
+        this.fadeInView(id);
         this.enforceSuspension();
         this.pushState();
+    }
+
+    /** Petit fondu d'entrée sur la vue qui devient active (« on voit que ça change »). */
+    protected fadeInView(id: string): void {
+        const view = this.views.get(id);
+        if (!view || view.webContents.isDestroyed() || view.webContents.isLoading()) {
+            return;
+        }
+        view.webContents.executeJavaScript(
+            `(()=>{try{document.body.animate([{opacity:0.55},{opacity:1}],{duration:200,easing:'ease-out'});}catch(e){}})();`,
+            true
+        ).catch(() => { /* frontend pas prêt */ });
     }
 
     /** Crée un nouveau Space : choisit un dossier puis l'ouvre. */
@@ -424,7 +436,9 @@ export class SpaceManager {
             activeId: this.activeId,
             liveIds: [...this.views.keys()],
             expanded: this.railExpanded,
-            activeColor: active?.color
+            activeColor: active?.color,
+            activeName: active ? this.displayName(active) : undefined,
+            activeIcon: active?.emoji || undefined
         };
     }
 
