@@ -1,0 +1,18 @@
+/* Effet « relié » : l'IDE (la partie droite) prend un voile LÉGER de la couleur de
+   l'espace actif. Le SpaceManager injecte `--fabi-space-accent` sur :root (par espace) ;
+   on le mêle au canvas profond → les « gaps » des îlots + le fond se teintent. Animé
+   au switch (la couleur glisse en même temps que la sélection dans la sidebar). */
+
+/* On teinte UNIQUEMENT la section EXPLORATEUR (le panneau de gauche) avec l'accent de
+   l'espace — pas les autres îlots, pas l'éditeur. Léger. Variable --fabi-surface
+   redéfinie SCOPÉE au panneau gauche + fond des surfaces de ce panneau. Animé. */
+#theia-left-content-panel {
+    --fabi-surface: color-mix(in srgb, var(--fabi-space-accent, transparent) 7%, #181a1d) !important;
+}
+#theia-left-content-panel .theia-side-panel,
+#theia-left-content-panel .theia-view-container,
+#theia-left-content-panel .theia-view-container-part,
+#theia-left-content-panel .theia-TreeContainer {
+    background-color: color-mix(in srgb, var(--fabi-space-accent, transparent) 7%, #181a1d) !important;
+    transition: background-color .5s ease !important;
+}

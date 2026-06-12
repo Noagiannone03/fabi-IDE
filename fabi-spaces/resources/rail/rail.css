@@ -1,276 +1,181 @@
-/* Rail des Spaces — ADN Fabi « îlots » : profond, arrondi, posé (Material).
-   Le rail est le FOND plein-cadre : barre de titre en haut + colonne d'espaces à
-   gauche ; l'IDE est encastré dessus. Pas de glassmorphism. Orange = accent rare. */
+/* Sidebar des Spaces — façon Arc : étroite au repos (icônes), s'élargit au survol
+   pour montrer les noms + la gestion. ADN « îlots » : profond, arrondi, accent sobre.
+   La largeur réelle est pilotée par la WebContentsView ; ici le contenu est posé pour
+   l'état déplié (250px) et l'état replié le rogne (overflow). */
 
 :root {
     --canvas: #0b0b0e;
     --surface: #181a1d;
-    --tile: #16181c;          /* onglet au repos (DESIGN.md) */
+    --tile: #16181c;
     --tile-hover: #23262c;
-    --tile-active: #2b2f37;   /* onglet actif : gris clair, pas un bloc de couleur */
+    --tile-active: #2b2f37;
     --text: #f3ece6;
     --muted: rgba(243, 236, 230, 0.55);
     --muted-2: rgba(243, 236, 230, 0.34);
     --hairline: rgba(255, 255, 255, 0.06);
     --orange: #EC5B2B;
-    --rail-w: 62px;
-    --topbar-h: 36px;
+    --expanded-w: 250px;
 }
 
 * { box-sizing: border-box; }
 
 html, body {
-    margin: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
+    margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: var(--canvas);
     color: var(--text);
     font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    -webkit-user-select: none;
-    user-select: none;
-    cursor: default;
+    -webkit-user-select: none; user-select: none; cursor: default;
 }
 
-/* ------------------------------------------------------------ Barre de titre */
-
-.topbar {
-    position: fixed;
-    left: 0; top: 0; right: 0;
-    height: var(--topbar-h);
-    z-index: 12;
-    display: flex;
-    align-items: center;
-    background: var(--canvas);
-    border-bottom: 1px solid var(--hairline);
-}
-/* Toute la barre déplace la fenêtre, sauf les boutons. */
-.topbar-drag { flex: 1 1 auto; height: 100%; -webkit-app-region: drag; }
-
-/* Boutons fenêtre custom (Windows/Linux uniquement ; sur macOS = traffic-lights natifs). */
-.win-controls { display: none; height: 100%; -webkit-app-region: no-drag; }
-body:not(.mac) .win-controls { display: flex; align-items: center; }
-.win-btn {
-    width: 46px; height: 100%;
-    border: none; background: transparent; cursor: pointer;
-    display: grid; place-items: center;
-    position: relative;
-}
-.win-btn::before {
-    content: ""; width: 11px; height: 11px;
-    border: 1.4px solid var(--muted); border-radius: 2px;
-}
-.win-btn.min::before { width: 11px; height: 0; border-width: 0 0 1.4px 0; }
-.win-btn.close::before { border: none; background:
-    linear-gradient(currentColor, currentColor) center/14px 1.4px no-repeat,
-    linear-gradient(currentColor, currentColor) center/1.4px 14px no-repeat;
-    color: var(--muted); width: 14px; height: 14px; transform: rotate(45deg); }
-.win-btn:hover { background: rgba(255,255,255,0.07); }
-.win-btn:hover::before { border-color: var(--text); color: var(--text); }
-.win-btn.close:hover { background: #E0413B; }
-.win-btn.close:hover::before { color: #fff; }
-
-/* ---------------------------------------------------- Colonne des espaces */
-
+/* La colonne : posée à la largeur dépliée ; repliée, la vue la rogne (overflow body). */
 .rail {
-    position: fixed;
-    left: 0; top: var(--topbar-h); bottom: 0;
-    width: var(--rail-w);
-    z-index: 10;
+    position: fixed; left: 0; top: 0; bottom: 0;
+    width: var(--expanded-w);
     background: var(--canvas);
     border-right: 1px solid var(--hairline);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 10px 0 12px;
-    gap: 8px;
+    display: flex; flex-direction: column;
+    padding: 9px 8px 12px;
+    gap: 6px;
 }
-.rail button { -webkit-app-region: no-drag; }
 
 .fox-btn {
-    width: 40px; height: 40px;
-    border: none; padding: 6px;
-    border-radius: 12px;
-    background: transparent;
-    cursor: pointer;
+    flex: 0 0 auto;
+    width: 42px; height: 42px;
+    margin: 0 0 2px;
+    border: none; padding: 7px; border-radius: 12px;
+    background: transparent; cursor: pointer;
     display: grid; place-items: center;
     transition: background .15s ease, transform .15s ease;
 }
+.fox-btn.pinned { background: var(--tile-hover); }
 .fox-btn img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;
     filter: drop-shadow(0 3px 6px rgba(236, 91, 43, 0.30)); }
 .fox-btn:hover { background: var(--tile-hover); }
 .fox-btn:active { transform: scale(0.94); }
 
 .tiles {
-    flex: 0 1 auto;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 9px;
-    padding: 4px 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scrollbar-width: none;
+    flex: 1 1 auto;
+    display: flex; flex-direction: column; gap: 4px;
+    overflow-y: auto; overflow-x: hidden;
+    scrollbar-width: none; padding: 2px 0;
 }
 .tiles::-webkit-scrollbar { width: 0; }
 
-/* Une tuile de Space — l'accent reste un ACCENT (glyphe + liseré + indicateur),
-   jamais un aplat de couleur saturé. */
+/* Une rangée d'espace : [tuile-icône] [nom]. Le nom n'apparaît qu'en mode déplié. */
+.space-row {
+    display: flex; align-items: center; gap: 10px;
+    height: 46px; flex: 0 0 auto;
+    padding: 0 5px; border-radius: 11px;
+    cursor: pointer;
+}
+.space-row:hover { background: rgba(255, 255, 255, 0.05); }
+.space-row.dragging { opacity: 0.4; }
+
 .tile {
     position: relative;
-    width: 42px; height: 42px;
-    border: 1px solid transparent;
-    border-radius: 13px;
-    background: var(--tile);
-    color: var(--muted);
-    cursor: pointer;
+    width: 42px; height: 42px; flex: 0 0 auto;
+    border: 1px solid transparent; border-radius: 12px;
+    background: var(--tile); color: var(--muted);
     display: grid; place-items: center;
     font-size: 16px; font-weight: 640;
-    transition: background .15s ease, color .15s ease, transform .12s ease,
-                box-shadow .2s ease, border-color .2s ease;
+    transition: background-color .32s ease, color .22s ease;
 }
 .tile .glyph { line-height: 1; pointer-events: none; }
-.tile:hover {
-    background: var(--tile-hover);
-    color: var(--text);
-    border-color: color-mix(in srgb, var(--accent, var(--orange)) 35%, transparent);
-    transform: translateY(-1px);
+.space-row:hover .tile { background: var(--tile-hover); color: var(--text); }
+
+/* Espace actif : LA TUILE (le composant à la lettre) prend la couleur de l'espace —
+   nettement visible, glyphe en blanc. Pas de bordure ni de barre latérale.
+   La transition de `background-color` fait le fondu de couleur au switch. */
+.space-row.active .tile {
+    background: color-mix(in srgb, var(--accent, var(--orange)) 34%, var(--tile-active));
+    color: #fff;
+    border-color: transparent;
 }
-.tile:active { transform: scale(0.93); }
-
-.tile.active {
-    background: var(--tile-active);
-    color: var(--accent, var(--orange));
-    border-color: color-mix(in srgb, var(--accent, var(--orange)) 45%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, var(--orange)) 22%, transparent),
-                0 8px 20px -10px rgba(0,0,0,0.7);
-}
-.tile.active::before {
-    content: "";
-    position: absolute;
-    left: -10px; top: 50%;
-    width: 3px; height: 22px;
-    transform: translateY(-50%);
-    border-radius: 3px;
-    background: var(--accent, var(--orange));
-}
-.tile.live:not(.active)::after {
-    content: "";
-    position: absolute;
-    right: 5px; bottom: 5px;
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--accent, var(--muted));
-    opacity: 0.6;
-}
-.tile.dragging { opacity: 0.4; }
-
-.add-btn, .settings-btn {
-    width: 36px; height: 36px;
-    border: none;
-    border-radius: 11px;
-    background: transparent;
-    color: var(--muted);
-    cursor: pointer;
-    display: grid; place-items: center;
-    transition: background .15s ease, color .15s ease, transform .12s ease;
-}
-.add-btn { border: 1px dashed var(--hairline); }
-.add-btn:hover, .settings-btn:hover { background: var(--tile-hover); color: var(--text); }
-.add-btn:active, .settings-btn:active { transform: scale(0.92); }
-
-.rail-spacer { flex: 1 1 auto; }
-
-/* ---------------------------------------------------------- Vue d'ensemble */
-
-.overview { position: fixed; inset: 0; z-index: 14; }
-.overview.hidden { display: none; }
-
-.overview-scrim {
-    position: absolute; inset: 0;
-    background: rgba(6, 6, 8, 0.72);
+.space-row.active:hover .tile {
+    background: color-mix(in srgb, var(--accent, var(--orange)) 40%, var(--tile-active));
 }
 
-.overview-panel {
-    position: absolute;
-    left: var(--rail-w); right: 0; top: var(--topbar-h); bottom: 0;
-    padding: 52px clamp(28px, 7vw, 110px);
-    overflow-y: auto;
+/* État « vivant mais pas actif » : petit point d'accent discret. */
+.tile.live::after {
+    content: ""; position: absolute; right: 4px; bottom: 4px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--accent, var(--muted)); opacity: 0.6;
 }
 
-.overview-head h1 { margin: 0; font-size: 26px; font-weight: 680; letter-spacing: .2px; }
-.overview-head p { margin: 6px 0 28px; color: var(--muted); font-size: 13.5px; }
-
-.cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-    gap: 16px;
-    max-width: 980px;
-}
-
-.card {
-    position: relative;
-    border-radius: 16px;
-    background: var(--surface);
-    border: 1px solid var(--hairline);
-    padding: 16px;
-    display: flex; flex-direction: column; gap: 12px;
-    box-shadow: 0 10px 30px -16px rgba(0,0,0,0.6);
-    transition: transform .15s ease, box-shadow .2s ease, border-color .2s ease;
-}
-.card.active { border-color: var(--accent, var(--orange)); }
-.card:hover { transform: translateY(-2px); box-shadow: 0 16px 38px -16px rgba(0,0,0,0.7); }
-
-.card-head { display: flex; align-items: center; gap: 12px; }
-.card-badge {
-    width: 46px; height: 46px; flex: 0 0 auto;
-    border-radius: 13px;
-    background: var(--tile-active);
-    color: var(--accent, var(--orange));
-    border: 1px solid color-mix(in srgb, var(--accent, var(--orange)) 45%, transparent);
-    display: grid; place-items: center;
-    font-size: 20px; font-weight: 680;
-    cursor: pointer;
-}
-.card-title {
+.space-name {
     flex: 1 1 auto; min-width: 0;
-    background: transparent; border: none; outline: none;
-    color: var(--text); font-size: 15px; font-weight: 620;
-    border-radius: 7px; padding: 5px 7px;
+    font-size: 13.5px; font-weight: 540; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    opacity: 0; transition: opacity .12s ease;
+}
+.space-row.active .space-name { color: var(--text); font-weight: 600; }
+body.expanded .space-name { opacity: 1; }
+
+/* Champ d'édition inline (renommer), façon Arc. */
+.space-name-input {
+    flex: 1 1 auto; min-width: 0;
+    background: rgba(255,255,255,0.08); border: 1px solid color-mix(in srgb, var(--orange) 50%, transparent);
+    outline: none; border-radius: 6px; padding: 4px 7px;
+    color: var(--text); font-size: 13.5px; font-weight: 560;
     -webkit-user-select: text; user-select: text;
 }
-.card-title:focus { background: rgba(255,255,255,0.06); }
-.card-path { font-size: 11.5px; color: var(--muted-2); margin: -4px 2px 0;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.swatches { display: flex; gap: 7px; flex-wrap: wrap; }
-.swatch {
+/* Rangée « nouvel espace ». */
+.add-row {
+    display: flex; align-items: center; gap: 10px;
+    height: 42px; flex: 0 0 auto;
+    margin-top: 2px; padding: 0 5px; border-radius: 11px;
+    background: transparent; border: none; cursor: pointer;
+    color: var(--muted); font-size: 13px; font-weight: 540; text-align: left;
+}
+.add-row:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.add-row .plus {
+    width: 42px; height: 42px; flex: 0 0 auto;
+    border: 1px dashed var(--hairline); border-radius: 12px;
+    display: grid; place-items: center;
+}
+.add-row .add-label { opacity: 0; transition: opacity .12s ease; white-space: nowrap; }
+body.expanded .add-row .add-label { opacity: 1; }
+
+.rail-spacer { flex: 0 0 auto; }
+
+/* ---------------------------------------------------------- Menu clic-droit */
+
+.ctxmenu {
+    position: fixed; z-index: 60;
+    min-width: 184px; padding: 7px;
+    border-radius: 12px; background: #1f2228;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.75);
+    display: flex; flex-direction: column; gap: 3px;
+}
+.ctxmenu.hidden { display: none; }
+.ctx-item {
+    display: flex; align-items: center; gap: 9px;
+    padding: 8px 9px; border: none; border-radius: 8px;
+    background: transparent; color: var(--text);
+    font-size: 12.5px; font-weight: 520; cursor: pointer; text-align: left;
+}
+.ctx-item:hover { background: rgba(255, 255, 255, 0.07); }
+.ctx-item.danger:hover { background: rgba(212, 90, 90, 0.16); color: #ff9a9a; }
+.ctx-sep { height: 1px; background: var(--hairline); margin: 3px 2px; }
+
+.ctx-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
+    color: var(--muted-2); padding: 4px 9px 2px; }
+
+.ctx-emoji {
+    width: 100%; background: rgba(255,255,255,0.06);
+    border: 1px solid var(--hairline); border-radius: 7px;
+    padding: 6px 8px; color: var(--text); font-size: 14px; outline: none;
+    -webkit-user-select: text; user-select: text;
+}
+.ctx-emoji:focus { border-color: color-mix(in srgb, var(--orange) 50%, transparent); }
+
+.ctx-swatches { display: flex; gap: 6px; flex-wrap: wrap; padding: 4px 4px 2px; }
+.ctx-swatch {
     width: 20px; height: 20px; border-radius: 50%;
     border: 2px solid transparent; cursor: pointer; padding: 0;
     transition: transform .12s ease, border-color .12s ease;
 }
-.swatch:hover { transform: scale(1.12); }
-.swatch.sel { border-color: var(--text); }
-
-.card-actions { display: flex; gap: 8px; margin-top: 2px; }
-.card-actions button {
-    flex: 1 1 auto;
-    border: 1px solid var(--hairline);
-    background: transparent;
-    color: var(--text);
-    border-radius: 9px; padding: 8px 10px;
-    font-size: 12.5px; font-weight: 560; cursor: pointer;
-    transition: background .15s ease, border-color .15s ease, color .15s ease;
-}
-.card-actions .open:hover { background: var(--accent, var(--orange)); border-color: transparent; color: #fff; }
-.card-actions .close:hover { background: rgba(212, 90, 90, 0.16); border-color: rgba(212,90,90,0.4); color: #ff9a9a; }
-
-.card.new {
-    align-items: center; justify-content: center;
-    border-style: dashed; background: transparent; min-height: 150px;
-    color: var(--muted); cursor: pointer; font-size: 14px; font-weight: 560;
-    flex-direction: row; gap: 8px;
-}
-.card.new:hover { color: var(--text); border-color: var(--orange); }
-.card.new svg { width: 20px; height: 20px; }
+.ctx-swatch:hover { transform: scale(1.14); }
+.ctx-swatch.sel { border-color: var(--text); }

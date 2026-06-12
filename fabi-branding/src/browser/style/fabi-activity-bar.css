@@ -45,20 +45,12 @@
     line-height: 1;
 }
 
-/* Vue active : icône en couleur d'accent + tuile tonale discrète (pas un bloc plein). */
+/* Vue active : effet « îlot sélectionné » NEUTRE (gris clair), pas d'orange,
+   pas de contour, pas de trait. */
 .fabi-activity-item.active {
     opacity: 1;
-    color: var(--fabi-orange, #EC5B2B);
-    background: color-mix(in srgb, var(--fabi-orange, #EC5B2B) 14%, transparent);
-}
-.fabi-activity-item.active::after {
-    content: "";
-    position: absolute;
-    left: 50%; bottom: 3px;
-    transform: translateX(-50%);
-    width: 16px; height: 2.5px;
-    border-radius: 2px;
-    background: var(--fabi-orange, #EC5B2B);
+    color: var(--theia-foreground, #f3ece6);
+    background: rgba(255, 255, 255, 0.09);
 }
 
 /* Débordement « … » + son menu déroulant (au-dessus du bouton). */
@@ -92,6 +84,6 @@
     text-align: left;
 }
 .fabi-activity-menu-item:hover { background: rgba(255, 255, 255, 0.07); }
-.fabi-activity-menu-item.active { color: var(--fabi-orange, #EC5B2B); }
+.fabi-activity-menu-item.active { background: rgba(255, 255, 255, 0.09); }
 .fabi-activity-menu-item .fabi-activity-icon { font-size: 16px; }
 .fabi-activity-menu-item .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

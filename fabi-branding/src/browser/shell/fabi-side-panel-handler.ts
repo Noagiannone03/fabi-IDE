@@ -12,15 +12,27 @@
 //    le lit et le pilote.
 //  - Tout le custom est encapsulé en try/catch → fallback layout natif si quoi que ce soit casse.
 
-import { injectable } from '@theia/core/shared/inversify';
+import { injectable, inject } from '@theia/core/shared/inversify';
 import { Panel, BoxPanel, BoxLayout, Title, Widget } from '@theia/core/shared/@lumino/widgets';
 import { SidePanelHandler } from '@theia/core/lib/browser/shell/side-panel-handler';
+import { ApplicationShell, FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { FabiActivityBar, FabiActivityBarHost } from './fabi-activity-bar';
 
 @injectable()
 export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivityBarHost {
 
     protected fabiActivityBar?: FabiActivityBar;
+
+    /**
+     * Le panneau gauche n'est JAMAIS replié : il reste toujours ouvert (au pire
+     * compressé à sa largeur mini) pour que la barre d'icônes du bas reste visible.
+     */
+    override collapse(): Promise<void> {
+        if (this.side === 'left') {
+            return Promise.resolve();
+        }
+        return super.collapse();
+    }
 
     /** FabiActivityBarHost : sélectionne/affiche une vue (le panneau reste ouvert). */
     selectView(title: Title<Widget>): void {
@@ -63,6 +75,29 @@ export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivi
         } catch (err) {
             console.error('[fabi] barre d\'activité horizontale échouée → layout natif :', err);
             return super.createContainer();
+        }
+    }
+}
+
+/**
+ * Force le panneau de GAUCHE à être OUVERT par défaut : juste après la restauration
+ * du layout, si aucune vue n'y est active, on active la première (l'explorateur).
+ * Couplé au `collapse()` no-op du handler → l'explorateur est toujours présent.
+ */
+@injectable()
+export class FabiLeftPanelOpenContribution implements FrontendApplicationContribution {
+
+    @inject(ApplicationShell)
+    protected readonly shell: ApplicationShell;
+
+    onDidInitializeLayout(): void {
+        try {
+            const tabBar = this.shell.leftPanelHandler.tabBar;
+            if (!tabBar.currentTitle && tabBar.titles.length > 0) {
+                tabBar.currentTitle = tabBar.titles[0];
+            }
+        } catch (err) {
+            console.error('[fabi] ouverture du panneau gauche par défaut :', err);
         }
     }
 }

@@ -9,6 +9,7 @@ import '../../src/browser/style/index.css';
 import '../../src/browser/style/fabi-ui-polish.css';
 import '../../src/browser/style/fabi-islands.css';
 import '../../src/browser/style/fabi-activity-bar.css';
+import '../../src/browser/style/fabi-space-accent.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
@@ -22,7 +23,7 @@ import { FabiWelcomeContribution } from './welcome/fabi-welcome-contribution';
 import { FabiAboutDialog } from './about/fabi-about-dialog';
 import { FabiColorContribution } from './theme/fabi-color-contribution';
 import { FabiThemeContribution } from './theme/fabi-theme-contribution';
-import { FabiSidePanelHandler } from './shell/fabi-side-panel-handler';
+import { FabiSidePanelHandler, FabiLeftPanelOpenContribution } from './shell/fabi-side-panel-handler';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     // --- Page d'accueil Fabi (widget autonome) ---
@@ -49,4 +50,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     // --- Barre d'activité gauche : icônes horizontales en bas (façon Cursor) ---
     // Transient (PAS singleton) : la factory instancie un handler distinct gauche/droite.
     rebind(SidePanelHandler).to(FabiSidePanelHandler);
+
+    // --- Panneau gauche toujours ouvert (explorateur visible par défaut) ---
+    bind(FabiLeftPanelOpenContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiLeftPanelOpenContribution);
 });

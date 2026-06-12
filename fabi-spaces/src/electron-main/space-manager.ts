@@ -18,8 +18,10 @@ import { SpaceDescriptor, SpacesState, SpacesIpc, SPACE_COLORS } from '../common
 import { SpaceStore } from './space-store';
 import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './frontend-url';
 
-/** Largeur de la colonne gauche du rail (les tuiles d'espaces), en px CSS. */
-const RAIL_WIDTH = 62;
+/** Largeur du rail au repos (colonne d'icônes d'espaces), en px CSS. */
+const RAIL_COLLAPSED = 58;
+/** Largeur du rail déplié au survol (affiche les noms + la gestion, façon Arc). */
+const RAIL_EXPANDED = 250;
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
 const TOPBAR_HEIGHT = 36;
 /** Nombre max de frontends Theia gardés vivants en même temps (le reste est suspendu → RAM). */
@@ -27,9 +29,11 @@ const MAX_LIVE = Math.max(1, Number(process.env.FABI_SPACES_MAX_LIVE) || 3);
 
 export interface SpaceManagerOptions extends FrontendUrlContext {
     appName: string;
-    /** Chemin FS du rail.html (chrome). */
+    /** Chemin FS du rail.html (la sidebar d'espaces). */
     railHtmlPath: string;
-    /** Chemin FS du preload du rail. */
+    /** Chemin FS du topbar.html (la barre de titre déplaçable). */
+    topbarHtmlPath: string;
+    /** Chemin FS du preload partagé (rail + topbar). */
     railPreloadPath: string;
 }
 
@@ -38,10 +42,12 @@ export class SpaceManager {
     protected readonly store = new SpaceStore();
     protected host!: BaseWindow;
     protected railView!: WebContentsView;
+    protected topbarView!: WebContentsView;
     /** Vues matérialisées (frontends vivants), par id de Space. */
     protected readonly views = new Map<string, WebContentsView>();
     protected activeId: string | undefined;
-    protected overviewOpen = false;
+    /** Le rail est-il déplié (survol) ? Sa largeur en dépend ; il overlay l'IDE sans le pousser. */
+    protected railExpanded = false;
     protected disposed = false;
 
     constructor(protected readonly opts: SpaceManagerOptions) { }
@@ -55,8 +61,8 @@ export class SpaceManager {
         this.seedIfEmpty();
         this.createHost();
         console.log('[fabi-spaces] boot: host créé');
-        this.createRail();
-        console.log('[fabi-spaces] boot: rail créé →', this.opts.railHtmlPath);
+        this.createChrome();
+        console.log('[fabi-spaces] boot: chrome créé →', this.opts.railHtmlPath);
         this.registerIpc();
 
         // Space à afficher en premier : le dernier actif, sinon le premier de la liste.
@@ -105,8 +111,9 @@ export class SpaceManager {
         this.host.on('closed', () => this.dispose());
     }
 
-    protected createRail(): void {
-        this.railView = new WebContentsView({
+    /** Crée une WebContentsView de chrome (topbar/rail) avec le preload partagé. */
+    protected chromeView(htmlPath: string): WebContentsView {
+        const view = new WebContentsView({
             webPreferences: {
                 preload: this.opts.railPreloadPath,
                 contextIsolation: true,
@@ -115,9 +122,18 @@ export class SpaceManager {
                 backgroundThrottling: false
             }
         });
+        view.setBackgroundColor('#00000000');
+        this.host.contentView.addChildView(view);
+        view.webContents.loadFile(htmlPath);
+        return view;
+    }
+
+    protected createChrome(): void {
+        // Sidebar d'espaces (gauche) + barre de titre (haut) : deux vues de chrome.
+        this.railView = this.chromeView(this.opts.railHtmlPath);
         this.railView.setBackgroundColor('#0b0b0e');
-        this.host.contentView.addChildView(this.railView);
-        this.railView.webContents.loadFile(this.opts.railHtmlPath);
+        this.topbarView = this.chromeView(this.opts.topbarHtmlPath);
+        this.topbarView.setBackgroundColor('#0b0b0e');
         this.layout();
     }
 
@@ -131,37 +147,40 @@ export class SpaceManager {
     }
 
     /**
-     * Le rail est le FOND plein-cadre (barre de titre en haut + colonne d'espaces à
-     * gauche, façon Arc) ; l'IDE actif est encastré dessus, en bas-à-droite. Seul le
-     * « L » du chrome reste visible autour de l'IDE.
+     * Modèle Arc :
+     *  - barre de titre (topbar) pleine largeur en haut (déplaçable + traffic-lights) ;
+     *  - sidebar d'espaces (rail) à gauche, sous la topbar : étroite au repos, élargie au
+     *    survol — elle OVERLAY l'IDE (ne le pousse pas, pas de reflow) ;
+     *  - l'IDE actif occupe le reste (toujours à x = RAIL_COLLAPSED).
+     * z-order (bas → haut) : vues d'IDE, rail, topbar.
      */
     protected layout(): void {
         if (this.disposed) {
             return;
         }
         const { width: W, height: H } = this.contentBounds();
+        const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
-        // Rail = fond plein-cadre.
-        this.railView.setBounds({ x: 0, y: 0, width: W, height: H });
-
-        // IDE encastré : sous la barre de titre, à droite de la colonne d'espaces.
+        // L'IDE : flush sous la topbar, à droite de la colonne d'espaces (pas de gap,
+        // pas de coins arrondis). Position FIXE au repos → pas de reflow quand le rail
+        // se déplie (il overlay).
         const spaceRect: Rectangle = {
-            x: RAIL_WIDTH,
+            x: RAIL_COLLAPSED,
             y: TOPBAR_HEIGHT,
-            width: Math.max(0, W - RAIL_WIDTH),
+            width: Math.max(0, W - RAIL_COLLAPSED),
             height: Math.max(0, H - TOPBAR_HEIGHT)
         };
         for (const view of this.views.values()) {
             view.setBounds(spaceRect);
         }
 
-        // z-order : en normal le rail est DESSOUS (l'IDE le recouvre, seul le chrome en L
-        // reste visible) ; en overview il passe AU-DESSUS (il occupe tout l'écran).
-        if (this.overviewOpen) {
-            this.host.contentView.addChildView(this.railView);     // au sommet
-        } else {
-            this.host.contentView.addChildView(this.railView, 0);  // au fond
-        }
+        // Rail (sidebar) : au-dessus de l'IDE pour pouvoir l'overlay quand déplié.
+        this.railView.setBounds({ x: 0, y: TOPBAR_HEIGHT, width: railW, height: Math.max(0, H - TOPBAR_HEIGHT) });
+        this.host.contentView.addChildView(this.railView);
+
+        // Topbar : pleine largeur, tout en haut, au sommet.
+        this.topbarView.setBounds({ x: 0, y: 0, width: W, height: TOPBAR_HEIGHT });
+        this.host.contentView.addChildView(this.topbarView);
     }
 
     // ----------------------------------------------------------------------
@@ -184,7 +203,7 @@ export class SpaceManager {
         return view;
     }
 
-    /** Shims par-vue : reload routé sur CETTE vue (Theia n'attache ce listener que sur ses BrowserWindow). */
+    /** Shims par-vue : reload routé sur CETTE vue + teinte d'accent injectée dans l'IDE. */
     protected wireSpaceWebContents(id: string, view: WebContentsView): void {
         const wc = view.webContents;
         const onReload = (event: IpcMainEvent, newUrl?: unknown) => {
@@ -199,6 +218,23 @@ export class SpaceManager {
         };
         ipcMain.on(CHANNEL_REQUEST_RELOAD, onReload);
         wc.once('destroyed', () => ipcMain.removeListener(CHANNEL_REQUEST_RELOAD, onReload));
+
+        // À chaque (re)chargement du frontend Theia, on (re)pose la couleur de l'espace
+        // sur :root → le CSS « îlots » s'en sert pour teinter l'IDE (effet « relié »).
+        wc.on('dom-ready', () => this.applyAccent(id));
+    }
+
+    /** Pose `--fabi-space-accent` (la couleur du Space) sur le :root du frontend Theia. */
+    protected applyAccent(id: string): void {
+        const view = this.views.get(id);
+        const color = this.store.get(id)?.color;
+        if (!view || !color || view.webContents.isDestroyed() || view.webContents.isLoading()) {
+            return;
+        }
+        const css = JSON.stringify(color);
+        view.webContents
+            .executeJavaScript(`document.documentElement.style.setProperty('--fabi-space-accent', ${css});`, true)
+            .catch(() => { /* le frontend n'est pas prêt : dom-ready réessaiera */ });
     }
 
     // ----------------------------------------------------------------------
@@ -216,9 +252,10 @@ export class SpaceManager {
 
         // Visibilité : seule la vue active est visible.
         for (const [vid, v] of this.views) {
-            v.setVisible(vid === id && !this.overviewOpen);
+            v.setVisible(vid === id);
         }
         this.layout();
+        this.applyAccent(id);
         this.enforceSuspension();
         this.pushState();
     }
@@ -289,6 +326,7 @@ export class SpaceManager {
 
     setColor(id: string, color: string): void {
         this.store.update(id, { color });
+        this.applyAccent(id);
         this.pushState();
     }
 
@@ -302,13 +340,14 @@ export class SpaceManager {
         this.pushState();
     }
 
-    setOverview(open: boolean): void {
-        this.overviewOpen = open;
-        // En overview, on masque la vue active (le rail occupe tout l'écran).
-        if (this.activeId) {
-            this.views.get(this.activeId)?.setVisible(!open);
+    /** Déplie/replie le rail (toggle ; overlay sur l'IDE, sans le pousser). */
+    setExpanded(expanded: boolean): void {
+        if (this.railExpanded === expanded) {
+            return;
         }
+        this.railExpanded = expanded;
         this.layout();
+        this.pushState();
     }
 
     windowControl(action: 'minimize' | 'maximize' | 'close'): void {
@@ -343,6 +382,8 @@ export class SpaceManager {
 
     protected registerIpc(): void {
         const fromRail = (event: IpcMainEvent) => event.sender.id === this.railView.webContents.id;
+        const fromChrome = (event: IpcMainEvent) =>
+            event.sender.id === this.railView.webContents.id || event.sender.id === this.topbarView.webContents.id;
 
         ipcMain.on(SpacesIpc.READY, e => { if (fromRail(e)) { this.pushState(); } });
         ipcMain.on(SpacesIpc.OPEN, (e, id: string) => { if (fromRail(e)) { void this.open(id); } });
@@ -352,23 +393,33 @@ export class SpaceManager {
         ipcMain.on(SpacesIpc.SET_COLOR, (e, id: string, color: string) => { if (fromRail(e)) { this.setColor(id, color); } });
         ipcMain.on(SpacesIpc.SET_EMOJI, (e, id: string, emoji: string) => { if (fromRail(e)) { this.setEmoji(id, emoji); } });
         ipcMain.on(SpacesIpc.REORDER, (e, ids: string[]) => { if (fromRail(e)) { this.reorder(ids); } });
-        ipcMain.on(SpacesIpc.SHOW_OVERVIEW, e => { if (fromRail(e)) { this.setOverview(true); } });
-        ipcMain.on(SpacesIpc.HIDE_OVERVIEW, e => { if (fromRail(e)) { this.setOverview(false); } });
-        ipcMain.on(SpacesIpc.WINDOW, (e, action) => { if (fromRail(e)) { this.windowControl(action); } });
+        // Le toggle peut venir du rail OU de la topbar.
+        ipcMain.on(SpacesIpc.TOGGLE_SIDEBAR, e => { if (fromChrome(e)) { this.setExpanded(!this.railExpanded); } });
+        // La topbar ET le rail peuvent piloter la fenêtre (boutons Win/Linux, double-clic).
+        ipcMain.on(SpacesIpc.WINDOW, (e, action) => { if (fromChrome(e)) { this.windowControl(action); } });
     }
 
     protected pushState(): void {
-        if (this.disposed || this.railView.webContents.isDestroyed()) {
+        if (this.disposed) {
             return;
         }
-        this.railView.webContents.send(SpacesIpc.STATE, this.state());
+        const state = this.state();
+        // Le rail ET la topbar reçoivent l'état (couleur active pour le « relié », expanded…).
+        for (const chrome of [this.railView, this.topbarView]) {
+            if (chrome && !chrome.webContents.isDestroyed()) {
+                chrome.webContents.send(SpacesIpc.STATE, state);
+            }
+        }
     }
 
     protected state(): SpacesState {
+        const active = this.activeId ? this.store.get(this.activeId) : undefined;
         return {
             spaces: this.store.getSpaces().map(s => ({ ...s, name: this.displayName(s) })),
             activeId: this.activeId,
-            liveIds: [...this.views.keys()]
+            liveIds: [...this.views.keys()],
+            expanded: this.railExpanded,
+            activeColor: active?.color
         };
     }
 
@@ -440,6 +491,11 @@ export class SpaceManager {
             }
         }
         this.views.clear();
+        for (const chrome of [this.railView, this.topbarView]) {
+            if (chrome && !chrome.webContents.isDestroyed()) {
+                chrome.webContents.close();
+            }
+        }
         app.quit();
     }
 }

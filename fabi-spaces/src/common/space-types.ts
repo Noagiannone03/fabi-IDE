@@ -38,13 +38,17 @@ export interface SpaceDescriptor {
     lastActive: number;
 }
 
-/** État complet envoyé au rail à chaque changement (un seul message, idempotent). */
+/** État complet envoyé au chrome (rail + topbar) à chaque changement (idempotent). */
 export interface SpacesState {
     spaces: SpaceDescriptor[];
     /** id du Space actuellement affiché. */
     activeId: string | undefined;
     /** ids des Spaces « vivants » (vue matérialisée) — les autres sont suspendus. */
     liveIds: string[];
+    /** La sidebar est-elle dépliée (toggle) ? */
+    expanded: boolean;
+    /** Couleur d'accent du Space actif (pour teinter le chrome + l'IDE, façon « relié »). */
+    activeColor: string | undefined;
 }
 
 /**
@@ -64,7 +68,6 @@ export namespace SpacesIpc {
     export const SET_COLOR = 'fabi-spaces:set-color';    // (id, color)
     export const SET_EMOJI = 'fabi-spaces:set-emoji';    // (id, emoji)
     export const REORDER = 'fabi-spaces:reorder';        // (orderedIds[])
-    export const SHOW_OVERVIEW = 'fabi-spaces:show-overview'; // () le rail passe en overlay plein écran
-    export const HIDE_OVERVIEW = 'fabi-spaces:hide-overview'; // () retour au rail fin
+    export const TOGGLE_SIDEBAR = 'fabi-spaces:toggle-sidebar'; // () déplie/replie la sidebar
     export const WINDOW = 'fabi-spaces:window';          // ('minimize'|'maximize'|'close') contrôles fenêtre hôte
 }

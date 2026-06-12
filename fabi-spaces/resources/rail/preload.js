@@ -13,8 +13,7 @@ const C = {
     SET_COLOR: 'fabi-spaces:set-color',
     SET_EMOJI: 'fabi-spaces:set-emoji',
     REORDER: 'fabi-spaces:reorder',
-    SHOW_OVERVIEW: 'fabi-spaces:show-overview',
-    HIDE_OVERVIEW: 'fabi-spaces:hide-overview',
+    TOGGLE_SIDEBAR: 'fabi-spaces:toggle-sidebar',
     WINDOW: 'fabi-spaces:window'
 };
 
@@ -28,8 +27,7 @@ contextBridge.exposeInMainWorld('fabiSpaces', {
     setColor: (id, color) => ipcRenderer.send(C.SET_COLOR, id, color),
     setEmoji: (id, emoji) => ipcRenderer.send(C.SET_EMOJI, id, emoji),
     reorder: ids => ipcRenderer.send(C.REORDER, ids),
-    showOverview: () => ipcRenderer.send(C.SHOW_OVERVIEW),
-    hideOverview: () => ipcRenderer.send(C.HIDE_OVERVIEW),
+    toggleSidebar: () => ipcRenderer.send(C.TOGGLE_SIDEBAR),
     windowControl: action => ipcRenderer.send(C.WINDOW, action),
     platform: process.platform
 });

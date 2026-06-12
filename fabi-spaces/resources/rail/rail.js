@@ -1,33 +1,26 @@
-// Rail des Spaces — logique de rendu + interactions. Reçoit l'état complet du main
-// (fabiSpaces.onState) et le re-render intégralement (idempotent). Toute action
-// utilisateur repart vers le main ; le main renvoie un nouvel état → re-render.
+// Sidebar des Spaces — logique. Reçoit l'état complet du main et le re-render.
+// Façon Arc : repliée par défaut (icônes), dépliée via le toggle (🦊 ou topbar) pour
+// montrer les noms + la gestion. Surlignage de sélection GLISSANT (animation entre tabs)
+// + couleur reliée. Renommage inline, menu clic-droit, drag-reorder.
+// (Electron désactive window.prompt/confirm → toute l'édition est inline.)
 
 (() => {
     'use strict';
     const api = window.fabiSpaces;
     const SPACE_COLORS = ['#EC5B2B', '#E0A82E', '#4Fae6e', '#3B9CCB', '#7C6BD6', '#D45A8A', '#94A3B8'];
 
-    /** @type {{spaces:Array, activeId?:string, liveIds:string[]}} */
-    let state = { spaces: [], activeId: undefined, liveIds: [] };
-    let overviewOpen = false;
+    let state = { spaces: [], activeId: undefined, liveIds: [], expanded: false, activeColor: undefined };
+    let expanded = false;
 
     const el = {
+        rail: document.getElementById('rail'),
         tiles: document.getElementById('tiles'),
         foxBtn: document.getElementById('foxBtn'),
         addBtn: document.getElementById('addBtn'),
-        settingsBtn: document.getElementById('settingsBtn'),
-        overview: document.getElementById('overview'),
-        overviewScrim: document.getElementById('overviewScrim'),
-        cards: document.getElementById('cards'),
-        topbar: document.getElementById('topbar'),
-        winControls: document.getElementById('winControls')
+        ctx: document.getElementById('ctxmenu')
     };
 
-    if (api && api.platform === 'darwin') {
-        document.body.classList.add('mac');
-    }
-
-    // ---------------------------------------------------------------- helpers
+    // ------------------------------------------------------------ helpers
 
     function glyphFor(space) {
         if (space.emoji) { return space.emoji; }
@@ -35,193 +28,215 @@
         return n ? n[0].toUpperCase() : '•';
     }
 
-    // ------------------------------------------------------------ rail (fin)
+    // ------------------------------------------------------------- rendu
 
-    function renderRail() {
+    const rowEls = new Map(); // id -> élément de rangée (réutilisé entre rendus → transitions)
+
+    function findSpace(id) { return state.spaces.find(s => s.id === id); }
+
+    // Rendu réconciliant : on réutilise les rangées existantes (on ne fait que mettre à
+    // jour leur contenu + la classe .active) → la `background-color` de la tuile peut
+    // transitionner en fondu au changement d'espace / de couleur.
+    function render() {
         const live = new Set(state.liveIds);
-        el.tiles.innerHTML = '';
+        const seen = new Set();
+        let prev = null;
         for (const space of state.spaces) {
-            const tile = document.createElement('button');
-            tile.className = 'tile';
-            tile.dataset.id = space.id;
-            tile.draggable = true;
-            tile.style.setProperty('--accent', space.color);
-            tile.title = space.name;
-            if (space.id === state.activeId) { tile.classList.add('active'); }
-            if (live.has(space.id)) { tile.classList.add('live'); }
-
-            const glyph = document.createElement('span');
-            glyph.className = 'glyph';
-            glyph.textContent = glyphFor(space);
-            tile.appendChild(glyph);
-
-            tile.addEventListener('click', () => api.open(space.id));
-            tile.addEventListener('contextmenu', e => { e.preventDefault(); openOverview(); });
-            wireDrag(tile);
-            el.tiles.appendChild(tile);
+            let row = rowEls.get(space.id);
+            if (!row) { row = buildRow(space.id); rowEls.set(space.id, row); }
+            updateRow(row, space, live.has(space.id));
+            const ref = prev ? prev.nextSibling : el.tiles.firstChild;
+            if (ref !== row) { el.tiles.insertBefore(row, ref); }
+            prev = row;
+            seen.add(space.id);
+        }
+        for (const [id, row] of [...rowEls]) {
+            if (!seen.has(id)) { row.remove(); rowEls.delete(id); }
         }
     }
 
-    // ------------------------------------------------------- drag-reorder
+    function buildRow(id) {
+        const row = document.createElement('div');
+        row.className = 'space-row';
+        row.dataset.id = id;
+        row.draggable = true;
 
-    let draggingId = null;
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        const glyph = document.createElement('span');
+        glyph.className = 'glyph';
+        tile.appendChild(glyph);
 
-    function wireDrag(tile) {
-        tile.addEventListener('dragstart', e => {
-            draggingId = tile.dataset.id;
-            tile.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            try { e.dataTransfer.setData('text/plain', draggingId); } catch (_) { /* ignore */ }
+        const name = document.createElement('span');
+        name.className = 'space-name';
+
+        row.append(tile, name);
+        row.addEventListener('click', () => { if (!row.querySelector('.space-name-input')) { api.open(id); } });
+        row.addEventListener('contextmenu', e => {
+            e.preventDefault();
+            const s = findSpace(id);
+            if (s) { openContextMenu(e, s, row); }
         });
-        tile.addEventListener('dragend', () => {
-            tile.classList.remove('dragging');
-            draggingId = null;
-            const ids = [...el.tiles.querySelectorAll('.tile')].map(t => t.dataset.id);
+        wireDrag(row);
+        return row;
+    }
+
+    function updateRow(row, space, isLive) {
+        row.classList.toggle('active', space.id === state.activeId);
+        row.style.setProperty('--accent', space.color);
+        row.querySelector('.tile').classList.toggle('live', isLive);
+        row.querySelector('.glyph').textContent = glyphFor(space);
+        const nameEl = row.querySelector('.space-name'); // absent pendant un renommage inline
+        if (nameEl) { nameEl.textContent = space.name || 'Espace'; }
+    }
+
+    // ------------------------------------------------------ drag-reorder
+
+    function wireDrag(row) {
+        row.addEventListener('dragstart', e => {
+            row.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            try { e.dataTransfer.setData('text/plain', row.dataset.id); } catch (_) { /* ignore */ }
+        });
+        row.addEventListener('dragend', () => {
+            row.classList.remove('dragging');
+            const ids = [...el.tiles.querySelectorAll('.space-row')].map(r => r.dataset.id);
             api.reorder(ids);
         });
     }
-
     el.tiles.addEventListener('dragover', e => {
         e.preventDefault();
-        const dragged = el.tiles.querySelector('.tile.dragging');
+        const dragged = el.tiles.querySelector('.space-row.dragging');
         if (!dragged) { return; }
         const after = dragAfter(e.clientY);
         if (after == null) { el.tiles.appendChild(dragged); }
         else if (after !== dragged) { el.tiles.insertBefore(dragged, after); }
     });
-
     function dragAfter(y) {
-        const tiles = [...el.tiles.querySelectorAll('.tile:not(.dragging)')];
+        const rows = [...el.tiles.querySelectorAll('.space-row:not(.dragging)')];
         let closest = null, closestOffset = -Infinity;
-        for (const t of tiles) {
-            const box = t.getBoundingClientRect();
+        for (const r of rows) {
+            const box = r.getBoundingClientRect();
             const offset = y - box.top - box.height / 2;
-            if (offset < 0 && offset > closestOffset) { closestOffset = offset; closest = t; }
+            if (offset < 0 && offset > closestOffset) { closestOffset = offset; closest = r; }
         }
         return closest;
     }
 
-    // --------------------------------------------------------- vue d'ensemble
+    // ----------------------------------------------------- renommage inline
 
-    function openOverview() { overviewOpen = true; api.showOverview(); syncOverview(); }
-    function closeOverview() { overviewOpen = false; api.hideOverview(); syncOverview(); }
-
-    function syncOverview() {
-        el.overview.classList.toggle('hidden', !overviewOpen);
-        el.overview.setAttribute('aria-hidden', String(!overviewOpen));
-        if (overviewOpen) { renderCards(); }
+    function ensureExpanded() {
+        if (!expanded) { api.toggleSidebar(); }
     }
 
-    function renderCards() {
-        el.cards.innerHTML = '';
-        for (const space of state.spaces) {
-            el.cards.appendChild(buildCard(space));
-        }
-        // Carte « nouvel espace ».
-        const add = document.createElement('button');
-        add.className = 'card new';
-        add.innerHTML =
-            '<svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'
-            + '<span>Nouvel espace</span>';
-        add.addEventListener('click', () => api.create());
-        el.cards.appendChild(add);
-    }
-
-    function buildCard(space) {
-        const card = document.createElement('div');
-        card.className = 'card' + (space.id === state.activeId ? ' active' : '');
-        card.style.setProperty('--accent', space.color);
-
-        // Tête : badge (emoji éditable au clic) + titre éditable.
-        const head = document.createElement('div');
-        head.className = 'card-head';
-
-        const badge = document.createElement('div');
-        badge.className = 'card-badge';
-        badge.textContent = glyphFor(space);
-        badge.title = 'Changer l\'emoji';
-        badge.addEventListener('click', () => {
-            const next = window.prompt('Emoji de l\'espace (laisser vide pour l\'initiale) :', space.emoji || '');
-            if (next !== null) { api.setEmoji(space.id, next.trim().slice(0, 2)); }
+    function startRename(space, row) {
+        ensureExpanded();
+        const nameEl = row.querySelector('.space-name');
+        if (!nameEl) { return; }
+        const input = document.createElement('input');
+        input.className = 'space-name-input';
+        input.value = space.name || '';
+        input.spellcheck = false;
+        nameEl.replaceWith(input);
+        input.focus(); input.select();
+        let done = false;
+        const finish = commit => {
+            if (done) { return; }
+            done = true;
+            const value = input.value.trim();
+            // On restaure tout de suite le libellé (le rendu réconciliant le réutilise ensuite).
+            const span = document.createElement('span');
+            span.className = 'space-name';
+            span.textContent = (commit ? value : (space.name || '')) || 'Espace';
+            input.replaceWith(span);
+            if (commit) { api.rename(space.id, value); }
+        };
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter') { finish(true); }
+            else if (e.key === 'Escape') { finish(false); }
         });
+        input.addEventListener('blur', () => finish(true));
+        input.addEventListener('click', e => e.stopPropagation());
+    }
 
-        const title = document.createElement('input');
-        title.className = 'card-title';
-        title.value = space.name || '';
-        title.placeholder = 'Sans nom';
-        title.spellcheck = false;
-        const commit = () => { if (title.value !== space.name) { api.rename(space.id, title.value.trim()); } };
-        title.addEventListener('blur', commit);
-        title.addEventListener('keydown', e => { if (e.key === 'Enter') { title.blur(); } });
+    // ------------------------------------------------------- menu clic-droit
 
-        head.append(badge, title);
-        card.appendChild(head);
+    function openContextMenu(e, space, row) {
+        ensureExpanded();
+        const m = el.ctx;
+        m.innerHTML = '';
 
-        if (space.workspacePath) {
-            const path = document.createElement('div');
-            path.className = 'card-path';
-            path.textContent = space.workspacePath;
-            path.title = space.workspacePath;
-            card.appendChild(path);
-        }
+        const item = (label, onClick, danger) => {
+            const b = document.createElement('button');
+            b.className = 'ctx-item' + (danger ? ' danger' : '');
+            b.textContent = label;
+            b.addEventListener('click', ev => { ev.stopPropagation(); onClick(); });
+            return b;
+        };
 
-        // Pastilles de couleur.
+        m.appendChild(item('Renommer', () => { closeContextMenu(); startRename(space, row); }));
+
+        const iconLabel = document.createElement('div');
+        iconLabel.className = 'ctx-label'; iconLabel.textContent = 'Icône';
+        m.appendChild(iconLabel);
+        const emoji = document.createElement('input');
+        emoji.className = 'ctx-emoji';
+        emoji.value = space.emoji || '';
+        emoji.placeholder = 'Emoji ou lettre';
+        emoji.spellcheck = false;
+        emoji.addEventListener('click', ev => ev.stopPropagation());
+        emoji.addEventListener('keydown', ev => {
+            if (ev.key === 'Enter') { api.setEmoji(space.id, emoji.value.trim().slice(0, 2)); closeContextMenu(); }
+        });
+        m.appendChild(emoji);
+
+        const colorLabel = document.createElement('div');
+        colorLabel.className = 'ctx-label'; colorLabel.textContent = 'Couleur';
+        m.appendChild(colorLabel);
         const swatches = document.createElement('div');
-        swatches.className = 'swatches';
+        swatches.className = 'ctx-swatches';
         for (const color of SPACE_COLORS) {
             const sw = document.createElement('button');
-            sw.className = 'swatch' + (color === space.color ? ' sel' : '');
+            sw.className = 'ctx-swatch' + (color === space.color ? ' sel' : '');
             sw.style.background = color;
-            sw.title = color;
-            sw.addEventListener('click', () => api.setColor(space.id, color));
+            sw.addEventListener('click', ev => { ev.stopPropagation(); api.setColor(space.id, color); });
             swatches.appendChild(sw);
         }
-        card.appendChild(swatches);
+        m.appendChild(swatches);
 
-        // Actions.
-        const actions = document.createElement('div');
-        actions.className = 'card-actions';
-        const open = document.createElement('button');
-        open.className = 'open';
-        open.textContent = space.id === state.activeId ? 'Actif' : 'Ouvrir';
-        open.addEventListener('click', () => { api.open(space.id); closeOverview(); });
-        const close = document.createElement('button');
-        close.className = 'close';
-        close.textContent = 'Fermer';
-        close.addEventListener('click', () => {
-            if (window.confirm(`Fermer l'espace « ${space.name || 'Sans nom'} » ?`)) { api.close(space.id); }
-        });
-        actions.append(open, close);
-        card.appendChild(actions);
+        m.appendChild(Object.assign(document.createElement('div'), { className: 'ctx-sep' }));
+        m.appendChild(item('Fermer l\'espace', () => { api.close(space.id); closeContextMenu(); }, true));
 
-        return card;
+        m.classList.remove('hidden');
+        const mw = m.offsetWidth || 190, mh = m.offsetHeight || 240;
+        const x = Math.min(e.clientX, window.innerWidth - mw - 8);
+        const y = Math.min(e.clientY, window.innerHeight - mh - 8);
+        m.style.left = Math.max(8, x) + 'px';
+        m.style.top = Math.max(8, y) + 'px';
     }
+
+    function closeContextMenu() {
+        el.ctx.classList.add('hidden');
+    }
+
+    document.addEventListener('click', e => {
+        if (!el.ctx.classList.contains('hidden') && !el.ctx.contains(e.target)) { closeContextMenu(); }
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && !el.ctx.classList.contains('hidden')) { closeContextMenu(); }
+    });
 
     // ------------------------------------------------------------- câblage
 
-    el.foxBtn.addEventListener('click', () => overviewOpen ? closeOverview() : openOverview());
-    el.settingsBtn.addEventListener('click', () => overviewOpen ? closeOverview() : openOverview());
+    el.foxBtn.addEventListener('click', () => api.toggleSidebar());
     el.addBtn.addEventListener('click', () => api.create());
-    el.overviewScrim.addEventListener('click', () => closeOverview());
-
-    // Boutons fenêtre (Windows/Linux) + double-clic sur la barre de titre = agrandir.
-    el.winControls.addEventListener('click', e => {
-        const btn = e.target.closest('.win-btn');
-        if (btn) { api.windowControl(btn.dataset.act); }
-    });
-    el.topbar.addEventListener('dblclick', e => {
-        if (!e.target.closest('.win-btn')) { api.windowControl('maximize'); }
-    });
-    document.addEventListener('keydown', e => {
-        if (e.key === 'Escape' && overviewOpen) { closeOverview(); }
-    });
 
     api.onState(next => {
         state = next || state;
-        renderRail();
-        if (overviewOpen) { renderCards(); }
+        expanded = !!state.expanded;
+        document.body.classList.toggle('expanded', expanded);
+        el.foxBtn.classList.toggle('pinned', expanded);
+        render();
     });
-
-    // Demande l'état initial.
     api.ready();
 })();
