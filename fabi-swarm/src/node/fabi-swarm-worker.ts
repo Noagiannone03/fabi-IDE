@@ -8,8 +8,12 @@ import { spawn, type ChildProcess } from 'child_process';
 import { WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
 
-/** Délai de grâce avant SIGKILL (aligné sur le CLI : workerShutdownGraceMs). */
-const SHUTDOWN_GRACE_MS = 1500;
+// Délai de grâce avant SIGKILL. Parallax, sur SIGTERM, envoie un `node_leave()`
+// au scheduler (≈5 s, cf. p2p/server.py stop_p2p_server join timeout=5) pour se
+// déconnecter PROPREMENT — sinon le scheduler garde un nœud fantôme (les nœuds
+// standby/joining ne sont jamais évincés par heartbeat). 1,5 s était trop court
+// → on laisse 6 s pour que la déconnexion aboutisse.
+const SHUTDOWN_GRACE_MS = 6000;
 /** Délai avant re-spawn après un crash inattendu (aligné sur le CLI). */
 const RESTART_DELAY_MS = 30_000;
 const EVENT_PREFIX = '[FABI] ';
@@ -93,11 +97,34 @@ export function spawnWorker(
 
     startChild();
 
+    // Filet anti-orphelin : si le backend (IDE) se termine sans qu'on ait appelé
+    // stop() (fermeture de l'app → Theia fait process.exit), on envoie SIGTERM au
+    // worker. Comme il est `detached`, il survit au backend le temps d'exécuter
+    // sa déconnexion propre (node_leave → le scheduler le retire tout de suite,
+    // pas de nœud fantôme). Handler `exit` SYNCHRONE → aucune interférence avec
+    // l'arrêt de Theia (qui passe par process.exit).
+    const parentExitKill = () => {
+        if (stopped) {
+            return;
+        }
+        try {
+            if (process.platform !== 'win32' && currentPid) {
+                process.kill(-currentPid, 'SIGTERM');
+            } else {
+                child?.kill('SIGTERM');
+            }
+        } catch {
+            /* déjà mort */
+        }
+    };
+    process.on('exit', parentExitKill);
+
     const stop = (): Promise<void> => {
         if (stopped) {
             return Promise.resolve();
         }
         stopped = true;
+        process.removeListener('exit', parentExitKill);
         if (restartTimer) {
             clearTimeout(restartTimer);
             restartTimer = undefined;

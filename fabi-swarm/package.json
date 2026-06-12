@@ -12,6 +12,7 @@
     "src"
   ],
   "dependencies": {
+    "@theia/ai-chat-ui": "1.72.2",
     "@theia/ai-core": "1.72.2",
     "@theia/ai-openai": "1.72.2",
     "@theia/core": "1.72.2"

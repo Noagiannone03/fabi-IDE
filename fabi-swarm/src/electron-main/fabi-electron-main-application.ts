@@ -36,9 +36,19 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
             } catch (err) {
                 console.error('[fabi-launcher] erreur (on ouvre l\'IDE quand même) :', err);
             }
-            // Boot normal de Theia (fenêtre IDE + splash).
-            super.showInitialWindow(urlToOpen);
+            // Surface initiale APRÈS le launcher. Point d'extension : une sous-classe
+            // (ex. fabi-spaces) peut ici ouvrir une fenêtre-hôte multi-Spaces plutôt
+            // que la fenêtre IDE standard.
+            await this.openInitialSurface(urlToOpen);
         });
+    }
+
+    /**
+     * Ouvre la surface initiale de l'app. Par défaut : la fenêtre IDE standard de
+     * Theia (+ splash). Surchargeable pour composer une autre UI au-dessus du frontend.
+     */
+    protected async openInitialSurface(urlToOpen: string | undefined): Promise<void> {
+        super.showInitialWindow(urlToOpen);
     }
 
     /**

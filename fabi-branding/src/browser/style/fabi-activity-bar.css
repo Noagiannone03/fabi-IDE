@@ -1,0 +1,97 @@
+/* Barre d'activité horizontale (FabiActivityBar), en bas du panneau gauche.
+   ADN « îlots » : icônes FLOTTANTES, aucune boîte/container derrière, accent rare. */
+
+#fabi-activity-bar {
+    flex: 0 0 auto;
+    height: 44px;
+    min-height: 44px;
+    background: transparent;          /* pas de container : les icônes flottent sur l'îlot */
+    overflow: visible;
+}
+
+.fabi-activity-inner {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    /* léger filet de séparation, pas une boîte */
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Une icône de vue = un bouton flottant compact, icône seule. */
+.fabi-activity-item {
+    position: relative;
+    flex: 0 0 auto;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--theia-foreground, #cdc8c3);
+    opacity: 0.62;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: background .15s ease, opacity .15s ease, color .15s ease;
+}
+.fabi-activity-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    opacity: 1;
+}
+.fabi-activity-item .fabi-activity-icon {
+    font-size: 17px;
+    line-height: 1;
+}
+
+/* Vue active : icône en couleur d'accent + tuile tonale discrète (pas un bloc plein). */
+.fabi-activity-item.active {
+    opacity: 1;
+    color: var(--fabi-orange, #EC5B2B);
+    background: color-mix(in srgb, var(--fabi-orange, #EC5B2B) 14%, transparent);
+}
+.fabi-activity-item.active::after {
+    content: "";
+    position: absolute;
+    left: 50%; bottom: 3px;
+    transform: translateX(-50%);
+    width: 16px; height: 2.5px;
+    border-radius: 2px;
+    background: var(--fabi-orange, #EC5B2B);
+}
+
+/* Débordement « … » + son menu déroulant (au-dessus du bouton). */
+.fabi-activity-overflow { position: relative; flex: 0 0 auto; }
+.fabi-activity-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 188px;
+    padding: 6px;
+    border-radius: 12px;
+    background: #1f2228;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    box-shadow: 0 14px 38px -12px rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 50;
+}
+.fabi-activity-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 9px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--theia-foreground, #cdc8c3);
+    font-size: 12.5px;
+    cursor: pointer;
+    text-align: left;
+}
+.fabi-activity-menu-item:hover { background: rgba(255, 255, 255, 0.07); }
+.fabi-activity-menu-item.active { color: var(--fabi-orange, #EC5B2B); }
+.fabi-activity-menu-item .fabi-activity-icon { font-size: 16px; }
+.fabi-activity-menu-item .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -68,7 +68,8 @@
     "@theia/vsx-registry": "1.72.2",
     "@theia/workspace": "1.72.2",
     "fabi-branding": "0.0.0",
-    "fabi-swarm": "0.0.0"
+    "fabi-swarm": "0.0.0",
+    "fabi-spaces": "0.0.0"
   },
   "devDependencies": {
     "@theia/cli": "1.72.2",

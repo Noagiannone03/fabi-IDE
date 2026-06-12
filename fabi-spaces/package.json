@@ -1,0 +1,35 @@
+{
+  "name": "fabi-spaces",
+  "keywords": [
+    "theia-extension"
+  ],
+  "version": "0.0.0",
+  "description": "Fabi Spaces — plusieurs bureaux de travail (workspaces) dans une seule fenêtre, façon Arc Browser",
+  "author": "Noa Giannone",
+  "license": "MIT",
+  "files": [
+    "lib",
+    "src",
+    "resources"
+  ],
+  "dependencies": {
+    "@theia/core": "1.72.2",
+    "fabi-swarm": "0.0.0"
+  },
+  "devDependencies": {
+    "electron": "39.8.7",
+    "rimraf": "^5.0.0",
+    "typescript": "~5.4.5"
+  },
+  "scripts": {
+    "prepare": "yarn run clean && yarn run build",
+    "clean": "rimraf lib",
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "theiaExtensions": [
+    {
+      "electronMain": "lib/electron-main/fabi-spaces-electron-main-module"
+    }
+  ]
+}
