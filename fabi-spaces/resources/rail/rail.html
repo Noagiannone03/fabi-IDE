@@ -10,9 +10,12 @@
 </head>
 <body>
     <nav id="rail" class="rail" aria-label="Espaces de travail">
-        <button class="fox-btn" id="foxBtn" title="Épingler la barre des espaces">
-            <img src="fox.svg" alt="Fabi" draggable="false" />
-        </button>
+        <div class="rail-head">
+            <button class="fox-btn" id="foxBtn" title="Épingler la barre des espaces">
+                <img src="fox.svg" alt="Fabi" draggable="false" />
+            </button>
+            <span class="rail-title">Mes espaces</span>
+        </div>
         <div class="tiles" id="tiles"></div>
         <div class="rail-spacer"></div>
         <button class="add-row" id="addBtn" title="Nouvel espace">

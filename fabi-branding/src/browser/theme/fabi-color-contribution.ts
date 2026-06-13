@@ -8,15 +8,18 @@ import { FABI_COLORS } from '../../common/fox';
  *
  * On enregistre :
  *  - des tokens Fabi propres (`fabi.brand.*`) réutilisables par nos widgets ;
- *  - des valeurs par défaut sur des accents que les thèmes laissent souvent
- *    indéfinis (bordure active de l'activity bar, liseré d'onglet actif,
- *    barre de progression, liens…), pour teinter l'UI en orange Fabi.
+ *  - des valeurs neutres par défaut sur les accents UI que les thèmes laissent
+ *    souvent indéfinis. L'orange reste réservé aux assets de logo.
  *
  * Note : un thème explicite peut surcharger ces accents — le retint « dur »
  * des surfaces clés se fait en complément via la feuille de style (index.css).
  */
 @injectable()
 export class FabiColorContribution implements ColorContribution {
+
+    protected readonly neutralAccent = '#8a9099';
+    protected readonly neutralAccentHover = '#aab0b8';
+    protected readonly neutralAccentActive = '#cfd1d6';
 
     registerColors(colors: ColorRegistry): void {
         colors.register(
@@ -31,35 +34,35 @@ export class FabiColorContribution implements ColorContribution {
                 defaults: { dark: FABI_COLORS.orangeHover, light: FABI_COLORS.orangeHover },
                 description: 'Orange Fabi (survol)'
             },
-            // --- Accents UI teintés Fabi (defaults seulement) ---
+            // --- Accents UI neutres (defaults seulement) ---
             {
                 id: 'activityBar.activeBorder',
-                defaults: { dark: FABI_COLORS.orange, light: FABI_COLORS.orange },
+                defaults: { dark: this.neutralAccent, light: this.neutralAccent },
                 description: 'Bordure de l’icône active dans l’activity bar'
             },
             {
                 id: 'activityBar.activeFocusBorder',
-                defaults: { dark: FABI_COLORS.orange, light: FABI_COLORS.orange },
+                defaults: { dark: this.neutralAccent, light: this.neutralAccent },
                 description: 'Bordure focus de l’icône active dans l’activity bar'
             },
             {
                 id: 'tab.activeBorderTop',
-                defaults: { dark: FABI_COLORS.orange, light: FABI_COLORS.orange },
+                defaults: { dark: this.neutralAccent, light: this.neutralAccent },
                 description: 'Liseré supérieur de l’onglet actif'
             },
             {
                 id: 'progressBar.background',
-                defaults: { dark: FABI_COLORS.orange, light: FABI_COLORS.orange },
+                defaults: { dark: this.neutralAccent, light: this.neutralAccent },
                 description: 'Barre de progression'
             },
             {
                 id: 'textLink.foreground',
-                defaults: { dark: FABI_COLORS.orangeHover, light: FABI_COLORS.orangeDeep },
+                defaults: { dark: this.neutralAccentHover, light: this.neutralAccent },
                 description: 'Couleur des liens'
             },
             {
                 id: 'textLink.activeForeground',
-                defaults: { dark: FABI_COLORS.yellow, light: FABI_COLORS.orange },
+                defaults: { dark: this.neutralAccentActive, light: this.neutralAccentHover },
                 description: 'Couleur des liens actifs'
             }
         );

@@ -209,18 +209,18 @@ const LAUNCHER_HTML = `<!DOCTYPE html>
   .card {
     -webkit-app-region: drag;
     height: 100%; box-sizing: border-box; border-radius: 18px;
-    background: radial-gradient(120% 120% at 50% 0%, #2a1d18 0%, #1b1410 55%, #140f0c 100%);
+    background: radial-gradient(120% 120% at 50% 0%, #242730 0%, #181a1d 55%, #101114 100%);
     border: 1px solid rgba(255,255,255,0.07);
     box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     color: #f3ece6; padding: 30px 30px 26px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center;
   }
-  .fox { width: 64px; height: 64px; object-fit: contain; line-height: 1; filter: drop-shadow(0 6px 14px rgba(236,91,43,0.45)); }
+  .fox { width: 64px; height: 64px; object-fit: contain; line-height: 1; filter: drop-shadow(0 6px 14px rgba(0,0,0,0.45)); }
   h1 { margin: 14px 0 2px; font-size: 21px; font-weight: 650; letter-spacing: .3px; }
   .sub { font-size: 12.5px; opacity: .62; margin: 0 0 22px; line-height: 1.5; max-width: 360px; }
   .track { width: 320px; height: 8px; border-radius: 9999px; background: rgba(255,255,255,0.08); overflow: hidden; }
   .bar { height: 100%; width: 0%; border-radius: 9999px;
-    background: linear-gradient(90deg, #EC5B2B, #FF7A4F); transition: width .3s ease; }
+    background: linear-gradient(90deg, #6b7280, #aab0b8); transition: width .3s ease; }
   .status { margin-top: 12px; font-size: 12px; opacity: .8; min-height: 16px; }
   .pct { font-variant-numeric: tabular-nums; font-weight: 700; }
   .skip { -webkit-app-region: no-drag; margin-top: 20px; font-size: 11.5px; opacity: .5;

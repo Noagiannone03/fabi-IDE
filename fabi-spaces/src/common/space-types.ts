@@ -2,15 +2,15 @@
 // Un « Space » = un bureau de travail = un workspace Theia + son identité visuelle.
 // Le rail n'est qu'une vue de cet état ; la vérité vit dans le main (SpaceStore).
 
-/** Palette d'accents proposés pour un Space (signature « couleur par bureau » façon Arc). */
+/** Palette d'accents proposés pour un Space (signature sobre par bureau, peu saturée). */
 export const SPACE_COLORS = [
-    '#EC5B2B', // orange Fabi (défaut)
-    '#E0A82E', // ambre
-    '#4Fae6e', // vert
-    '#3B9CCB', // bleu
-    '#7C6BD6', // violet
-    '#D45A8A', // rose
-    '#94A3B8'  // ardoise
+    '#6B7280', // ardoise (défaut)
+    '#8A8174', // taupe
+    '#6B8F71', // vert sauge
+    '#5F7F9A', // bleu grisé
+    '#7D739E', // violet doux
+    '#9B7184', // rose fumé
+    '#94A3B8'  // acier
 ] as const;
 
 export type SpaceColor = typeof SPACE_COLORS[number] | string;

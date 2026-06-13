@@ -13,7 +13,9 @@
     --muted: rgba(243, 236, 230, 0.55);
     --muted-2: rgba(243, 236, 230, 0.34);
     --hairline: rgba(255, 255, 255, 0.06);
-    --orange: #EC5B2B;
+    /* Accent par défaut NEUTRE (l'orange est réservé au logo). Les espaces
+       gardent leur couleur configurée via --accent ; sans couleur → gris sobre. */
+    --accent-default: #6b7280;
     --expanded-w: 250px;
 }
 
@@ -50,9 +52,21 @@ html, body {
 body.expanded .fox-btn { width: 40px; height: 40px; }
 .fox-btn.pinned { background: var(--tile-hover); }
 .fox-btn img { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated;
-    filter: drop-shadow(0 3px 6px rgba(236, 91, 43, 0.30)); }
+    filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.4)); }
 .fox-btn:hover { background: var(--tile-hover); }
 .fox-btn:active { transform: scale(0.94); }
+
+/* En-tête du rail : logo + « Mes espaces » (le titre n'apparaît qu'en déplié). */
+.rail-head { display: flex; align-items: center; gap: 8px; }
+.rail-title {
+    font-size: 13.5px; font-weight: 600; color: var(--text);
+    white-space: nowrap; pointer-events: none;
+    opacity: 0; transition: opacity 0.12s ease;
+}
+body.expanded .rail-title { opacity: 0.9; }
+
+/* Petit point d'accent retiré (design plus minimaliste). */
+.tile.live::after { display: none !important; }
 
 .tiles {
     flex: 1 1 auto;
@@ -93,12 +107,12 @@ body.expanded .tile .glyph .codicon { font-size: 19px; }
    nettement visible, glyphe en blanc. Pas de bordure ni de barre latérale.
    La transition de `background-color` fait le fondu de couleur au switch. */
 .space-row.active .tile {
-    background: color-mix(in srgb, var(--accent, var(--orange)) 34%, var(--tile-active));
+    background: color-mix(in srgb, var(--accent, var(--accent-default)) 34%, var(--tile-active));
     color: #fff;
     border-color: transparent;
 }
 .space-row.active:hover .tile {
-    background: color-mix(in srgb, var(--accent, var(--orange)) 40%, var(--tile-active));
+    background: color-mix(in srgb, var(--accent, var(--accent-default)) 40%, var(--tile-active));
 }
 
 /* État « vivant mais pas actif » : petit point d'accent discret. */
@@ -120,7 +134,7 @@ body.expanded .space-name { opacity: 1; }
 /* Champ d'édition inline (renommer), façon Arc. */
 .space-name-input {
     flex: 1 1 auto; min-width: 0;
-    background: rgba(255,255,255,0.08); border: 1px solid color-mix(in srgb, var(--orange) 50%, transparent);
+    background: rgba(255,255,255,0.08); border: 1px solid color-mix(in srgb, var(--accent-default) 50%, transparent);
     outline: none; border-radius: 6px; padding: 4px 7px;
     color: var(--text); font-size: 13.5px; font-weight: 560;
     -webkit-user-select: text; user-select: text;
@@ -181,7 +195,7 @@ body.expanded .add-row .add-label { opacity: 1; }
     display: grid; place-items: center; line-height: 1;
 }
 .ctx-emoji-btn:hover { background: rgba(255, 255, 255, 0.09); }
-.ctx-emoji-btn.sel { background: color-mix(in srgb, var(--orange) 32%, transparent); }
+.ctx-emoji-btn.sel { background: color-mix(in srgb, var(--accent-default) 32%, transparent); }
 .ctx-emoji-btn.clear { font-size: 12px; font-weight: 700; color: var(--muted); }
 .ctx-emoji-btn .codicon { font-size: 17px; }
 

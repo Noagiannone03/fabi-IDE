@@ -1,136 +1,189 @@
-/* Sélecteur de swarm Fabi intégré à l'input du chat IA (cf. DESIGN.md). */
+/* Panneau IA Fabi — design « îlot » (cf. fabi-islands : surface #181a1d, radius
+   doux, hairline subtil, ombre légère). La barre modèle + l'expansion + l'input
+   forment UNE île arrondie. Sobre : aucune grosse bordure, aucun orange.
+   Variables : --fabi-surface / --fabi-hairline / --fabi-island-shadow (fabi-islands). */
 
-/* --- Pill (déclencheur au-dessus de l'input) --- */
-/* Enfant direct du node du widget (rendu via Fragment, pas de wrapper) →
-   n'altère pas la largeur de l'éditeur Monaco. */
+/* ============================================================
+   1) L'input du chat en île (override du cadre Theia)
+   ============================================================ */
+.chat-input-widget .theia-ChatInput-Editor-Box {
+    border: none !important;
+    border-radius: 0 0 14px 14px !important;
+    background: var(--fabi-surface, #181a1d) !important;
+    box-shadow:
+        inset 0 -1px 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        inset 1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        inset -1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        0 4px 16px rgba(0, 0, 0, 0.26) !important;
+}
+/* Plus de halo/bordure orange au focus. */
+.chat-input-widget .theia-ChatInput-Editor-Box:focus-within {
+    box-shadow:
+        inset 0 -1px 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        inset 1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        inset -1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        0 4px 16px rgba(0, 0, 0, 0.26) !important;
+}
+
+/* ============================================================
+   2) Barre modèle = sommet de l'île (frère adjacent de .theia-ChatInput)
+   ============================================================ */
 .fabi-sel {
-    padding: 4px 8px 6px;
+    align-self: stretch;
+    box-sizing: border-box;
+    margin: 0 var(--theia-ui-padding);
     flex: 0 0 auto;
-}
-
-.fabi-sel-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-    max-width: 100%;
-    padding: 3px 9px;
-    border-radius: 9999px;
-    border: 1px solid var(--theia-dropdown-border, rgba(255, 255, 255, 0.12));
-    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.04));
-    color: var(--theia-foreground);
     font-size: 11.5px;
+}
+.fabi-sel + .theia-ChatInput { margin-top: 0 !important; }
+
+.fabi-sel-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 11px;
+    border: none;
+    border-radius: 14px 14px 0 0;
+    background: var(--fabi-surface, #181a1d);
+    color: var(--theia-foreground);
     cursor: pointer;
-    transition: border-color 0.15s ease, background 0.15s ease;
+    text-align: left;
+    outline: none;
+    box-shadow:
+        inset 0 1px 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        inset 1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
+        inset -1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05));
+    transition: background 0.13s ease;
 }
-
-.fabi-sel-pill:hover,
-.fabi-sel-pill.open {
-    border-color: var(--fabi-orange, #EC5B2B);
-    background: var(--theia-list-hoverBackground, rgba(255, 255, 255, 0.06));
+.fabi-sel-bar:hover { background: #1e2125; }
+.fabi-sel-bar:focus { outline: none; }
+/* Ouvert : la barre rejoint la surface ÉLEVÉE du panneau (même clair), coins plats. */
+.fabi-sel.open .fabi-sel-bar {
+    border-radius: 0;
+    background: #23262c;
+    box-shadow:
+        inset 1px 0 0 0 rgba(255, 255, 255, 0.07),
+        inset -1px 0 0 0 rgba(255, 255, 255, 0.07);
 }
-
-.fabi-sel-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex: 0 0 auto;
-    background: var(--theia-descriptionForeground, #888);
-}
-
-.fabi-sel-dot.ready { background: #7bd88f; box-shadow: 0 0 0 2px rgba(123, 216, 143, 0.2); }
-.fabi-sel-dot.connecting { background: var(--fabi-orange, #EC5B2B); animation: fabi-pulse 1.1s ease-in-out infinite; }
-.fabi-sel-dot.idle { background: var(--theia-descriptionForeground, #888); }
+.fabi-sel.open .fabi-sel-bar:hover { background: #282c33; }
 
 @keyframes fabi-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
-.fabi-sel-pill-label {
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+.fabi-sel-bar-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-sel-bar-sub { opacity: 0.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-sel-caret { font-size: 12px !important; opacity: 0.45; margin-left: auto; flex: 0 0 auto; }
 
-.fabi-sel-pill-sub {
-    opacity: 0.6;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.fabi-sel-caret { font-size: 12px !important; opacity: 0.6; margin-left: 2px; }
-
-/* --- Popover (portail vers document.body, au-dessus de l'input) --- */
-.fabi-sel-popover {
-    z-index: 10000;
+/* ============================================================
+   3) Expansion (en flux, au-dessus de la barre → l'île grandit)
+   ============================================================ */
+/* Panneau ouvert = surface ÉLEVÉE : plus claire que l'île de base + ombre forte
+   (convention thème sombre : l'élévation s'exprime par un fond plus clair, pas
+   seulement par l'ombre) → il se détache nettement du fond de la section. */
+.fabi-sel-expand {
     box-sizing: border-box;
-    max-height: 60vh;
+    border-radius: 14px 14px 0 0;
+    background: #23262c;
+    box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+        0 -12px 32px rgba(0, 0, 0, 0.5);
+    max-height: 320px;
     overflow: auto;
-    padding: 12px;
-    border-radius: 12px;
-    border: 1px solid var(--theia-dropdown-border, rgba(255, 255, 255, 0.12));
-    background: var(--theia-dropdown-background, var(--theia-editorWidget-background, #1b1410));
-    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.45);
-    animation: fabi-slide-up 0.14s ease-out;
+    animation: fabi-expand 0.16s ease-out;
 }
+@keyframes fabi-expand { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-@keyframes fabi-slide-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-
-.fabi-sel-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    opacity: 0.55;
-    margin-bottom: 10px;
+.fabi-sel-expand-head {
+    position: sticky; top: 0;
+    padding: 10px 13px 8px;
+    background: #23262c;
 }
+.fabi-sel-expand-title {
+    font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; opacity: 0.45;
+}
+.fabi-sel-expand-body { padding: 4px 11px 12px; }
 
+/* --- Vue liste --- */
 .fabi-sel-engine {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    margin-bottom: 10px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    display: flex; flex-direction: column; gap: 6px;
+    margin-bottom: 10px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--fabi-hairline, rgba(255, 255, 255, 0.06));
 }
-
-.fabi-sel-engine .theia-button { width: 100%; border-radius: 8px !important; }
-
-.fabi-sel-bar { height: 6px; border-radius: 9999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
-.fabi-sel-bar-fill { height: 100%; background: var(--fabi-orange, #EC5B2B); border-radius: 9999px; transition: width 0.3s ease; }
-
+.fabi-sel-engine .theia-button { width: 100%; border-radius: 9px !important; }
+.fabi-sel-bar-track { height: 6px; border-radius: 9999px; background: rgba(127, 127, 127, 0.18); overflow: hidden; }
+.fabi-sel-bar-fill { height: 100%; background: var(--theia-descriptionForeground, #888); border-radius: 9999px; transition: width 0.3s ease; }
 .fabi-sel-hint { font-size: 11px; opacity: 0.55; line-height: 1.4; }
 
-.fabi-sel-list { display: flex; flex-direction: column; gap: 6px; }
-
+.fabi-sel-list { display: flex; flex-direction: column; gap: 3px; }
 .fabi-sel-row {
-    padding: 8px 10px;
-    border-radius: 9px;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: background 0.12s ease, border-color 0.12s ease;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 8px 10px; border-radius: 10px; cursor: pointer;
+    transition: background 0.12s ease;
 }
+.fabi-sel-row:hover { background: rgba(255, 255, 255, 0.04); }
+.fabi-sel-row.active { background: rgba(255, 255, 255, 0.06); }
+.fabi-sel-row.offline { opacity: 0.45; cursor: default; }
 
-.fabi-sel-row:hover { background: var(--theia-list-hoverBackground, rgba(255, 255, 255, 0.06)); }
-.fabi-sel-row.active { border-color: var(--fabi-orange, #EC5B2B); background: rgba(236, 91, 43, 0.08); }
-.fabi-sel-row.offline { opacity: 0.5; cursor: default; }
+.fabi-sel-row-main { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fabi-sel-row-name { font-weight: 500; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-sel-row-meta { font-size: 11px; opacity: 0.5; display: flex; gap: 4px; flex: 0 0 auto; }
 
-.fabi-sel-row-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.fabi-sel-row-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ============================================================
+   4) Vue connexion — sobre, texte de statut
+   ============================================================ */
+.fabi-cx { display: flex; flex-direction: column; gap: 9px; }
+.fabi-cx-glyph { display: flex; justify-content: center; padding: 2px 0; }
 
-.fabi-sel-badge {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    padding: 1px 7px;
-    border-radius: 9999px;
-    flex: 0 0 auto;
-    background: rgba(255, 255, 255, 0.08);
+.fabi-cx-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.fabi-cx-model { font-size: 13px; font-weight: 600; color: var(--theia-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-cx-status { font-size: 11px; opacity: 0.6; flex: 0 0 auto; }
+
+.fabi-cx-log {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 9px 11px; border-radius: 10px;
+    background: rgba(0, 0, 0, 0.22);
+    box-shadow: inset 0 0 0 1px var(--fabi-hairline, rgba(255, 255, 255, 0.05));
+    font-family: var(--theia-code-font-family, monospace);
 }
-.fabi-sel-badge.st-online { background: rgba(76, 175, 80, 0.18); color: #7bd88f; }
-.fabi-sel-badge.st-offline, .fabi-sel-badge.st-unknown { background: rgba(247, 84, 100, 0.16); color: #f57a86; }
+.fabi-cx-log-line { font-size: 11px; line-height: 1.5; opacity: 0.6; color: var(--theia-foreground); }
+.fabi-cx-log-line.lead { opacity: 0.95; font-weight: 600; }
 
-.fabi-sel-row-meta { margin-top: 3px; font-size: 11px; opacity: 0.6; display: flex; flex-wrap: wrap; gap: 4px; }
-.fabi-sel-row-state { color: var(--fabi-orange-hover, #FF7A4F); opacity: 0.95; }
+.fabi-cx-progress { display: flex; flex-direction: column; gap: 4px; }
+.fabi-cx-bar { height: 5px; border-radius: 9999px; background: rgba(127, 127, 127, 0.18); overflow: hidden; }
+.fabi-cx-bar-fill { height: 100%; background: var(--theia-descriptionForeground, #999); border-radius: 9999px; transition: width 0.4s ease; }
+.fabi-cx-progress-label { font-size: 10.5px; opacity: 0.55; }
 
-.fabi-sel-disconnect { width: 100%; margin-top: 10px; border-radius: 8px !important; }
+.fabi-cx-actions { display: flex; gap: 16px; margin-top: 2px; }
+.fabi-cx-link { background: none; border: none; padding: 2px 0; cursor: pointer; font-size: 11.5px; color: var(--theia-foreground); opacity: 0.85; }
+.fabi-cx-link:hover:not(:disabled) { opacity: 1; text-decoration: underline; }
+.fabi-cx-link.muted { opacity: 0.55; }
+.fabi-cx-link:disabled { opacity: 0.4; cursor: default; }
+
+/* ============================================================
+   5) Micro-illustration « machine ↔ swarm » (icônes Lucide, cf. fabi-link-glyph)
+   ============================================================ */
+.fabi-link { display: inline-flex; align-items: center; gap: 10px; color: var(--theia-foreground); line-height: 1; }
+.fabi-link-pc { opacity: 0.85; flex: 0 0 auto; }
+.fabi-link-mid { display: inline-flex; align-items: center; justify-content: center; color: var(--theia-descriptionForeground, #888); }
+.fabi-link-sm .fabi-link-mid { min-width: 34px; }
+.fabi-link-md .fabi-link-mid { min-width: 52px; }
+
+.fabi-link-chevs { display: inline-flex; align-items: center; }
+.fabi-link-chevs svg { margin: 0 -3px; opacity: 0.18; animation: fabi-chev 1.5s ease-in-out infinite; }
+.fabi-link-chevs svg:nth-child(2) { animation-delay: 0.2s; }
+.fabi-link-chevs svg:nth-child(3) { animation-delay: 0.4s; }
+@keyframes fabi-chev { 0%, 100% { opacity: 0.12; } 50% { opacity: 0.9; } }
+
+.fabi-link-spin { animation: fabi-spin 0.9s linear infinite; }
+@keyframes fabi-spin { to { transform: rotate(360deg); } }
+
+.fabi-link-dots { display: inline-flex; align-items: center; gap: 4px; }
+.fabi-link-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: fabi-link-blink 1.4s ease-in-out infinite; }
+.fabi-link-dots i:nth-child(2) { animation-delay: 0.22s; }
+.fabi-link-dots i:nth-child(3) { animation-delay: 0.44s; }
+@keyframes fabi-link-blink { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+
+.fabi-link-err { color: rgba(200, 120, 120, 0.85); }
+.state-error .fabi-link-pc { opacity: 0.4; }

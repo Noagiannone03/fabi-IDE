@@ -23,7 +23,7 @@ import { FabiWelcomeContribution } from './welcome/fabi-welcome-contribution';
 import { FabiAboutDialog } from './about/fabi-about-dialog';
 import { FabiColorContribution } from './theme/fabi-color-contribution';
 import { FabiThemeContribution } from './theme/fabi-theme-contribution';
-import { FabiSidePanelHandler, FabiLeftPanelOpenContribution } from './shell/fabi-side-panel-handler';
+import { FabiSidePanelHandler, FabiLeftPanelOpenContribution, FabiRightPanelContribution } from './shell/fabi-side-panel-handler';
 
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     // --- Page d'accueil Fabi (widget autonome) ---
@@ -54,4 +54,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     // --- Panneau gauche toujours ouvert (explorateur visible par défaut) ---
     bind(FabiLeftPanelOpenContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiLeftPanelOpenContribution);
+
+    // --- Panneau droit : garder IA, retirer seulement Outline ---
+    bind(FabiRightPanelContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiRightPanelContribution);
 });

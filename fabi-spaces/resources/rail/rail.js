@@ -7,7 +7,7 @@
 (() => {
     'use strict';
     const api = window.fabiSpaces;
-    const SPACE_COLORS = ['#EC5B2B', '#E0A82E', '#4Fae6e', '#3B9CCB', '#7C6BD6', '#D45A8A', '#94A3B8'];
+    const SPACE_COLORS = ['#6B7280', '#8A8174', '#6B8F71', '#5F7F9A', '#7D739E', '#9B7184', '#94A3B8'];
     // Librairie d'icônes = les CODICONS natifs de l'IDE (mêmes icônes que Theia/VS Code).
     const CODICONS = [
         'folder', 'file', 'terminal', 'server', 'server-environment', 'vm', 'remote',

@@ -161,7 +161,9 @@
           "files.autoSave": "afterDelay",
           "editor.minimap.enabled": true,
           "security.workspace.trust.enabled": false,
-          "breadcrumbs.enabled": false
+          "breadcrumbs.enabled": false,
+          "ai-features.copilot.enabled": false,
+          "ai-features.AiEnable.enableAI": true
         },
         "electron": {
           "splashScreenOptions": {

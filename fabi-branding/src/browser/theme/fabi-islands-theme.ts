@@ -1,4 +1,4 @@
-/* AUTO-GÉNÉRÉ depuis bwya77/vscode-dark-islands, accent réajusté Fabi orange.
+/* AUTO-GÉNÉRÉ depuis bwya77/vscode-dark-islands, accent réajusté Fabi neutre.
    Régénérer via tools/ si besoin. */
 /* eslint-disable */
 export const fabiIslandsTheme = {
@@ -15,18 +15,18 @@ export const fabiIslandsTheme = {
     "contrastBorder": "#00000000",
     "contrastActiveBorder": "#00000000",
     "widget.border": "#00000000",
-    "textLink.foreground": "#ec5b2b",
-    "textLink.activeForeground": "#ffc58a",
+    "textLink.foreground": "#8a9099",
+    "textLink.activeForeground": "#cfd1d6",
     "textBlockQuote.background": "#181a1d",
-    "textBlockQuote.border": "#ec5b2b",
+    "textBlockQuote.border": "#8a9099",
     "textPreformat.foreground": "#bcbec4",
-    "button.background": "#ec5b2b",
+    "button.background": "#8a9099",
     "button.foreground": "#ffffff",
-    "button.hoverBackground": "#ff7a4f",
+    "button.hoverBackground": "#aab0b8",
     "button.secondaryBackground": "#3c3f41",
     "button.secondaryForeground": "#bcbec4",
     "button.secondaryHoverBackground": "#4e5153",
-    "button.separator": "#ec5b2b00",
+    "button.separator": "#8a909900",
     "button.border": "#00000000",
     "checkbox.background": "#181a1d",
     "checkbox.foreground": "#bcbec4",
@@ -39,22 +39,22 @@ export const fabiIslandsTheme = {
     "input.foreground": "#bcbec4",
     "input.border": "#3c3f41",
     "input.placeholderForeground": "#7a7e85",
-    "inputOption.activeBackground": "#3a2418",
-    "inputOption.activeBorder": "#ec5b2b",
+    "inputOption.activeBackground": "#2f333b",
+    "inputOption.activeBorder": "#8a9099",
     "inputOption.activeForeground": "#bcbec4",
     "inputValidation.errorBackground": "#181a1d",
     "inputValidation.errorBorder": "#f75464",
     "inputValidation.infoBackground": "#181a1d",
-    "inputValidation.infoBorder": "#ec5b2b",
+    "inputValidation.infoBorder": "#8a9099",
     "inputValidation.warningBackground": "#181a1d",
     "inputValidation.warningBorder": "#e8a33e",
     "scrollbar.shadow": "#00000000",
     "scrollbarSlider.background": "#3c3f4140",
     "scrollbarSlider.hoverBackground": "#50535770",
     "scrollbarSlider.activeBackground": "#5e616590",
-    "badge.background": "#ec5b2b",
+    "badge.background": "#8a9099",
     "badge.foreground": "#ffffff",
-    "progressBar.background": "#ec5b2b",
+    "progressBar.background": "#8a9099",
     "list.activeSelectionBackground": "#25262a90",
     "list.activeSelectionForeground": "#bcbec4",
     "list.inactiveSelectionBackground": "#25262a70",
@@ -63,8 +63,8 @@ export const fabiIslandsTheme = {
     "list.hoverForeground": "#bcbec4",
     "list.focusBackground": "#25262a90",
     "list.focusForeground": "#bcbec4",
-    "list.highlightForeground": "#ec5b2b",
-    "list.dropBackground": "#3a241880",
+    "list.highlightForeground": "#8a9099",
+    "list.dropBackground": "#2f333b80",
     "list.errorForeground": "#f75464",
     "list.warningForeground": "#e8a33e",
     "tree.indentGuidesStroke": "#3c3f45",
@@ -72,18 +72,18 @@ export const fabiIslandsTheme = {
     "activityBar.foreground": "#bcbec4",
     "activityBar.inactiveForeground": "#6f737a",
     "activityBar.border": "#181a1d00",
-    "activityBar.activeBorder": "#ec5b2b",
-    "activityBarBadge.background": "#ec5b2b",
+    "activityBar.activeBorder": "#8a9099",
+    "activityBarBadge.background": "#8a9099",
     "activityBarBadge.foreground": "#ffffff",
     "sideBar.background": "#181a1d",
     "sideBar.foreground": "#bcbec4",
     "sideBar.border": "#181a1d00",
-    "sideBar.dropBackground": "#3a241880",
+    "sideBar.dropBackground": "#2f333b80",
     "sideBarTitle.foreground": "#bcbec4",
     "sideBarSectionHeader.background": "#181a1d",
     "sideBarSectionHeader.foreground": "#bcbec4",
     "sideBarSectionHeader.border": "#181a1d00",
-    "minimap.findMatchHighlight": "#ec5b2b40",
+    "minimap.findMatchHighlight": "#8a909940",
     "minimap.selectionHighlight": "#373b3960",
     "minimap.errorHighlight": "#f75464",
     "minimap.warningHighlight": "#e8a33e",
@@ -91,10 +91,10 @@ export const fabiIslandsTheme = {
     "minimapSlider.hoverBackground": "#3c3f4180",
     "minimapSlider.activeBackground": "#3c3f4190",
     "minimapGutter.addedBackground": "#73b00a",
-    "minimapGutter.modifiedBackground": "#ec5b2b",
+    "minimapGutter.modifiedBackground": "#8a9099",
     "minimapGutter.deletedBackground": "#f75464",
     "editorGroup.border": "#181a1d00",
-    "editorGroup.dropBackground": "#3a241880",
+    "editorGroup.dropBackground": "#2f333b80",
     "editorGroupHeader.tabsBackground": "#161619",
     "editorGroupHeader.tabsBorder": "#181a1d00",
     "editorGroupHeader.noTabsBackground": "#181a1d",
@@ -103,7 +103,7 @@ export const fabiIslandsTheme = {
     "tab.inactiveBackground": "#161619",
     "tab.inactiveForeground": "#7a7e85",
     "tab.border": "#19191e",
-    "tab.activeBorderTop": "#ec5b2b00",
+    "tab.activeBorderTop": "#8a909900",
     "tab.unfocusedActiveBackground": "#181a1d",
     "tab.unfocusedActiveForeground": "#7a7e85",
     "tab.unfocusedInactiveBackground": "#161619",
@@ -124,11 +124,11 @@ export const fabiIslandsTheme = {
     "editor.findMatchBackground": "#32593d",
     "editor.findMatchHighlightBackground": "#54575b50",
     "editor.findMatchBorder": "#73b00a",
-    "editor.rangeHighlightBackground": "#3a241830",
-    "editor.hoverHighlightBackground": "#3a241830",
+    "editor.rangeHighlightBackground": "#2f333b30",
+    "editor.hoverHighlightBackground": "#2f333b30",
     "editor.lineHighlightBackground": "#252629",
     "editor.lineHighlightBorder": "#1f020400",
-    "editorLink.activeForeground": "#ec5b2b",
+    "editorLink.activeForeground": "#8a9099",
     "editorWhitespace.foreground": "#3c3f41",
     "editorIndentGuide.background": "#3c3f4100",
     "editorIndentGuide.activeBackground": "#3c3f41",
@@ -136,27 +136,27 @@ export const fabiIslandsTheme = {
     "editorBracketMatch.border": "#3c3f41",
     "editorRuler.foreground": "#3c3f41",
     "editorCodeLens.foreground": "#555861",
-    "editorBracketHighlight.foreground1": "#cf8e6d",
+    "editorBracketHighlight.foreground1": "#9aa0a6",
     "editorBracketHighlight.foreground2": "#c77dbb",
     "editorBracketHighlight.foreground3": "#2aacb8",
     "editorBracketHighlight.foreground4": "#6aab73",
     "editorBracketHighlight.foreground5": "#e8a33e",
-    "editorBracketHighlight.foreground6": "#ec5b2b",
-    "editor.foldBackground": "#3a241820",
+    "editorBracketHighlight.foreground6": "#8a9099",
+    "editor.foldBackground": "#2f333b20",
     "editorOverviewRuler.border": "#181a1d00",
     "editorOverviewRuler.findMatchForeground": "#73b00a80",
     "editorOverviewRuler.errorForeground": "#f75464",
     "editorOverviewRuler.warningForeground": "#e8a33e",
-    "editorOverviewRuler.infoForeground": "#ec5b2b",
-    "editorOverviewRuler.modifiedForeground": "#ec5b2b80",
+    "editorOverviewRuler.infoForeground": "#8a9099",
+    "editorOverviewRuler.modifiedForeground": "#8a909980",
     "editorOverviewRuler.addedForeground": "#73b00a80",
     "editorOverviewRuler.deletedForeground": "#f7546480",
     "editorError.foreground": "#f75464",
     "editorWarning.foreground": "#e8a33e",
-    "editorInfo.foreground": "#ec5b2b",
+    "editorInfo.foreground": "#8a9099",
     "editorHint.foreground": "#7a7e85",
     "editorGutter.addedBackground": "#73b00a",
-    "editorGutter.modifiedBackground": "#ec5b2b",
+    "editorGutter.modifiedBackground": "#8a9099",
     "editorGutter.deletedBackground": "#f75464",
     "editorWidget.background": "#181a1d",
     "editorWidget.foreground": "#bcbec4",
@@ -164,13 +164,13 @@ export const fabiIslandsTheme = {
     "editorSuggestWidget.background": "#2b2d30",
     "editorSuggestWidget.foreground": "#bcbec4",
     "editorSuggestWidget.border": "#3c3f41",
-    "editorSuggestWidget.highlightForeground": "#ec5b2b",
-    "editorSuggestWidget.selectedBackground": "#3a2418",
+    "editorSuggestWidget.highlightForeground": "#8a9099",
+    "editorSuggestWidget.selectedBackground": "#2f333b",
     "editorHoverWidget.background": "#161619",
     "editorHoverWidget.foreground": "#bcbec4",
     "editorHoverWidget.border": "#16161900",
     "editorHoverWidget.statusBarBackground": "#141416",
-    "peekView.border": "#ec5b2b",
+    "peekView.border": "#8a9099",
     "peekViewEditor.background": "#181a1d",
     "peekViewEditor.matchHighlightBackground": "#32593d",
     "peekViewEditorGutter.background": "#181a1d",
@@ -178,50 +178,50 @@ export const fabiIslandsTheme = {
     "peekViewResult.fileForeground": "#bcbec4",
     "peekViewResult.lineForeground": "#7a7e85",
     "peekViewResult.matchHighlightBackground": "#32593d",
-    "peekViewResult.selectionBackground": "#3a2418",
+    "peekViewResult.selectionBackground": "#2f333b",
     "peekViewResult.selectionForeground": "#bcbec4",
     "peekViewTitle.background": "#2b2d30",
     "peekViewTitleDescription.foreground": "#7a7e85",
     "peekViewTitleLabel.foreground": "#bcbec4",
     "merge.currentHeaderBackground": "#73b00a40",
     "merge.currentContentBackground": "#73b00a20",
-    "merge.incomingHeaderBackground": "#ec5b2b40",
-    "merge.incomingContentBackground": "#ec5b2b20",
+    "merge.incomingHeaderBackground": "#8a909940",
+    "merge.incomingContentBackground": "#8a909920",
     "merge.border": "#2b2d30",
     "merge.commonHeaderBackground": "#3c3f4160",
     "merge.commonContentBackground": "#3c3f4130",
     "panel.background": "#181a1d",
     "panel.border": "#181a1d00",
-    "panel.dropBorder": "#ec5b2b",
-    "panelTitle.activeBorder": "#ec5b2b",
+    "panel.dropBorder": "#8a9099",
+    "panelTitle.activeBorder": "#8a9099",
     "panelTitle.activeForeground": "#bcbec4",
     "panelTitle.inactiveForeground": "#7a7e85",
     "panelSection.border": "#2b2d30",
     "notebook.editorBackground": "#181a1d",
     "notebook.cellBorderColor": "#2b2d30",
-    "notebook.focusedCellBorder": "#ec5b2b",
+    "notebook.focusedCellBorder": "#8a9099",
     "notebook.cellToolbarSeparator": "#2b2d30",
     "notebook.selectedCellBackground": "#1e2024",
-    "notebook.selectedCellBorder": "#ec5b2b",
-    "notebook.focusedEditorBorder": "#ec5b2b00",
+    "notebook.selectedCellBorder": "#8a9099",
+    "notebook.focusedEditorBorder": "#8a909900",
     "notebook.cellEditorBackground": "#1e2024",
     "notebook.inactiveFocusedCellBorder": "#2b2d30",
     "notebookStatusSuccessIcon.foreground": "#73b00a",
     "notebookStatusErrorIcon.foreground": "#f75464",
-    "notebookStatusRunningIcon.foreground": "#ec5b2b",
+    "notebookStatusRunningIcon.foreground": "#8a9099",
     "statusBar.background": "#181a1d",
     "statusBar.foreground": "#ffffff",
     "statusBar.border": "#181a1d00",
     "statusBar.noFolderBackground": "#181a1d",
     "statusBar.noFolderForeground": "#35383d",
-    "statusBar.debuggingBackground": "#cf8e6d",
+    "statusBar.debuggingBackground": "#9aa0a6",
     "statusBar.debuggingForeground": "#181a1d",
     "statusBarItem.activeBackground": "#3c3f4150",
     "statusBarItem.hoverBackground": "#3c3f4130",
-    "statusBarItem.prominentBackground": "#3a2418",
+    "statusBarItem.prominentBackground": "#2f333b",
     "statusBarItem.prominentForeground": "#bcbec4",
-    "statusBarItem.prominentHoverBackground": "#3a241880",
-    "statusBarItem.remoteBackground": "#ec5b2b",
+    "statusBarItem.prominentHoverBackground": "#2f333b80",
+    "statusBarItem.remoteBackground": "#8a9099",
     "statusBarItem.remoteForeground": "#ffffff",
     "statusBarItem.errorBackground": "#f75464",
     "statusBarItem.errorForeground": "#ffffff",
@@ -236,10 +236,10 @@ export const fabiIslandsTheme = {
     "window.inactiveBorder": "#00000000",
     "menu.background": "#2b2d30",
     "menu.foreground": "#bcbec4",
-    "menu.selectionBackground": "#3a2418",
+    "menu.selectionBackground": "#2f333b",
     "menu.selectionForeground": "#bcbec4",
     "menu.separatorBackground": "#3c3f41",
-    "menubar.selectionBackground": "#3a2418",
+    "menubar.selectionBackground": "#2f333b",
     "menubar.selectionForeground": "#bcbec4",
     "notifications.background": "#181a1d",
     "notifications.foreground": "#bcbec4",
@@ -247,13 +247,13 @@ export const fabiIslandsTheme = {
     "notificationCenterHeader.background": "#1e1f22",
     "notificationCenterHeader.foreground": "#bcbec4",
     "notificationsErrorIcon.foreground": "#f75464",
-    "notificationsInfoIcon.foreground": "#ec5b2b",
+    "notificationsInfoIcon.foreground": "#8a9099",
     "notificationsWarningIcon.foreground": "#e8a33e",
-    "notificationLink.foreground": "#ec5b2b",
+    "notificationLink.foreground": "#8a9099",
     "commandCenter.background": "#181a1d",
     "commandCenter.foreground": "#7a7e85",
     "commandCenter.border": "#2b2d30",
-    "commandCenter.activeBackground": "#3a2418",
+    "commandCenter.activeBackground": "#2f333b",
     "commandCenter.activeForeground": "#bcbec4",
     "breadcrumb.background": "#181a1d",
     "breadcrumb.foreground": "#7a7e85",
@@ -266,7 +266,7 @@ export const fabiIslandsTheme = {
     "terminal.ansiRed": "#f75464",
     "terminal.ansiGreen": "#73b00a",
     "terminal.ansiYellow": "#e8a33e",
-    "terminal.ansiBlue": "#ec5b2b",
+    "terminal.ansiBlue": "#8a9099",
     "terminal.ansiMagenta": "#c77dbb",
     "terminal.ansiCyan": "#2aacb8",
     "terminal.ansiWhite": "#bcbec4",
@@ -274,20 +274,20 @@ export const fabiIslandsTheme = {
     "terminal.ansiBrightRed": "#f9667a",
     "terminal.ansiBrightGreen": "#8ccf15",
     "terminal.ansiBrightYellow": "#f0b95e",
-    "terminal.ansiBrightBlue": "#ffc58a",
+    "terminal.ansiBrightBlue": "#cfd1d6",
     "terminal.ansiBrightMagenta": "#d79fd2",
     "terminal.ansiBrightCyan": "#42c6d2",
     "terminal.ansiBrightWhite": "#d4d5d9",
     "terminal.selectionBackground": "#373b39",
     "terminalCursor.foreground": "#bcbec4",
     "gitDecoration.addedResourceForeground": "#73b00a",
-    "gitDecoration.modifiedResourceForeground": "#ec5b2b",
+    "gitDecoration.modifiedResourceForeground": "#8a9099",
     "gitDecoration.deletedResourceForeground": "#f75464",
     "gitDecoration.renamedResourceForeground": "#2aacb8",
     "gitDecoration.untrackedResourceForeground": "#73b00a",
     "gitDecoration.ignoredResourceForeground": "#4e5157",
     "gitDecoration.conflictingResourceForeground": "#e8a33e",
-    "gitDecoration.stageModifiedResourceForeground": "#ec5b2b",
+    "gitDecoration.stageModifiedResourceForeground": "#8a9099",
     "gitDecoration.stageDeletedResourceForeground": "#f75464",
     "debugToolBar.background": "#2b2d30",
     "debugToolBar.border": "#3c3f41",
@@ -296,7 +296,7 @@ export const fabiIslandsTheme = {
     "debugTokenExpression.name": "#c77dbb",
     "debugTokenExpression.value": "#6aab73",
     "debugTokenExpression.string": "#6aab73",
-    "debugTokenExpression.boolean": "#cf8e6d",
+    "debugTokenExpression.boolean": "#9aa0a6",
     "debugTokenExpression.number": "#2aacb8",
     "debugTokenExpression.error": "#f75464",
     "testing.iconFailed": "#f75464",
@@ -307,8 +307,8 @@ export const fabiIslandsTheme = {
     "testing.iconSkipped": "#7a7e85",
     "testing.runAction": "#73b00a",
     "settings.headerForeground": "#bcbec4",
-    "settings.modifiedItemIndicator": "#ec5b2b",
-    "settings.focusedRowBackground": "#3a241830",
+    "settings.modifiedItemIndicator": "#8a9099",
+    "settings.focusedRowBackground": "#2f333b30",
     "settings.rowHoverBackground": "#2b2d3050",
     "keybindingLabel.background": "#3c3f4140",
     "keybindingLabel.foreground": "#bcbec4",
@@ -335,16 +335,16 @@ export const fabiIslandsTheme = {
     "diffEditorGutter.insertedLineBackground": "#73b00a30",
     "diffEditorGutter.removedLineBackground": "#f7546430",
     "searchEditor.findMatchBackground": "#32593d50",
-    "extensionButton.prominentBackground": "#ec5b2b",
+    "extensionButton.prominentBackground": "#8a9099",
     "extensionButton.prominentForeground": "#ffffff",
-    "extensionButton.prominentHoverBackground": "#ff7a4f",
-    "extensionBadge.remoteBackground": "#ec5b2b",
+    "extensionButton.prominentHoverBackground": "#aab0b8",
+    "extensionBadge.remoteBackground": "#8a9099",
     "extensionBadge.remoteForeground": "#ffffff",
     "pickerGroup.border": "#25262a",
-    "pickerGroup.foreground": "#ec5b2b",
+    "pickerGroup.foreground": "#8a9099",
     "quickInput.background": "#181a1d",
     "quickInput.foreground": "#bcbec4",
-    "quickInputList.focusBackground": "#3a2418",
+    "quickInputList.focusBackground": "#2f333b",
     "quickInputList.focusForeground": "#bcbec4",
     "quickInputTitle.background": "#1e1f22"
   },
@@ -393,7 +393,7 @@ export const fabiIslandsTheme = {
         "punctuation.section.embedded"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -418,7 +418,7 @@ export const fabiIslandsTheme = {
         "keyword.operator.expression.delete"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -434,7 +434,7 @@ export const fabiIslandsTheme = {
         "storage.type.type"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -508,7 +508,7 @@ export const fabiIslandsTheme = {
         "constant.language.undefined"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -542,7 +542,7 @@ export const fabiIslandsTheme = {
         "variable.language.super"
       ],
       "settings": {
-        "foreground": "#cf8e6d",
+        "foreground": "#9aa0a6",
         "fontStyle": "italic"
       }
     },
@@ -603,7 +603,7 @@ export const fabiIslandsTheme = {
         "punctuation.definition.tag.end"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -636,7 +636,7 @@ export const fabiIslandsTheme = {
         "entity.other.attribute-name.pseudo-element.css"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -680,7 +680,7 @@ export const fabiIslandsTheme = {
         "keyword.control.at-rule.import.css"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -714,7 +714,7 @@ export const fabiIslandsTheme = {
         "constant.character.escape.backslash"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -756,7 +756,7 @@ export const fabiIslandsTheme = {
         "support.type.property-name.yaml"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -792,7 +792,7 @@ export const fabiIslandsTheme = {
         "markup.heading.setext"
       ],
       "settings": {
-        "foreground": "#cf8e6d",
+        "foreground": "#9aa0a6",
         "fontStyle": "bold"
       }
     },
@@ -802,7 +802,7 @@ export const fabiIslandsTheme = {
         "punctuation.definition.heading.markdown"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -842,7 +842,7 @@ export const fabiIslandsTheme = {
         "markup.underline.link.markdown"
       ],
       "settings": {
-        "foreground": "#ec5b2b"
+        "foreground": "#8a9099"
       }
     },
     {
@@ -863,7 +863,7 @@ export const fabiIslandsTheme = {
         "markup.list.unnumbered.markdown"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -901,7 +901,7 @@ export const fabiIslandsTheme = {
         "constant.character.format.placeholder.other.python"
       ],
       "settings": {
-        "foreground": "#cf8e6d"
+        "foreground": "#9aa0a6"
       }
     },
     {
@@ -1010,7 +1010,7 @@ export const fabiIslandsTheme = {
         "markup.changed"
       ],
       "settings": {
-        "foreground": "#ec5b2b"
+        "foreground": "#8a9099"
       }
     },
     {
@@ -1061,7 +1061,7 @@ export const fabiIslandsTheme = {
     },
     "string": "#6aab73",
     "number": "#2aacb8",
-    "keyword": "#cf8e6d",
+    "keyword": "#9aa0a6",
     "comment": {
       "foreground": "#7a7e85",
       "fontStyle": "italic"

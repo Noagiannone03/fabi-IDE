@@ -9,31 +9,26 @@
  */
 
 /* ------------------------------------------------------------------ */
-/* 1) Accents de marque Fabi (orange #EC5B2B, hover #FF7A4F)           */
+/* 1) Retint global de l'IDE                                            */
 /* ------------------------------------------------------------------ */
 :root {
-    --fabi-orange: #EC5B2B;
-    --fabi-orange-hover: #FF7A4F;
-    --fabi-orange-deep: #A03A18;
-    --fabi-cream: #FFF7F1;
-    --fabi-yellow: #FFC58A;
     --fabi-blue: #94A3B8;
-    --fabi-ink: #1b1206;
 
-    /* boutons primaires */
-    --theia-button-background: #EC5B2B !important;
-    --theia-button-hoverBackground: #FF7A4F !important;
-    --theia-button-foreground: #1b1206 !important;
+    /* Chrome de l'IDE : monochrome minimaliste (zéro orange — réservé au logo). */
+    /* boutons primaires : gris neutre élevé */
+    --theia-button-background: #2f333b !important;
+    --theia-button-hoverBackground: #3a3f48 !important;
+    --theia-button-foreground: #f3f3f5 !important;
 
-    /* focus : orange TRÈS doux et translucide (plus de contour dur immonde) */
-    --theia-focusBorder: rgba(236, 91, 43, 0.40) !important;
-    --theia-progressBar-background: #EC5B2B !important;
+    /* focus : liseré blanc translucide discret */
+    --theia-focusBorder: rgba(255, 255, 255, 0.22) !important;
+    --theia-progressBar-background: #8a9099 !important;
 
-    /* badges */
-    --theia-activityBarBadge-background: #EC5B2B !important;
-    --theia-activityBarBadge-foreground: #1b1206 !important;
-    --theia-badge-background: #EC5B2B !important;
-    --theia-badge-foreground: #1b1206 !important;
+    /* badges : gris neutre */
+    --theia-activityBarBadge-background: #6b7280 !important;
+    --theia-activityBarBadge-foreground: #ffffff !important;
+    --theia-badge-background: #6b7280 !important;
+    --theia-badge-foreground: #ffffff !important;
 
     /* on supprime les LISERÉS orange (activity bar + haut d'onglet) :
        remplacés par des fonds glass / différences de couleur */
@@ -52,23 +47,28 @@
     --theia-tab-inactiveForeground: #797d87 !important;
     --theia-editorGroupHeader-tabsBackground: #0d0d10 !important;
 
-    /* liens & accents de liste */
-    --theia-textLink-foreground: #FF7A4F !important;
-    --theia-textLink-activeForeground: #FFC58A !important;
-    --theia-list-highlightForeground: #FF7A4F !important;
-    --theia-pickerGroup-foreground: #FF7A4F !important;
+    /* liens & accents de liste : gris clair neutre */
+    --theia-textLink-foreground: #cfd1d6 !important;
+    --theia-textLink-activeForeground: #ffffff !important;
+    --theia-list-highlightForeground: #cfd1d6 !important;
+    --theia-pickerGroup-foreground: #9aa0a6 !important;
 }
 
 /* ------------------------------------------------------------------ */
 /* Icône d'onglet « renard » pour la page d'accueil                    */
 /* ------------------------------------------------------------------ */
 .fabi-fox-tab-icon {
-    background-image: url('./fox.svg');
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    min-width: 16px;
-    min-height: 16px;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    /* shorthand avec !important : pose le renard ET force background-color
+       transparent (sinon carré gris) ; bat l'icon-theme actif. */
+    background: url('./fox.svg') center / contain no-repeat !important;
+}
+/* L'icon-theme (material-icon-theme) tente de poser un glyphe via ::before sur
+   l'élément d'onglet → on le neutralise pour ne garder que notre renard. */
+.fabi-fox-tab-icon::before {
+    content: none !important;
 }
 
 /* ------------------------------------------------------------------ */
@@ -76,16 +76,17 @@
 /* ------------------------------------------------------------------ */
 .fabi-welcome {
     overflow: auto;
-    background:
-        radial-gradient(120% 80% at 50% -10%, rgba(236, 91, 43, 0.16), transparent 60%),
-        var(--theia-editor-background);
+    background: var(--fabi-canvas, var(--theia-editor-background));
     color: var(--theia-foreground);
 }
 
+.fabi-welcome { width: 100%; }
 .fabi-welcome-scroll {
-    max-width: 720px;
-    margin: 0 auto;
-    padding: 48px 32px 64px;
+    /* Pleine largeur de la page (plus de colonne étroite centrée). */
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 48px clamp(24px, 5vw, 72px) 64px;
     box-sizing: border-box;
 }
 
@@ -97,7 +98,7 @@
 .fabi-welcome-fox {
     width: 132px;
     height: 113px;
-    filter: drop-shadow(0 10px 26px rgba(236, 91, 43, 0.35));
+    filter: drop-shadow(0 10px 26px rgba(0, 0, 0, 0.45));
 }
 
 .fabi-wordmark {
@@ -108,16 +109,16 @@
     letter-spacing: -1px;
     margin: 16px 0 10px;
     line-height: 1;
-    color: var(--fabi-orange);
+    color: var(--theia-foreground);
 }
 
-/* Wordmark uniforme : MÊME police, MÊME poids, MÊME couleur orange pour
+/* Wordmark uniforme : MÊME police, MÊME poids, couleur neutre pour
    « Fa » et « bi » — aucune différence de style entre les deux. */
 .fabi-wordmark .fa,
 .fabi-wordmark .bi {
     font-family: inherit;
     font-weight: inherit;
-    color: var(--fabi-orange);
+    color: inherit;
 }
 
 .fabi-tagline {
@@ -161,22 +162,22 @@
     padding: 14px 16px;
     text-align: left;
     cursor: pointer;
-    border: 1px solid var(--theia-editorWidget-border, rgba(255, 255, 255, 0.08));
-    border-radius: 12px;
-    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.03));
+    border: none;
+    border-radius: var(--fabi-island-radius, 14px);
+    background: var(--fabi-surface, #181a1d);
+    box-shadow: var(--fabi-island-shadow, inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 2px 10px rgba(0, 0, 0, 0.3));
     color: inherit;
-    transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
+    transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .fabi-action:hover {
-    border-color: var(--fabi-orange);
-    background: rgba(236, 91, 43, 0.10);
+    background: #1e2125;
     transform: translateY(-1px);
 }
 
 .fabi-action-icon {
     font-size: 22px !important;
-    color: var(--fabi-orange);
+    color: var(--theia-descriptionForeground, #aab);
     flex: 0 0 auto;
 }
 
@@ -193,7 +194,7 @@
     font-size: 13px;
     line-height: 1.6;
     opacity: 0.75;
-    border-left: 3px solid var(--fabi-orange);
+    border-left: 3px solid var(--fabi-hairline, rgba(255, 255, 255, 0.12));
     padding-left: 14px;
     margin: 0;
 }

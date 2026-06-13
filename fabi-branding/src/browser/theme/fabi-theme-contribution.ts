@@ -5,7 +5,7 @@ import { fabiIslandsTheme } from './fabi-islands-theme';
 
 /**
  * Enregistre le thème de couleurs « Fabi Islands » (palette îlots sombre +
- * accent orange Fabi) comme thème workbench sélectionnable. On enregistre tôt
+ * accent neutre Fabi) comme thème workbench sélectionnable. On enregistre tôt
  * (`initialize`) pour qu'il soit dispo quand le ThemeService applique le thème
  * par défaut configuré dans les préférences (`workbench.colorTheme: fabi-islands`).
  */
