@@ -30,11 +30,13 @@ html, body {
 }
 
 /* La colonne : posée à la largeur dépliée ; repliée, la vue la rogne (overflow body). */
+/* Pas de filet de séparation à droite : la rail des espaces partage le même
+   canvas que le reste du shell → tout flotte, cohérent avec le design « îlots »
+   (aucune barre dure entre la rail et la sidebar). */
 .rail {
     position: fixed; left: 0; top: 0; bottom: 0;
     width: var(--expanded-w);
     background: var(--canvas);
-    border-right: 1px solid var(--hairline);
     display: flex; flex-direction: column;
     padding: 9px 8px 12px;
     gap: 6px;

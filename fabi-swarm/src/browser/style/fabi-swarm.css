@@ -1,7 +1,14 @@
-/* Panneau IA Fabi — design « îlot » (cf. fabi-islands : surface #181a1d, radius
-   doux, hairline subtil, ombre légère). La barre modèle + l'expansion + l'input
-   forment UNE île arrondie. Sobre : aucune grosse bordure, aucun orange.
-   Variables : --fabi-surface / --fabi-hairline / --fabi-island-shadow (fabi-islands). */
+/* Panneau IA Fabi — design « îlot ». La barre modèle + l'expansion + l'input
+   forment UNE île arrondie qui FLOTTE au-dessus de la section IA (fond #181a1d
+   = --fabi-surface). Pour qu'on la distingue du fond, toute l'île est sur une
+   surface ÉLEVÉE plus claire (--fabi-ai-island) : c'est la convention thème
+   sombre (l'élévation = un fond plus clair), et c'est la couleur qu'on voyait
+   déjà à l'ouverture du sélecteur — on l'étend à l'input. Sobre, aucun orange. */
+.chat-input-widget {
+    --fabi-ai-island: #23262c;        /* surface de l'île, distincte du fond #181a1d */
+    --fabi-ai-island-hover: #282c33;  /* survol */
+    --fabi-ai-island-edge: rgba(255, 255, 255, 0.07);
+}
 
 /* ============================================================
    1) L'input du chat en île (override du cadre Theia)
@@ -9,20 +16,30 @@
 .chat-input-widget .theia-ChatInput-Editor-Box {
     border: none !important;
     border-radius: 0 0 14px 14px !important;
-    background: var(--fabi-surface, #181a1d) !important;
+    background: var(--fabi-ai-island, #23262c) !important;
     box-shadow:
-        inset 0 -1px 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        inset 1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        inset -1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        0 4px 16px rgba(0, 0, 0, 0.26) !important;
+        inset 0 -1px 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        0 6px 20px rgba(0, 0, 0, 0.34) !important;
 }
 /* Plus de halo/bordure orange au focus. */
 .chat-input-widget .theia-ChatInput-Editor-Box:focus-within {
     box-shadow:
-        inset 0 -1px 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        inset 1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        inset -1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        0 4px 16px rgba(0, 0, 0, 0.26) !important;
+        inset 0 -1px 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        0 6px 20px rgba(0, 0, 0, 0.34) !important;
+}
+/* L'éditeur Monaco interne (« Ask a question ») peint SON propre fond
+   (--theia-editor-background, sombre) par-dessus l'île → la zone de saisie
+   ressortait en noir. On le rend transparent pour qu'il épouse la surface de
+   l'île (--fabi-ai-island) : la saisie devient une seule surface continue. */
+.chat-input-widget .theia-ChatInput-Editor .monaco-editor,
+.chat-input-widget .theia-ChatInput-Editor .monaco-editor .monaco-editor-background,
+.chat-input-widget .theia-ChatInput-Editor .monaco-editor .margin,
+.chat-input-widget .theia-ChatInput-Editor .monaco-editor .inputarea.ime-input {
+    background: transparent !important;
 }
 
 /* ============================================================
@@ -46,28 +63,28 @@
     padding: 6px 11px;
     border: none;
     border-radius: 14px 14px 0 0;
-    background: var(--fabi-surface, #181a1d);
+    background: var(--fabi-ai-island, #23262c);
     color: var(--theia-foreground);
     cursor: pointer;
     text-align: left;
     outline: none;
     box-shadow:
-        inset 0 1px 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        inset 1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05)),
-        inset -1px 0 0 0 var(--fabi-hairline, rgba(255, 255, 255, 0.05));
+        inset 0 1px 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07));
     transition: background 0.13s ease;
 }
-.fabi-sel-bar:hover { background: #1e2125; }
+.fabi-sel-bar:hover { background: var(--fabi-ai-island-hover, #282c33); }
 .fabi-sel-bar:focus { outline: none; }
-/* Ouvert : la barre rejoint la surface ÉLEVÉE du panneau (même clair), coins plats. */
+/* Ouvert : la barre reste sur la même surface élevée, coins plats (continuité avec l'expansion). */
 .fabi-sel.open .fabi-sel-bar {
     border-radius: 0;
-    background: #23262c;
+    background: var(--fabi-ai-island, #23262c);
     box-shadow:
-        inset 1px 0 0 0 rgba(255, 255, 255, 0.07),
-        inset -1px 0 0 0 rgba(255, 255, 255, 0.07);
+        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
+        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07));
 }
-.fabi-sel.open .fabi-sel-bar:hover { background: #282c33; }
+.fabi-sel.open .fabi-sel-bar:hover { background: var(--fabi-ai-island-hover, #282c33); }
 
 @keyframes fabi-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
@@ -84,9 +101,9 @@
 .fabi-sel-expand {
     box-sizing: border-box;
     border-radius: 14px 14px 0 0;
-    background: #23262c;
+    background: var(--fabi-ai-island, #23262c);
     box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+        inset 0 0 0 1px var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
         0 -12px 32px rgba(0, 0, 0, 0.5);
     max-height: 320px;
     overflow: auto;
@@ -97,7 +114,7 @@
 .fabi-sel-expand-head {
     position: sticky; top: 0;
     padding: 10px 13px 8px;
-    background: #23262c;
+    background: var(--fabi-ai-island, #23262c);
 }
 .fabi-sel-expand-title {
     font-size: 10.5px; font-weight: 700; text-transform: uppercase;
@@ -131,34 +148,31 @@
 .fabi-sel-row-meta { font-size: 11px; opacity: 0.5; display: flex; gap: 4px; flex: 0 0 auto; }
 
 /* ============================================================
-   4) Vue connexion — sobre, texte de statut
+   4) Vue connexion — sobre & centrée, l'animation au milieu
    ============================================================ */
-.fabi-cx { display: flex; flex-direction: column; gap: 9px; }
-.fabi-cx-glyph { display: flex; justify-content: center; padding: 2px 0; }
+.fabi-cx { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 6px 4px 2px; text-align: center; }
 
-.fabi-cx-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.fabi-cx-model { font-size: 13px; font-weight: 600; color: var(--theia-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fabi-cx-status { font-size: 11px; opacity: 0.6; flex: 0 0 auto; }
+/* L'animation est le point focal, centrée, avec de l'air autour. */
+.fabi-cx-stage { display: flex; justify-content: center; align-items: center; padding: 8px 0 4px; }
 
-.fabi-cx-log {
-    display: flex; flex-direction: column; gap: 2px;
-    padding: 9px 11px; border-radius: 10px;
-    background: rgba(0, 0, 0, 0.22);
-    box-shadow: inset 0 0 0 1px var(--fabi-hairline, rgba(255, 255, 255, 0.05));
-    font-family: var(--theia-code-font-family, monospace);
+.fabi-cx-info { display: flex; flex-direction: column; align-items: center; gap: 2px; max-width: 100%; }
+.fabi-cx-model { font-size: 13px; font-weight: 600; color: var(--theia-foreground); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-cx-status { font-size: 11px; opacity: 0.55; letter-spacing: 0.2px; }
+/* La seule ligne « live » : courte, atténuée, jamais sur deux lignes. */
+.fabi-cx-detail {
+    font-size: 11px; line-height: 1.4; opacity: 0.6; color: var(--theia-foreground);
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.fabi-cx-log-line { font-size: 11px; line-height: 1.5; opacity: 0.6; color: var(--theia-foreground); }
-.fabi-cx-log-line.lead { opacity: 0.95; font-weight: 600; }
 
-.fabi-cx-progress { display: flex; flex-direction: column; gap: 4px; }
-.fabi-cx-bar { height: 5px; border-radius: 9999px; background: rgba(127, 127, 127, 0.18); overflow: hidden; }
+.fabi-cx-progress { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; max-width: 220px; }
+.fabi-cx-bar { width: 100%; height: 4px; border-radius: 9999px; background: rgba(127, 127, 127, 0.18); overflow: hidden; }
 .fabi-cx-bar-fill { height: 100%; background: var(--theia-descriptionForeground, #999); border-radius: 9999px; transition: width 0.4s ease; }
-.fabi-cx-progress-label { font-size: 10.5px; opacity: 0.55; }
+.fabi-cx-progress-label { font-size: 10.5px; opacity: 0.5; }
 
-.fabi-cx-actions { display: flex; gap: 16px; margin-top: 2px; }
-.fabi-cx-link { background: none; border: none; padding: 2px 0; cursor: pointer; font-size: 11.5px; color: var(--theia-foreground); opacity: 0.85; }
+.fabi-cx-actions { display: flex; justify-content: center; gap: 18px; margin-top: 4px; }
+.fabi-cx-link { background: none; border: none; padding: 2px 0; cursor: pointer; font-size: 11.5px; color: var(--theia-foreground); opacity: 0.8; }
 .fabi-cx-link:hover:not(:disabled) { opacity: 1; text-decoration: underline; }
-.fabi-cx-link.muted { opacity: 0.55; }
+.fabi-cx-link.muted { opacity: 0.5; }
 .fabi-cx-link:disabled { opacity: 0.4; cursor: default; }
 
 /* ============================================================

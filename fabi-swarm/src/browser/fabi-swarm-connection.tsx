@@ -3,11 +3,10 @@ import { SwarmEntry, ConnectionInfo, ConnectionReason, WorkerState } from '../co
 import { FabiLinkGlyph, FabiLinkState } from './fabi-link-glyph';
 
 /**
- * Vue de connexion au swarm — sobre, basée sur le TEXTE de statut (pas de gros
- * visuel). Elle dit clairement ce qui se passe : statut courant + lignes
- * « live » dérivées de l'état réel (worker + registry) : redémarrage, attente de
- * pairs, allocation, chargement des poids, prêt. Plus une jauge fine quand c'est
- * pertinent (poids / pairs). Composant présentationnel pur.
+ * Vue de connexion au swarm — sobre et centrée. L'animation « machine ↔ swarm »
+ * est le point focal, au milieu. Sous elle : le modèle, un statut court, et UNE
+ * seule ligne « live » (la plus pertinente) — pas de pavé de logs. Une jauge fine
+ * apparaît seulement quand elle apporte de l'info (poids / pairs). Présentationnel.
  */
 
 type Phase = 'connecting' | 'waiting' | 'loading' | 'ready' | 'error';
@@ -53,11 +52,10 @@ export const FabiConnectionView: React.FC<FabiConnectionViewProps> = (
                 : phase === 'loading' ? 'Chargement'
                     : 'Connexion';
 
-    // Lignes « ce qui se passe », dans l'ordre, dédupliquées, sans vide.
-    const lines = [connection?.headline, connection?.activity, connection?.detail, worker.message]
-        .filter((l): l is string => !!l && l.trim().length > 0)
-        .filter((l, i, arr) => arr.indexOf(l) === i)
-        .slice(0, 4);
+    // UNE seule ligne « live » : la plus parlante de l'état réel, et seulement si
+    // elle ajoute vraiment quelque chose au statut (pas un doublon, pas de pavé).
+    const detail = [connection?.activity, connection?.headline, connection?.detail, worker.message]
+        .find(l => !!l && l.trim().length > 0 && l.trim().toLowerCase() !== statusLabel.toLowerCase());
 
     // Jauge contextuelle sobre : poids si en chargement, sinon pairs.
     const weightsDone = connection?.weightsDone ?? worker.weightsFilesDone;
@@ -70,20 +68,14 @@ export const FabiConnectionView: React.FC<FabiConnectionViewProps> = (
 
     return (
         <div className={`fabi-cx phase-${phase}`}>
-            <div className="fabi-cx-glyph"><FabiLinkGlyph state={glyphState} size="sm" /></div>
+            {/* L'animation, au milieu : point focal sobre de la vue. */}
+            <div className="fabi-cx-stage"><FabiLinkGlyph state={glyphState} size="md" /></div>
 
-            <div className="fabi-cx-head">
+            <div className="fabi-cx-info">
                 <span className="fabi-cx-model">{modelName}</span>
                 <span className="fabi-cx-status">{statusLabel}</span>
+                {detail && <span className="fabi-cx-detail">{detail}</span>}
             </div>
-
-            {lines.length > 0 && (
-                <div className="fabi-cx-log">
-                    {lines.map((l, i) => (
-                        <div key={i} className={`fabi-cx-log-line ${i === 0 ? 'lead' : ''}`}>{l}</div>
-                    ))}
-                </div>
-            )}
 
             {!connection?.ready && hasWeights && (
                 <div className="fabi-cx-progress">

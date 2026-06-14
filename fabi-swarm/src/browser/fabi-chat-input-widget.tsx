@@ -17,6 +17,19 @@ export class FabiChatInputWidget extends AIChatInputWidget {
     @inject(FabiSwarmFrontend)
     protected readonly swarm: FabiSwarmFrontend;
 
+    /**
+     * Fabi AI EST le produit : l'input n'est JAMAIS désactivé. Le parent appelle
+     * `setEnabled(aiActivationService.canRun)` à l'init puis sur chaque changement
+     * de `canRun` (préférence `enableAI`, confiance d'espace de travail…). On
+     * intercepte ici, à la source, et on force toujours `true` — peu importe ce
+     * que renvoie le service. Plus de placeholder « AI features are disabled », plus
+     * de champ grisé : c'est la décision produit, encodée dans NOTRE widget, pas un
+     * contournement caché. (cf. aussi FabiAIActivationService pour les clés de contexte.)
+     */
+    override setEnabled(_enabled: boolean): void {
+        super.setEnabled(true);
+    }
+
     protected override render(): React.ReactNode {
         // IMPORTANT : pas de div wrapper — un conteneur (flex/block) casse le
         // calcul de largeur de l'éditeur Monaco interne (il s'étale/déborde). Un

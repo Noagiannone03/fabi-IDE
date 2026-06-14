@@ -40,6 +40,14 @@
     background-color: var(--fabi-canvas) !important;
 }
 
+/* Pas de filet de séparation sous le bandeau du haut (zone des « feux »
+   macOS + menu) : dans le design « îlots » tout flotte sur le même canvas,
+   aucune barre dure ne tranche le shell. (Theia core dessine un
+   border-bottom: 1px solid var(--theia-titleBar-border) → on le retire.) */
+#theia-top-panel {
+    border-bottom: none !important;
+}
+
 /* ------------------------------------------------------------------ */
 /* Les îles : zone d'édition, panneau du bas, panneaux latéraux        */
 /* ------------------------------------------------------------------ */
