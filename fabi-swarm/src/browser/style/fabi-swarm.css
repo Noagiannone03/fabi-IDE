@@ -367,43 +367,50 @@
 }
 .theia-ChatNode:has(.theia-ResponseNode) .theia-AgentAvatar::before { content: '' !important; }
 
-/* --- pendant la génération --- */
+/* --- pendant la génération : le renard AGRANDI, bien visible, qui tape ---
+   On grossit l'avatar (22 → 48 px) pendant le streaming : tout est en %, donc le
+   renard + le clavier + les pattes grandissent proportionnellement et deviennent
+   nets. Transition douce à l'entrée/sortie de l'état génération. */
 .theia-ChatNodeHeader:has(.theia-ChatContentInProgress) .theia-AgentAvatar {
-    background-size: 86%;
-    animation: fabi-avatar-bob 0.4s ease-in-out infinite;
+    width: 48px;
+    height: 48px;
+    background-position: center 18%;
+    background-size: 76%;
+    animation: fabi-avatar-bob 0.42s ease-in-out infinite;
+    transition: width 0.16s ease, height 0.16s ease;
 }
 /* clavier : barre sombre + glow orange qui balaie = touches qui s'allument une à une */
 .theia-ChatNodeHeader:has(.theia-ChatContentInProgress) .theia-AgentAvatar::after {
     content: '';
     position: absolute;
-    left: 4%;
-    right: 4%;
-    bottom: 0;
-    height: 30%;
-    border-radius: 2px;
+    left: 8%;
+    right: 8%;
+    bottom: 5%;
+    height: 26%;
+    border-radius: 3px;
     background:
         linear-gradient(90deg, rgba(255, 122, 79, 0) 38%, rgba(255, 122, 79, 0.95) 50%, rgba(255, 122, 79, 0) 62%),
         #3a4049;
     background-size: 230% 100%, 100% 100%;
     background-repeat: no-repeat;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 2px rgba(0, 0, 0, 0.3);
     animation: fabi-kbd-wave 1s linear infinite;
 }
 /* pattes (crème) qui tapent au-dessus du clavier */
 .theia-ChatNodeHeader:has(.theia-ChatContentInProgress) .theia-AgentAvatar::before {
     content: '' !important;
     position: absolute;
-    left: 30%;
-    right: 30%;
-    bottom: 30%;
-    height: 13%;
-    border-radius: 1px;
+    left: 33%;
+    right: 33%;
+    bottom: 31%;
+    height: 9%;
+    border-radius: 2px;
     background: #f5e6d3;
     animation: fabi-avatar-paw 0.3s steps(2, jump-none) infinite;
 }
 @keyframes fabi-avatar-bob {
-    0%, 100% { background-position: center 26%; }
-    50% { background-position: center 31%; }
+    0%, 100% { background-position: center 16%; }
+    50% { background-position: center 21%; }
 }
 @keyframes fabi-kbd-wave {
     0% { background-position: 120% 0, 0 0; }
@@ -411,7 +418,7 @@
 }
 @keyframes fabi-avatar-paw {
     0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(1.4px); }
+    50% { transform: translateY(2.6px); }
 }
 @media (prefers-reduced-motion: reduce) {
     .theia-ChatNodeHeader:has(.theia-ChatContentInProgress) .theia-AgentAvatar,
