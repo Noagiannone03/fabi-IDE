@@ -1,6 +1,8 @@
 import * as React from '@theia/core/shared/react';
 import { injectable, inject } from '@theia/core/shared/inversify';
+import { URI } from '@theia/core';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
+import { CHAT_VIEW_LANGUAGE_EXTENSION } from '@theia/ai-chat-ui/lib/browser/chat-view-language-contribution';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
 import { FabiSwarmSelector } from './fabi-swarm-selector';
 
@@ -16,6 +18,28 @@ export class FabiChatInputWidget extends AIChatInputWidget {
 
     @inject(FabiSwarmFrontend)
     protected readonly swarm: FabiSwarmFrontend;
+
+    /**
+     * URI de la ressource Monaco de l'input, UNIQUE par instance.
+     *
+     * Le parent enregistre, dans son `@postConstruct`, une ressource en mémoire à
+     * une URI FIXE (`ai-chat:/input.aichatviewlanguage`). Dès qu'on ouvre un 2ᵉ chat,
+     * cette URI entre en collision → « Cannot add already existing in-memory
+     * resource » → l'instance échoue → pas de 2ᵉ onglet. On donne donc à chaque
+     * input sa propre URI (en gardant l'extension `.aichatviewlanguage` pour que le
+     * langage/coloration s'appliquent) → multi-chat possible. URI mémoïsée : stable
+     * pour toute la vie du widget.
+     */
+    protected static fabiInputSeq = 0;
+    protected fabiResourceUri?: URI;
+
+    protected override getResourceUri(): URI {
+        if (!this.fabiResourceUri) {
+            const seq = ++FabiChatInputWidget.fabiInputSeq;
+            this.fabiResourceUri = new URI(`ai-chat:/input-${seq}.${CHAT_VIEW_LANGUAGE_EXTENSION}`);
+        }
+        return this.fabiResourceUri;
+    }
 
     /**
      * Fabi AI EST le produit : l'input n'est JAMAIS désactivé. Le parent appelle

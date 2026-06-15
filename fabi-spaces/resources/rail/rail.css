@@ -6,17 +6,27 @@
 :root {
     --canvas: #0b0b0e;
     --surface: #181a1d;
-    --tile: #16181c;
-    --tile-hover: #23262c;
+    /* Tuiles au repos : LÉGÈREMENT élevées au-dessus du canvas (elles lisent comme
+       de vrais objets posés, pas des trous noirs) — façon liste macOS / Arc. */
+    --tile: #1c1f25;
+    --tile-hover: #272b33;
     --tile-active: #2b2f37;
     --text: #f3ece6;
     --muted: rgba(243, 236, 230, 0.55);
     --muted-2: rgba(243, 236, 230, 0.34);
-    --hairline: rgba(255, 255, 255, 0.06);
-    /* Accent par défaut NEUTRE (l'orange est réservé au logo). Les espaces
-       gardent leur couleur configurée via --accent ; sans couleur → gris sobre. */
-    --accent-default: #6b7280;
+    --hairline: rgba(255, 255, 255, 0.07);
+    /* Accent par défaut (fallback rare — un espace porte toujours sa couleur).
+       Bleu système Apple, jamais l'orange (réservé au logo). */
+    --accent-default: #0A84FF;
     --expanded-w: 250px;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('./fonts/InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
 }
 
 * { box-sizing: border-box; }
@@ -25,7 +35,9 @@ html, body {
     margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: var(--canvas);
     color: var(--text);
-    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-family: 'Inter', -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
     -webkit-user-select: none; user-select: none; cursor: default;
 }
 
@@ -61,7 +73,8 @@ body.expanded .fox-btn { width: 40px; height: 40px; }
 /* En-tête du rail : logo + « Mes espaces » (le titre n'apparaît qu'en déplié). */
 .rail-head { display: flex; align-items: center; gap: 8px; }
 .rail-title {
-    font-size: 13.5px; font-weight: 600; color: var(--text);
+    font-size: 13px; font-weight: 590; color: var(--text);
+    letter-spacing: -0.01em;
     white-space: nowrap; pointer-events: none;
     opacity: 0; transition: opacity 0.12s ease;
 }
@@ -97,7 +110,8 @@ body.expanded .space-row { height: 46px; }
     background: var(--tile); color: var(--muted);
     display: grid; place-items: center;
     font-size: 14px; font-weight: 640;
-    transition: background-color .32s ease, color .22s ease, width .18s ease, height .18s ease;
+    transition: background-color .3s ease, color .22s ease, box-shadow .3s ease,
+        width .18s ease, height .18s ease;
 }
 body.expanded .tile { width: 40px; height: 40px; font-size: 16px; }
 .tile .glyph { line-height: 1; pointer-events: none; display: grid; place-items: center; }
@@ -105,16 +119,20 @@ body.expanded .tile { width: 40px; height: 40px; font-size: 16px; }
 body.expanded .tile .glyph .codicon { font-size: 19px; }
 .space-row:hover .tile { background: var(--tile-hover); color: var(--text); }
 
-/* Espace actif : LA TUILE (le composant à la lettre) prend la couleur de l'espace —
-   nettement visible, glyphe en blanc. Pas de bordure ni de barre latérale.
-   La transition de `background-color` fait le fondu de couleur au switch. */
+/* Espace actif : LA TUILE prend la couleur PLEINE de l'espace (chip Arc/macOS),
+   glyphe blanc, posée par une ombre teintée (élévation Material — pas de verre).
+   Le liseré haut clair (inset) donne l'arête lumineuse d'un objet posé.
+   Pas de bordure ni de barre latérale ; la transition fait le fondu au switch. */
 .space-row.active .tile {
-    background: color-mix(in srgb, var(--accent, var(--accent-default)) 34%, var(--tile-active));
+    background: var(--accent, var(--accent-default));
     color: #fff;
     border-color: transparent;
+    box-shadow:
+        0 6px 16px -6px color-mix(in srgb, var(--accent, var(--accent-default)) 70%, transparent),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
 }
 .space-row.active:hover .tile {
-    background: color-mix(in srgb, var(--accent, var(--accent-default)) 40%, var(--tile-active));
+    background: color-mix(in srgb, var(--accent, var(--accent-default)) 90%, #fff 10%);
 }
 
 /* État « vivant mais pas actif » : petit point d'accent discret. */
@@ -155,6 +173,12 @@ body.expanded .space-name { opacity: 1; }
     width: 42px; height: 42px; flex: 0 0 auto;
     border: 1px dashed var(--hairline); border-radius: 12px;
     display: grid; place-items: center;
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+.add-row:hover .plus {
+    border-color: color-mix(in srgb, var(--accent-default) 55%, transparent);
+    color: var(--accent-default);
+    background: color-mix(in srgb, var(--accent-default) 10%, transparent);
 }
 .add-row .add-label { opacity: 0; transition: opacity .12s ease; white-space: nowrap; }
 body.expanded .add-row .add-label { opacity: 1; }

@@ -1,6 +1,6 @@
 import * as React from '@theia/core/shared/react';
 import { SwarmEntry, ConnectionInfo, ConnectionReason, WorkerState } from '../common/fabi-swarm-protocol';
-import { FabiLinkGlyph, FabiLinkState } from './fabi-link-glyph';
+import { FabiSwarmLink, FabiLinkState } from './fabi-swarm-link';
 
 /**
  * Vue de connexion au swarm — sobre et centrée. L'animation « machine ↔ swarm »
@@ -69,7 +69,7 @@ export const FabiConnectionView: React.FC<FabiConnectionViewProps> = (
     return (
         <div className={`fabi-cx phase-${phase}`}>
             {/* L'animation, au milieu : point focal sobre de la vue. */}
-            <div className="fabi-cx-stage"><FabiLinkGlyph state={glyphState} size="md" /></div>
+            <div className="fabi-cx-stage"><FabiSwarmLink state={glyphState} size="md" /></div>
 
             <div className="fabi-cx-info">
                 <span className="fabi-cx-model">{modelName}</span>

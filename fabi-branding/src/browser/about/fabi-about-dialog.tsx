@@ -17,7 +17,7 @@ export class FabiAboutDialog extends AboutDialog {
             <div className='fabi-about-header'>
                 <div className='fabi-about-logo' dangerouslySetInnerHTML={{ __html: foxSvgMarkup() }} />
                 <div className='fabi-about-titles'>
-                    <h1 className='fabi-wordmark'><span className='fa'>Fa</span><span className='bi'>bi</span></h1>
+                    <h1 className='fabi-wordmark'><span className='fabi-wm-a'>Fa</span><span className='fabi-wm-b'>bi</span></h1>
                     <p className='fabi-about-tagline'>IDE IA modulaire · basé sur Eclipse Theia</p>
                     {appInfo && <p className='fabi-about-version'>Version {appInfo.version}</p>}
                 </div>

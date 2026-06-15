@@ -99,7 +99,7 @@ export class FabiWelcomeWidget extends ReactWidget {
             <div className="fabi-welcome-scroll">
                 <div className="fabi-welcome-hero">
                     {this.renderFox()}
-                    <h1 className="fabi-wordmark"><span className="fa">Fa</span><span className="bi">bi</span></h1>
+                    <h1 className="fabi-wordmark"><span className="fabi-wm-a">Fa</span><span className="fabi-wm-b">bi</span></h1>
                     <p className="fabi-tagline">Peer-to-peer AI for your code.</p>
                 </div>
 

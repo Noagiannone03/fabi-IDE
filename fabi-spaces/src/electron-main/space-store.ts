@@ -8,7 +8,7 @@
 import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { SpaceDescriptor } from '../common/space-types';
+import { SpaceDescriptor, SPACE_COLORS } from '../common/space-types';
 
 interface PersistedState {
     version: 1;
@@ -34,11 +34,34 @@ export class SpaceStore {
                 const raw = JSON.parse(readFileSync(this.file, 'utf8'));
                 if (raw && Array.isArray(raw.spaces)) {
                     this.state = { version: 1, spaces: raw.spaces, activeId: raw.activeId };
+                    this.migratePalette();
                 }
             }
         } catch (err) {
             console.error('[fabi-spaces] spaces.json illisible, on repart de zéro :', err);
             this.state = { version: 1, spaces: [] };
+        }
+    }
+
+    /**
+     * Aligne les couleurs des Spaces existants sur la palette courante (couleurs
+     * système Apple). Toute couleur hors-palette (legacy gris, orange de marque
+     * récupéré par erreur, teintes arbitraires d'anciennes versions) est réassignée
+     * à une couleur de la palette par position — répartition variée et cohérente.
+     * Une couleur déjà dans la palette est respectée (choix délibéré). Persiste si modifié.
+     */
+    protected migratePalette(): void {
+        const palette = SPACE_COLORS.map(c => c.toUpperCase());
+        const inPalette = (c: string | undefined): boolean => !!c && palette.includes(c.toUpperCase());
+        let changed = false;
+        this.state.spaces.forEach((s, i) => {
+            if (!inPalette(s.color)) {
+                s.color = SPACE_COLORS[i % SPACE_COLORS.length];
+                changed = true;
+            }
+        });
+        if (changed) {
+            this.scheduleSave();
         }
     }
 

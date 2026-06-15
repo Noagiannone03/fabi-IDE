@@ -158,6 +158,13 @@
         "preferences": {
           "workbench.colorTheme": "fabi-islands",
           "workbench.iconTheme": "material-icon-theme",
+          "editor.fontFamily": "'GeistMono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace",
+          "editor.fontSize": 13,
+          "editor.lineHeight": 1.7,
+          "editor.fontLigatures": true,
+          "editor.letterSpacing": 0.2,
+          "terminal.integrated.fontFamily": "'GeistMono', 'SF Mono', ui-monospace, monospace",
+          "terminal.integrated.fontSize": 12.5,
           "files.autoSave": "afterDelay",
           "editor.minimap.enabled": true,
           "security.workspace.trust.enabled": false,

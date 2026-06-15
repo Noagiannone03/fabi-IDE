@@ -7,11 +7,20 @@
     <link rel="stylesheet" href="codicon.css" />
     <title>Fabi</title>
     <style>
+        @font-face {
+            font-family: 'Inter';
+            src: url('fonts/InterVariable.woff2') format('woff2');
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+        }
         * { box-sizing: border-box; }
-        :root { --accent: #6b7280; }
+        :root { --accent: #0A84FF; }
         html, body {
             margin: 0; width: 100vw; height: 100vh; overflow: hidden;
-            font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Inter', -apple-system, "Segoe UI", Roboto, sans-serif;
+            letter-spacing: -0.005em;
+            -webkit-font-smoothing: antialiased;
             -webkit-user-select: none; user-select: none; cursor: default;
         }
         /* La barre de titre reste NEUTRE (pas de teinte de couleur). */

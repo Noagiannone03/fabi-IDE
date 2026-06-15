@@ -9,7 +9,15 @@
     --muted: rgba(243, 236, 230, 0.55);
     --muted-2: rgba(243, 236, 230, 0.34);
     --hairline: rgba(255, 255, 255, 0.08);
-    --accent: #6b7280;
+    --accent: #0A84FF;
+}
+
+@font-face {
+    font-family: 'Inter';
+    src: url('./fonts/InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
 }
 
 * { box-sizing: border-box; }
@@ -17,7 +25,9 @@
 html, body {
     margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: transparent;
-    font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-family: 'Inter', -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
     color: var(--text);
     -webkit-user-select: none; user-select: none; cursor: default;
 }
@@ -48,11 +58,13 @@ html, body {
 .preview {
     width: 52px; height: 52px; flex: 0 0 auto;
     border-radius: 15px;
-    background: color-mix(in srgb, var(--accent) 34%, var(--tile-active));
+    background: var(--accent);
     color: #fff;
     display: grid; place-items: center;
     font-size: 22px; font-weight: 680;
-    box-shadow: 0 8px 22px -10px var(--accent);
+    box-shadow:
+        0 10px 26px -10px color-mix(in srgb, var(--accent) 75%, transparent),
+        inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
     transition: background-color .25s ease, box-shadow .25s ease;
 }
 .preview-glyph { display: grid; place-items: center; line-height: 1; }
@@ -122,5 +134,10 @@ html, body {
 }
 .btn:active { transform: scale(.97); }
 .btn.ghost:hover { background: rgba(255, 255, 255, 0.06); }
-.btn.primary { background: #2f333b; border-color: transparent; color: #fff; }
+/* Le bouton « Créer » adopte la COULEUR choisie pour l'espace (feedback Arc). */
+.btn.primary {
+    background: var(--accent); border-color: transparent; color: #fff;
+    box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--accent) 80%, transparent);
+    transition: background .25s ease, filter .15s ease, transform .1s ease, box-shadow .25s ease;
+}
 .btn.primary:hover { filter: brightness(1.08); }

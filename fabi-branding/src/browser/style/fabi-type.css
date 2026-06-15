@@ -1,0 +1,102 @@
+/*
+ * Fabi — TYPOGRAPHIE.
+ *
+ * Police UI = **Inter** (variable) — la référence des interfaces modernes
+ * (lisible, neutre, excellente en petit). Code/terminaux = **GeistMono**.
+ *
+ * IMPORTANT : on ne touche QUE les variables de police Theia (méthode supportée)
+ * + le lissage. On n'applique PAS `font-family`/`font-feature-settings` en large
+ * (ex. `.lm-Widget`) : ça contaminait les polices d'icônes (codicon, Material,
+ * FontAwesome) et cassait les glyphes. Les icônes sont explicitement préservées.
+ */
+
+@font-face {
+    font-family: 'Inter';
+    src: url('./fonts/InterVariable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'GeistMono';
+    src: url('./fonts/GeistMono-Variable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+/* Override des variables de police Theia.
+   ⚠️ Theia pose `--theia-ui-font-family` sur `body.mac` / `.windows` / `.linux`
+   (cf. os.css) — un ancêtre PLUS PROCHE que `:root`. Pour la résolution d'une
+   variable CSS, c'est l'ancêtre le plus proche qui l'emporte (pas la specificity).
+   Donc un override sur `:root` seul est masqué par `body.mac` → la police ne
+   change jamais. On redéclare la variable AUSSI sur ces classes de plateforme. */
+:root,
+body.mac,
+body.windows,
+body.linux {
+    --theia-ui-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --theia-content-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --theia-code-font-family: 'GeistMono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace !important;
+}
+
+/* Inter PARTOUT : on la pose sur `body` → tout l'UI en hérite (la méthode par
+   variables Theia ne couvre pas tout). SANS !important : les éléments d'icônes,
+   qui posent leur propre `font-family`, gardent la priorité (cf. garde-fou plus bas).
+   + features Inter (sets stylistiques discrets + ligatures contextuelles)
+   + lissage net macOS + léger tracking négatif (Inter respire mieux serré en UI). */
+body {
+    font-family: var(--theia-ui-font-family);
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    font-feature-settings: 'cv05' 1, 'ss01' 1, 'calt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* Les champs de formulaire n'héritent PAS la police par défaut → on force. */
+input, textarea, select, button, optgroup {
+    font-family: inherit;
+    letter-spacing: inherit;
+}
+
+/* Variations de graisse : titres / emphase en 600 (semibold) au lieu de 700
+   (bold) → plus fin, moins lourd, plus « actuel ». */
+h1, h2, h3, h4, h5, h6,
+b, strong,
+.theia-header,
+.theia-view-container-part-header .label,
+.theia-AgentLabel {
+    font-weight: 600;
+}
+
+/* Terminaux : GeistMono (xterm pose sa propre famille). */
+.terminal,
+.xterm,
+.xterm .xterm-rows {
+    font-family: var(--theia-code-font-family) !important;
+}
+
+/* GARDE-FOU icônes : les polices d'icônes ne doivent JAMAIS hériter d'Inter ni de
+   son tracking/features (sinon glyphes cassés / tofu / décalés). On remet à zéro
+   features + letter-spacing partout, ET on ré-affirme la police d'icône avec
+   !important pour les familles connues — la pose large d'Inter ne peut plus les
+   contaminer. */
+.codicon,
+[class*='codicon-'],
+.fa, .fas, .far, .fab,
+.octicon,
+.monaco-icon-label::before,
+.theia-file-icons-js,
+[class*='file-icon'] {
+    font-feature-settings: normal !important;
+    letter-spacing: normal !important;
+}
+.codicon,
+[class*='codicon-'] {
+    font-family: 'codicon' !important;
+}
+.fa, .fas, .far, .fab {
+    font-family: 'FontAwesome' !important;
+}

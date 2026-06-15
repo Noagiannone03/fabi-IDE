@@ -36,16 +36,16 @@
     --theia-tab-activeBorderTop: transparent !important;
     --theia-tab-activeBorder: transparent !important;
 
-    /* onglets éditeur : l'actif est un gris nettement PLUS CLAIR (carte qui
-       ressort), les inactifs sombres. Délimitation forte par la couleur,
-       zéro orange. */
-    --theia-tab-activeBackground: #2f333b !important;
+    /* onglets éditeur : l'actif fusionne avec la SURFACE de l'île éditeur (façon
+       macOS — l'onglet sélectionné et son éditeur ne font qu'un), les inactifs
+       reculent (plus sombres). Délimitation par la profondeur, zéro orange. */
+    --theia-tab-activeBackground: #181a1d !important;
     --theia-tab-inactiveBackground: #131316 !important;
-    --theia-tab-hoverBackground: #1d1f24 !important;
-    --theia-tab-border: #0c0c0f !important;
-    --theia-tab-activeForeground: #ffffff !important;
-    --theia-tab-inactiveForeground: #797d87 !important;
-    --theia-editorGroupHeader-tabsBackground: #0d0d10 !important;
+    --theia-tab-hoverBackground: #1e2025 !important;
+    --theia-tab-border: #0b0b0e !important;
+    --theia-tab-activeForeground: #f2f3f5 !important;
+    --theia-tab-inactiveForeground: #888d92 !important;
+    --theia-editorGroupHeader-tabsBackground: #111114 !important;
 
     /* liens & accents de liste : gris clair neutre */
     --theia-textLink-foreground: #cfd1d6 !important;
@@ -112,10 +112,11 @@
     color: var(--theia-foreground);
 }
 
-/* Wordmark uniforme : MÊME police, MÊME poids, couleur neutre pour
-   « Fa » et « bi » — aucune différence de style entre les deux. */
-.fabi-wordmark .fa,
-.fabi-wordmark .bi {
+/* Wordmark uniforme : MÊME police, MÊME poids, couleur neutre pour « Fa » et
+   « bi ». NB : classes `fabi-wm-a/-b` (PAS `.fa`/`.bi` qui entrent en collision
+   avec FontAwesome / Bootstrap Icons → le « Fa » héritait de FontAwesome = serif). */
+.fabi-wordmark .fabi-wm-a,
+.fabi-wordmark .fabi-wm-b {
     font-family: inherit;
     font-weight: inherit;
     color: inherit;

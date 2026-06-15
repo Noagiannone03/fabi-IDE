@@ -18,6 +18,7 @@
     "@theia/ai-ide": "1.72.2",
     "@theia/ai-openai": "1.72.2",
     "@theia/core": "1.72.2",
+    "@theia/terminal": "1.72.2",
     "lucide-react": "^1.18.0"
   },
   "devDependencies": {

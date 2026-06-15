@@ -2,15 +2,22 @@
 // Un « Space » = un bureau de travail = un workspace Theia + son identité visuelle.
 // Le rail n'est qu'une vue de cet état ; la vérité vit dans le main (SpaceStore).
 
-/** Palette d'accents proposés pour un Space (signature sobre par bureau, peu saturée). */
+/**
+ * Palette d'accents d'un Space = les **couleurs système Apple** (valeurs dark-mode
+ * officielles de la HIG). Vives mais raffinées — c'est la signature « Arc / macOS »,
+ * à l'opposé des pastels désaturés génériques. Une couleur pleine par bureau.
+ */
 export const SPACE_COLORS = [
-    '#6B7280', // ardoise (défaut)
-    '#8A8174', // taupe
-    '#6B8F71', // vert sauge
-    '#5F7F9A', // bleu grisé
-    '#7D739E', // violet doux
-    '#9B7184', // rose fumé
-    '#94A3B8'  // acier
+    '#0A84FF', // bleu (défaut) — systemBlue
+    '#5E5CE6', // indigo      — systemIndigo
+    '#BF5AF2', // violet      — systemPurple
+    '#FF375F', // rose        — systemPink
+    '#FF453A', // rouge       — systemRed
+    '#FF9F0A', // ambre       — systemOrange
+    '#FFD60A', // jaune       — systemYellow
+    '#30D158', // vert        — systemGreen
+    '#40C8E0', // cyan        — systemTeal
+    '#8E8E93'  // graphite    — systemGray (neutre)
 ] as const;
 
 export type SpaceColor = typeof SPACE_COLORS[number] | string;
