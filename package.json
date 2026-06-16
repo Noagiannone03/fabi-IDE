@@ -5,14 +5,15 @@
     "node": ">=18"
   },
   "scripts": {
-    "build:browser": "yarn --cwd browser-app bundle",
-    "build:electron": "yarn --cwd electron-app bundle",
+    "//": "Theia ne tourne qu'en node@22 (Node 26 casse yargs/Theia). On lance yarn.js AVEC node@22 comme interpréteur : ce yarn a node@22 en execPath, donc son shim node interne et tous les process imbriqués (theia) tournent en node@22 — peu importe le node du shell. Un simple préfixe PATH ne suffit pas : yarn place son propre shim node en tête du PATH.",
+    "build:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd browser-app bundle",
+    "build:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd electron-app bundle",
     "prepare": "lerna run prepare",
     "postinstall": "theia check:theia-version",
-    "start:browser": "yarn --cwd browser-app start",
-    "start:electron": "yarn --cwd electron-app start",
-    "watch:browser": "lerna run --parallel watch --ignore electron-app",
-    "watch:electron": "lerna run --parallel watch --ignore browser-app"
+    "start:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd browser-app start",
+    "start:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd electron-app start",
+    "watch:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run --parallel watch --ignore electron-app",
+    "watch:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run --parallel watch --ignore browser-app"
   },
   "devDependencies": {
     "lerna": "2.4.0"
