@@ -45,6 +45,15 @@ export interface SwarmEntry {
     lastBootstrapResult?: string | null;
     nodesActive?: number;
     nodesInitializing?: number;
+    /** Une pipeline complète existe, même si elle n'est pas encore prête à router. */
+    pipelineCount?: number;
+    /** Nombre de pipelines dont tous les nœuds sont prêts côté worker. */
+    pipelineReadyCount?: number;
+    /** Vrai seulement si une requête peut être routée maintenant. */
+    pipelineReady?: boolean;
+    routingReady?: boolean;
+    pipelineCapacityTotal?: number;
+    pipelineCapacityCurrent?: number;
     lastSeen: string;
     containerName?: string;
 }

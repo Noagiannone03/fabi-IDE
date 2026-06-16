@@ -6,7 +6,7 @@ import { OpenAiLanguageModelsManager } from '@theia/ai-openai/lib/common/openai-
 import { AgentService } from '@theia/ai-core/lib/common/agent-service';
 import { AISettingsService } from '@theia/ai-core/lib/common/settings-service';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
-import { SwarmEntry, FABI_MODEL_ID } from '../common/fabi-swarm-protocol';
+import { ConnectionInfo, SwarmEntry, FABI_MODEL_ID } from '../common/fabi-swarm-protocol';
 
 /** Préférence Theia AI : l'agent (par id) qui traite un message du chat quand
  *  aucun @agent n'est mentionné. Sans elle (ni mention, ni fallback) le chat
@@ -51,26 +51,42 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
         // Agent par défaut dès le boot (indépendant du swarm) → le chat sait
         // toujours qui traite un message sans @mention.
         this.ensureDefaultChatAgent();
-        // Re-câble dès que le swarm actif change (connexion / switch).
-        this.frontend.onActiveChangedEvent(swarm => void this.wire(swarm));
+        // Re-câble uniquement quand le swarm est réellement consommable. Un
+        // swarm sélectionné peut encore être en bootstrap/chargement ; l'exposer
+        // trop tôt à Theia provoque des requêtes "Routing pipelines not ready".
+        this.frontend.onActiveChangedEvent(() => void this.syncModelRegistration());
+        this.frontend.onConnectionChangedEvent(() => void this.syncModelRegistration());
         // État initial (le backend a pu pousser avant qu'on s'abonne).
-        if (this.frontend.active) {
-            void this.wire(this.frontend.active);
-        } else {
-            try {
-                const active = await this.frontend.service.getActiveSwarm();
-                if (active) {
-                    void this.wire(active);
-                }
-            } catch {
-                /* backend indispo → on câblera au prochain push */
-            }
+        try {
+            const [active, connection] = await Promise.all([
+                this.frontend.service.getActiveSwarm(),
+                this.frontend.service.getConnection()
+            ]);
+            this.frontend.active = active;
+            this.frontend.connection = connection;
+            void this.syncModelRegistration();
+        } catch {
+            /* backend indispo -> on câblera au prochain push */
         }
     }
 
-    protected async wire(swarm: SwarmEntry | undefined): Promise<void> {
+    protected async syncModelRegistration(): Promise<void> {
+        const swarm = this.frontend.active;
+        const connection = this.frontend.connection;
+        if (!swarm || !connection?.ready) {
+            this.openai.removeLanguageModels(FABI_MODEL_ID);
+            return;
+        }
+        await this.wire(swarm, connection);
+    }
+
+    protected async wire(swarm: SwarmEntry | undefined, connection?: ConnectionInfo): Promise<void> {
         if (!swarm) {
-            return; // déconnecté : on laisse le dernier modèle enregistré (inerte sans worker)
+            return;
+        }
+        if (connection && !connection.ready) {
+            this.openai.removeLanguageModels(FABI_MODEL_ID);
+            return;
         }
         let apiKey = 'fabi-no-auth';
         try {

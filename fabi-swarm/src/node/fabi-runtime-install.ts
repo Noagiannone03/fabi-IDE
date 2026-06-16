@@ -241,12 +241,15 @@ function extractTarZst(archive: string, destDir: string): Promise<void> {
     });
 }
 
-/** Remplace le placeholder de build par le vrai chemin (venv relocatable). */
-function relocate(root: string): void {
-    const runtimeDir = join(root, 'runtime');
-    if (!existsSync(runtimeDir)) {
+/** Remplace les chemins de build/staging par le vrai chemin final. */
+function relocate(extractedRoot: string, finalRoot: string): void {
+    if (!existsSync(extractedRoot)) {
         return;
     }
+    const replacements: Array<[string, string]> = [
+        [RELOCATE_PLACEHOLDER, finalRoot],
+        [extractedRoot, finalRoot]
+    ];
     const walk = (dir: string): void => {
         for (const name of readdirSync(dir, { withFileTypes: true })) {
             const full = join(dir, name.name);
@@ -257,9 +260,15 @@ function relocate(root: string): void {
                     if (statSync(full).size > 2_000_000) {
                         continue; // gros binaire → pas du texte
                     }
-                    const content = readFileSync(full, 'utf-8');
-                    if (content.includes(RELOCATE_PLACEHOLDER)) {
-                        writeFileSync(full, content.split(RELOCATE_PLACEHOLDER).join(root));
+                    let next = readFileSync(full, 'utf-8');
+                    const original = next;
+                    for (const [from, to] of replacements) {
+                        if (from && from !== to && next.includes(from)) {
+                            next = next.split(from).join(to);
+                        }
+                    }
+                    if (next !== original) {
+                        writeFileSync(full, next);
                     }
                 } catch {
                     /* binaire / illisible → on saute */
@@ -267,7 +276,7 @@ function relocate(root: string): void {
             }
         }
     };
-    walk(runtimeDir);
+    walk(extractedRoot);
 }
 
 /**
@@ -344,7 +353,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
             rmSync(staging, { recursive: true, force: true });
             throw new Error('binaire fabi absent après extraction — tarball invalide');
         }
-        relocate(staging);
+        relocate(staging, root);
 
         if (existsSync(root)) {
             const backup = root + '.backup-' + process.pid;

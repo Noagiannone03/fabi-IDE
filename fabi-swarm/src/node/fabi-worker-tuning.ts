@@ -95,7 +95,11 @@ export function buildWorkerEnv(): NodeJS.ProcessEnv {
             env[key] = value;
         }
     };
-    setIfUnset('FABI_ACCOUNT_TOKEN', getAccountToken());
+    // The IDE account token has one source of truth: ~/.config/fabi/account-token.
+    // Do not let an inherited shell FABI_ACCOUNT_TOKEN override it, otherwise the
+    // worker can contribute under one account while the API client consumes with
+    // another token and the scheduler gate returns 402.
+    env.FABI_ACCOUNT_TOKEN = getAccountToken();
     if (hw.accelerator === 'apple-silicon' && hw.ramGb < 64) {
         setIfUnset('PARALLAX_SYSTEM_RESERVE_GB', hw.ramGb <= 24 ? '4' : '6');
         return env;

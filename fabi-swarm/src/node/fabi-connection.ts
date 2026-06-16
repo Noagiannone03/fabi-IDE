@@ -17,6 +17,9 @@ export function deriveConnection(
     const peersTotal = active?.peers;
     const peersActive = active?.nodesActive;
     const peersInitializing = active?.nodesInitializing;
+    const pipelineReady = active?.pipelineReady;
+    const pipelineCount = active?.pipelineCount;
+    const pipelineReadyCount = active?.pipelineReadyCount;
     const layersAssigned = worker.startLayer !== undefined && worker.endLayer !== undefined
         ? worker.endLayer - worker.startLayer : undefined;
     const base = {
@@ -77,16 +80,24 @@ export function deriveConnection(
 
     const total = peersTotal ?? 0;
 
-    // Pipeline complet côté scheduler. Notre worker tourne (standby OU actif) → le
-    // swarm SERT (un gros nœud peut couvrir toutes les couches) et notre heartbeat
-    // satisfait la porte → consommable. On ne bloque PAS sur l'état local du
-    // worker : un nœud mis en standby (couvert par un plus gros contributeur) ne se
-    // voit attribuer AUCUNE couche → il ne passe jamais 'ready', mais ce n'est pas
-    // requis pour consommer. (Bug corrigé : on attendait à tort `worker.stage==='ready'`.)
+    // Pipeline complet côté scheduler. Nouveau signal préféré :
+    // `pipelineReady=true` veut dire "au moins une route peut servir une requête
+    // maintenant". Fallback pour anciens registries : si `nodesActive` existe, il
+    // doit être > 0 ; sinon on conserve l'ancien comportement.
     if (active.schedulerStatus === 'available') {
+        const hasServingPipeline = pipelineReady ?? (peersActive === undefined || peersActive > 0);
+        if (!hasServingPipeline) {
+            return { reason: 'loading-model', ready: false, headline: 'Pipeline en préparation',
+                activity: peersInitializing && peersInitializing > 0
+                    ? `${peersInitializing} nœud(s) chargent les poids du modèle`
+                    : pipelineCount && pipelineCount > 0
+                        ? `${pipelineReadyCount ?? 0}/${pipelineCount} pipeline(s) prête(s)`
+                        : 'allocation créée — attente que le pipeline soit prêt',
+                ...base };
+        }
         if (worker.kind === 'running') {
             return { reason: 'ready', ready: true, headline: 'Connecté',
-                activity: 'prêt — tu contribues 🦦', ...base };
+                activity: 'prêt — tu contribues', ...base };
         }
         return { reason: 'loading-model', ready: false, headline: 'Préparation',
             activity: 'le swarm est prêt — démarrage de ton worker…', ...base };
@@ -94,6 +105,13 @@ export function deriveConnection(
 
     // schedulerStatus === 'waiting' : le pipeline n'est pas (encore) complet.
     // Verdict capacité/peers AVANT l'étape worker (sinon « joining » masquerait la vérité).
+    if (pipelineCount && pipelineCount > 0 && pipelineReady === false) {
+        return { reason: 'loading-model', ready: false, headline: 'Pipeline en préparation',
+            activity: peersInitializing && peersInitializing > 0
+                ? `${peersInitializing} nœud(s) chargent les poids du modèle`
+                : `${pipelineReadyCount ?? 0}/${pipelineCount} pipeline(s) prête(s)`,
+            ...base };
+    }
     if (active.lastBootstrapResult === 'failed_capacity') {
         return { reason: 'insufficient-capacity', ready: false, headline: 'Pas assez de contributeurs',
             activity: `${total} nœud(s) — ce modèle ne tient pas sur les nœuds connectés, il faut un contributeur de plus`,
