@@ -150,8 +150,14 @@ export class FabiMetricsCollector {
         const running = this.isWorkerRunning();
         try {
             const list = (await si.processes()).list || [];
+            // IMPORTANT : sur macOS, systeminformation tronque `name`/`command` à
+            // « python » — le chemin complet (…/parallax-venv/bin/python) n'est que
+            // dans `path`. On matche donc les TROIS champs, sinon le worker du Mac
+            // n'est jamais reconnu (0 Go / 0 process affichés à tort).
             const isMine = (p: si.Systeminformation.ProcessesProcessData) =>
-                (p.command || '').includes(WORKER_PROC_MATCH) || (p.name || '').includes(WORKER_PROC_MATCH);
+                (p.command || '').includes(WORKER_PROC_MATCH)
+                || (p.name || '').includes(WORKER_PROC_MATCH)
+                || ((p as { path?: string }).path || '').includes(WORKER_PROC_MATCH);
             const mine = list.filter(isMine);
 
             // --- Notre worker (somme de tous ses process) ---
