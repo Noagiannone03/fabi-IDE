@@ -3,7 +3,7 @@ import { Emitter, Event } from '@theia/core';
 import { RemoteConnectionProvider, ServiceConnectionProvider } from '@theia/core/lib/browser';
 import {
     FabiSwarmService, FabiSwarmClient, FABI_SWARM_SERVICE_PATH,
-    SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo
+    SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo, FabiMetrics
 } from '../common/fabi-swarm-protocol';
 
 /**
@@ -22,6 +22,7 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     protected readonly activeEmitter = new Emitter<SwarmEntry | undefined>();
     protected readonly runtimeEmitter = new Emitter<RuntimeStatus>();
     protected readonly connectionEmitter = new Emitter<ConnectionInfo>();
+    protected readonly metricsEmitter = new Emitter<FabiMetrics>();
 
     /** Dernières valeurs poussées (pour un rendu immédiat à l'attache). */
     swarms: SwarmEntry[] = [];
@@ -29,12 +30,14 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     active: SwarmEntry | undefined;
     runtime: RuntimeStatus | undefined;
     connection: ConnectionInfo | undefined;
+    metrics: FabiMetrics | undefined;
 
     readonly onSwarmsChangedEvent: Event<SwarmEntry[]> = this.swarmsEmitter.event;
     readonly onWorkerChangedEvent: Event<WorkerState> = this.workerEmitter.event;
     readonly onActiveChangedEvent: Event<SwarmEntry | undefined> = this.activeEmitter.event;
     readonly onRuntimeChangedEvent: Event<RuntimeStatus> = this.runtimeEmitter.event;
     readonly onConnectionChangedEvent: Event<ConnectionInfo> = this.connectionEmitter.event;
+    readonly onMetricsChangedEvent: Event<FabiMetrics> = this.metricsEmitter.event;
 
     constructor(
         @inject(RemoteConnectionProvider) connectionProvider: ServiceConnectionProvider
@@ -63,5 +66,9 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     onConnectionChanged(info: ConnectionInfo): void {
         this.connection = info;
         this.connectionEmitter.fire(info);
+    }
+    onMetricsChanged(metrics: FabiMetrics): void {
+        this.metrics = metrics;
+        this.metricsEmitter.fire(metrics);
     }
 }

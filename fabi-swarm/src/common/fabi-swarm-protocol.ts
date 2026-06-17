@@ -154,6 +154,56 @@ export interface FabiSwarmClient {
     onRuntimeStatusChanged(status: RuntimeStatus): void;
     /** État de connexion dérivé (worker + scheduler) → écran de connexion. */
     onConnectionChanged(info: ConnectionInfo): void;
+    /** Métriques live de la machine + du worker (moniteur de perfs). */
+    onMetricsChanged(metrics: FabiMetrics): void;
+}
+
+/** Un point d'historique (pour les sparklines). */
+export interface FabiMetricSample {
+    /** Horodatage epoch ms. */
+    t: number;
+    /** Charge CPU système globale (0–100). */
+    cpu: number;
+    /** RAM utilisée (0–100). */
+    mem: number;
+    /** Charge CPU du worker (0–100, normalisée sur le nombre de cœurs). */
+    worker: number;
+}
+
+/**
+ * Photo des perfs machine + worker, poussée en live au frontend (moniteur).
+ * Tout est best-effort : un champ peut manquer si l'OS ne l'expose pas (p.ex.
+ * l'usage GPU live sur Apple Silicon n'est pas accessible sans privilèges).
+ */
+export interface FabiMetrics {
+    t: number;
+    system: {
+        cpu: number;          // % charge CPU globale (0–100)
+        cpuCores: number;
+        memUsedGb: number;
+        memTotalGb: number;
+        memPct: number;       // 0–100
+        gpu?: {
+            name: string;
+            usage?: number;     // 0–100 si dispo
+            memUsedMb?: number;
+            memTotalMb?: number;
+        };
+    };
+    /** Conso de NOTRE worker (arbre de process parallax). null = pas de worker. */
+    worker: null | {
+        running: boolean;
+        cpu: number;          // % normalisé sur le nombre de cœurs (0–100)
+        cpuRaw: number;       // % brut (peut dépasser 100 sur multi-cœurs)
+        memGb: number;        // RSS total de l'arbre
+        procCount: number;
+    };
+    /** Pics observés depuis le démarrage du moniteur. */
+    peaks: { cpu: number; memPct: number; workerCpu: number; workerMemGb: number };
+    /** État de pression dérivé (couleur du badge). */
+    pressure: 'normal' | 'elevated' | 'critical';
+    /** Historique glissant (ancien → récent) pour les sparklines. */
+    history: FabiMetricSample[];
 }
 
 /**
@@ -192,4 +242,7 @@ export interface FabiSwarmService {
      * contribution (« tu contribues = tu consommes »).
      */
     getAccountToken(): Promise<string>;
+
+    /** Dernière photo de métriques (pour l'affichage initial). */
+    getMetrics(): Promise<FabiMetrics | undefined>;
 }

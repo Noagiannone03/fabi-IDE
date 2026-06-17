@@ -19,7 +19,8 @@
     "@theia/ai-openai": "1.72.2",
     "@theia/core": "1.72.2",
     "@theia/terminal": "1.72.2",
-    "lucide-react": "^1.18.0"
+    "lucide-react": "^1.18.0",
+    "systeminformation": "^5.23.5"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",

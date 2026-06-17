@@ -24,6 +24,7 @@ import { FabiTerminalFrontendContribution } from './fabi-terminal-contribution';
 import { FabiPanelDockContribution } from './fabi-panel-dock';
 import { FabiEditorActionsContribution, FABI_CHAT_INSTANCE_FACTORY_ID } from './fabi-editor-actions';
 import { FabiTabRenameContribution } from './fabi-tab-rename';
+import { FabiMetricsStatusBar } from './fabi-metrics-statusbar';
 import { FabiChatInstanceWidget } from './fabi-chat-instance-widget';
 
 // Renomme le panneau IA « AI Chat » → « Fabi AI ». LABEL est le champ statique
@@ -38,6 +39,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // Façade frontend : proxy RPC client-aware + Events. Singleton partagé.
     bind(FabiSwarmFrontend).toSelf().inSingletonScope();
     bind(FabiSwarmService).toDynamicValue(ctx => ctx.container.get(FabiSwarmFrontend).service).inSingletonScope();
+
+    // Moniteur de perfs (status bar bas-droite + modale détaillée).
+    bind(FabiMetricsStatusBar).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiMetricsStatusBar);
 
     // Enregistrement dynamique du modèle OpenAI-compatible (swarm actif → chat IA).
     bind(FabiSwarmModelContribution).toSelf().inSingletonScope();

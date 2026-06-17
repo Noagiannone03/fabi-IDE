@@ -9,6 +9,8 @@ import { FabiRuntimeManager } from './fabi-runtime-manager';
 import { RegistryFeed } from './fabi-registry';
 import { deriveConnection } from './fabi-connection';
 import { getAccountToken } from './fabi-account-token';
+import { FabiMetricsCollector } from './fabi-metrics';
+import { FabiMetrics } from '../common/fabi-swarm-protocol';
 
 /**
  * Implémentation backend : pilote le worker Parallax (rejoindre/quitter un
@@ -31,16 +33,42 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected switching = false;
     protected connection: ConnectionInfo = deriveConnection(undefined, { kind: 'stopped' });
 
+    protected metrics: FabiMetricsCollector | undefined;
+
     setClient(client: FabiSwarmClient | undefined): void {
         this.client = client;
         if (client) {
             this.ensureFeed();
+            this.ensureMetrics();
             client.onSwarmsChanged(this.feed?.snapshot() ?? []);
             client.onWorkerStateChanged(this.workerState);
             client.onActiveSwarmChanged(this.activeSwarm);
             client.onRuntimeStatusChanged(this.runtime.status());
             client.onConnectionChanged(this.connection);
+            const m = this.metrics?.getLatest();
+            if (m) {
+                client.onMetricsChanged(m);
+            }
         }
+    }
+
+    /** Démarre le moniteur de perfs (machine + worker) une fois, à la connexion
+     *  du frontend. Pousse chaque échantillon via onMetricsChanged (zéro polling
+     *  côté client). isWorkerRunning gate la sonde process (la plus lourde). */
+    protected ensureMetrics(): void {
+        if (this.metrics) {
+            return;
+        }
+        this.metrics = new FabiMetricsCollector(
+            m => this.client?.onMetricsChanged(m),
+            () => this.workerState.kind === 'running'
+        );
+        this.metrics.start();
+    }
+
+    async getMetrics(): Promise<FabiMetrics | undefined> {
+        this.ensureMetrics();
+        return this.metrics?.getLatest();
     }
 
     protected ensureFeed(): void {
@@ -195,6 +223,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
      * (`process.on('exit')` côté worker reste le dernier filet pour les cas durs.)
      */
     async onStop(): Promise<void> {
+        this.metrics?.stop();
         if (this.handle) {
             try {
                 await this.handle.stop();

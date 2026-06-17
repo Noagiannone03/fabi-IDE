@@ -10887,6 +10887,11 @@ swr@^2.2.5:
     dequal "^2.0.3"
     use-sync-external-store "^1.6.0"
 
+systeminformation@^5.23.5:
+  version "5.31.7"
+  resolved "https://registry.yarnpkg.com/systeminformation/-/systeminformation-5.31.7.tgz#32009a8790af048299ea46d01e9f306adc1abb45"
+  integrity sha512-/8NC53e5nP9nmhn42/ncdOkyJnOoue/Vy+tJOyUGd1Yv66G069wK4rrziwhrqDETgk78CudTQupw5z19S5uoZw==
+
 syswide-cas@^5.3.0:
   version "5.3.0"
   resolved "https://registry.yarnpkg.com/syswide-cas/-/syswide-cas-5.3.0.tgz#ef24b8580caa1c6d985b88cacfaa35db16982ed5"

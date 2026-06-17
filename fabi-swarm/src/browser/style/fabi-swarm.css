@@ -529,3 +529,78 @@
     display: flex;
     flex-direction: column;
 }
+
+/* ============================================================
+   Moniteur de perfs (status bar + modale). Données: backend systeminformation.
+   ============================================================ */
+.fabi-mon-dialog .dialogContent { padding: 0; }
+.fabi-mon {
+    width: 460px;
+    max-width: 86vw;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px 18px 6px;
+    color: var(--fabi-text, #cdd0d6);
+}
+.fabi-mon-empty { opacity: 0.6; font-size: 12.5px; padding: 6px 2px; }
+
+.fabi-mon-head { display: flex; align-items: center; gap: 10px; }
+.fabi-mon-title { font-weight: 650; font-size: 14px; }
+.fabi-mon-badge {
+    margin-left: auto; font-size: 11px; font-weight: 600;
+    padding: 2px 9px; border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.06);
+}
+.fabi-mon-badge.p-normal { color: #62c980; background: rgba(98, 201, 128, 0.14); }
+.fabi-mon-badge.p-elevated { color: #e0a458; background: rgba(224, 164, 88, 0.16); }
+.fabi-mon-badge.p-critical { color: #ec6a5e; background: rgba(236, 106, 94, 0.18); }
+
+.fabi-mon-grid { display: flex; flex-direction: column; gap: 13px; }
+.fabi-mon-gauge.dim { opacity: 0.5; }
+.fabi-mon-gauge-top { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 5px; }
+.fabi-mon-gauge-label { font-size: 12.5px; font-weight: 600; }
+.fabi-mon-gauge-val { font-size: 12.5px; font-variant-numeric: tabular-nums; opacity: 0.9; }
+.fabi-mon-gauge-sub { font-size: 11px; opacity: 0.5; margin-top: 4px; }
+.fabi-mon-bar {
+    position: relative; height: 8px; border-radius: 9999px;
+    background: rgba(127, 127, 127, 0.18); overflow: hidden;
+}
+.fabi-mon-bar-fill { height: 100%; border-radius: 9999px; transition: width 0.4s ease; }
+.fabi-mon-bar-fill.ok { background: #5b8def; }
+.fabi-mon-bar-fill.warn { background: #e0a458; }
+.fabi-mon-bar-fill.crit { background: #ec6a5e; }
+.fabi-mon-bar-peak {
+    position: absolute; top: -2px; width: 2px; height: 12px;
+    background: rgba(255, 255, 255, 0.55); border-radius: 2px;
+    overflow: visible;
+}
+
+.fabi-mon-spark-row { display: flex; gap: 10px; }
+.fabi-mon-spark { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.fabi-mon-spark-head { display: flex; justify-content: space-between; font-size: 10.5px; opacity: 0.6; }
+.fabi-mon-spark-val { font-variant-numeric: tabular-nums; }
+.fabi-mon-spark-svg {
+    width: 100%; height: 30px; display: block;
+    background: rgba(127, 127, 127, 0.08); border-radius: 7px;
+}
+
+.fabi-mon-worker {
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+    padding-top: 12px; display: flex; flex-direction: column; gap: 10px;
+}
+.fabi-mon-worker-head { display: flex; align-items: center; gap: 8px; }
+.fabi-mon-worker-title { font-weight: 650; font-size: 13px; }
+.fabi-mon-dot { width: 8px; height: 8px; border-radius: 9999px; }
+.fabi-mon-dot.on { background: #62c980; box-shadow: 0 0 6px rgba(98, 201, 128, 0.7); }
+.fabi-mon-dot.off { background: #6b7280; }
+.fabi-mon-worker-state { font-size: 12px; opacity: 0.7; }
+.fabi-mon-worker-stats { display: flex; flex-wrap: wrap; gap: 8px; }
+.fabi-mon-stat {
+    flex: 1 1 80px; display: flex; flex-direction: column; gap: 1px;
+    padding: 8px 10px; border-radius: 10px;
+    background: var(--fabi-surface-2, #212429);
+}
+.fabi-mon-stat-k { font-size: 10.5px; opacity: 0.55; }
+.fabi-mon-stat-v { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.fabi-mon-stat-hint { font-size: 10px; opacity: 0.45; }
