@@ -11,7 +11,7 @@
 
 import { cpus } from 'os';
 import * as si from 'systeminformation';
-import { FabiMetrics, FabiMetricSample } from '../common/fabi-swarm-protocol';
+import { FabiMetrics, FabiMetricSample, FabiProcInfo } from '../common/fabi-swarm-protocol';
 
 /** Tout process dont la commande contient ça appartient à NOTRE worker. */
 const WORKER_PROC_MATCH = 'parallax-venv';
@@ -90,11 +90,8 @@ export class FabiMetricsCollector {
                 this.gpuCache = await this.readGpu();
             }
 
-            // --- Worker : conso de l'arbre de process (seulement s'il tourne) ---
-            let worker: FabiMetrics['worker'] = null;
-            if (this.isWorkerRunning()) {
-                worker = await this.readWorker(cores, memTotalGb);
-            }
+            // --- Process : worker agrégé + top consommateurs (« qui bouffe ») ---
+            const { worker, topProcs } = await this.readProcesses(cores, memTotalGb);
 
             // --- Pics ---
             this.peaks.cpu = Math.max(this.peaks.cpu, cpu);
@@ -120,7 +117,8 @@ export class FabiMetricsCollector {
                 worker,
                 peaks: { ...this.peaks },
                 pressure: derivePressure(cpu, memPct),
-                history: [...this.history]
+                history: [...this.history],
+                topProcs
             };
             this.latest = metrics;
             this.onSample(metrics);
@@ -146,26 +144,67 @@ export class FabiMetricsCollector {
         }
     }
 
-    protected async readWorker(cores: number, memTotalGb: number): Promise<FabiMetrics['worker']> {
+    protected async readProcesses(
+        cores: number, memTotalGb: number
+    ): Promise<{ worker: FabiMetrics['worker']; topProcs: FabiProcInfo[] }> {
+        const running = this.isWorkerRunning();
         try {
-            const procs = await si.processes();
-            const mine = (procs.list || []).filter(p =>
-                (p.command || '').includes(WORKER_PROC_MATCH) || (p.name || '').includes(WORKER_PROC_MATCH)
-            );
-            if (mine.length === 0) {
-                return { running: true, cpu: 0, cpuRaw: 0, memGb: 0, procCount: 0 };
+            const list = (await si.processes()).list || [];
+            const isMine = (p: si.Systeminformation.ProcessesProcessData) =>
+                (p.command || '').includes(WORKER_PROC_MATCH) || (p.name || '').includes(WORKER_PROC_MATCH);
+            const mine = list.filter(isMine);
+
+            // --- Notre worker (somme de tous ses process) ---
+            const wCpuRaw = mine.reduce((s, p) => s + (p.cpu || 0), 0);
+            const wMemGb = (mine.reduce((s, p) => s + (p.mem || 0), 0) / 100) * memTotalGb;
+            const worker: FabiMetrics['worker'] = (running || mine.length > 0)
+                ? {
+                    running: true,
+                    cpuRaw: round1(wCpuRaw),
+                    cpu: clampPct(wCpuRaw / cores),
+                    memGb: round2(wMemGb),
+                    procCount: mine.length
+                }
+                : null;
+
+            // --- Top consommateurs : on GROUPE les autres process par nom (sinon
+            // 12 « node »/« Chrome Helper » noient la liste, comme le moniteur
+            // d'activité macOS), puis on prend les plus gros en RAM. Le worker est
+            // une seule entrée à part (« Worker Fabi »). ---
+            const byName = new Map<string, { cpu: number; mem: number }>();
+            for (const p of list) {
+                if (isMine(p)) {
+                    continue;
+                }
+                const n = (p.name || 'process').trim() || 'process';
+                const e = byName.get(n) || { cpu: 0, mem: 0 };
+                e.cpu += p.cpu || 0;
+                e.mem += p.mem || 0;
+                byName.set(n, e);
             }
-            const cpuRaw = mine.reduce((s, p) => s + (p.cpu || 0), 0);
-            const memPctSum = mine.reduce((s, p) => s + (p.mem || 0), 0);
-            return {
-                running: true,
-                cpuRaw: round1(cpuRaw),
-                cpu: clampPct(cpuRaw / cores),
-                memGb: round2((memPctSum / 100) * memTotalGb),
-                procCount: mine.length
-            };
+            const others: FabiProcInfo[] = [...byName.entries()]
+                .map(([name, e]) => ({
+                    name,
+                    cpu: clampPct(e.cpu / cores),
+                    memGb: round2((e.mem / 100) * memTotalGb),
+                    isWorker: false
+                }))
+                .sort((a, b) => b.memGb - a.memGb)
+                .slice(0, 5);
+
+            const topProcs: FabiProcInfo[] = [];
+            if (worker && (worker.memGb > 0 || worker.cpu > 0)) {
+                topProcs.push({ name: 'Worker Fabi', cpu: worker.cpu, memGb: worker.memGb, isWorker: true });
+            }
+            topProcs.push(...others);
+            topProcs.sort((a, b) => b.memGb - a.memGb);
+
+            return { worker, topProcs: topProcs.slice(0, 6) };
         } catch {
-            return { running: true, cpu: 0, cpuRaw: 0, memGb: 0, procCount: 0 };
+            return {
+                worker: running ? { running: true, cpu: 0, cpuRaw: 0, memGb: 0, procCount: 0 } : null,
+                topProcs: []
+            };
         }
     }
 }

@@ -3,13 +3,13 @@ import { DisposableCollection } from '@theia/core';
 import { ReactDialog } from '@theia/core/lib/browser/dialogs/react-dialog';
 import { DialogProps } from '@theia/core/lib/browser/dialogs';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
-import { FabiMetrics, FabiMetricSample } from '../common/fabi-swarm-protocol';
+import { FabiMetrics, FabiMetricSample, FabiProcInfo } from '../common/fabi-swarm-protocol';
 
 /**
- * Modale « Moniteur Fabi » : état live de la machine + conso du worker.
- * Données poussées par le backend (systeminformation) via onMetricsChanged ; la
- * visu (jauges + sparklines) est en SVG inline — léger, zéro lib de charts qui
- * se battrait avec le React de Theia. Le composant s'abonne lui-même aux pushs.
+ * Modale « Moniteur Fabi » : où part la conso de la machine, et surtout la PART
+ * de notre worker vs le reste (barres segmentées worker/autres/libre, à la
+ * Activity Monitor) + le top des process qui consomment. Données poussées par le
+ * backend (systeminformation) ; visu SVG/CSS inline, DA îlot Fabi neutre.
  */
 export class FabiMetricsDialog extends ReactDialog<void> {
     constructor(protected readonly frontend: FabiSwarmFrontend) {
@@ -26,9 +26,9 @@ export class FabiMetricsDialog extends ReactDialog<void> {
 }
 
 const PRESSURE_LABEL: Record<FabiMetrics['pressure'], string> = {
-    normal: 'Normal',
-    elevated: 'Élevé',
-    critical: 'Critique'
+    normal: 'Tout va bien',
+    elevated: 'Charge élevée',
+    critical: 'Charge critique'
 };
 
 export const FabiMetricsView: React.FC<{ frontend: FabiSwarmFrontend }> = ({ frontend }) => {
@@ -46,6 +46,25 @@ export const FabiMetricsView: React.FC<{ frontend: FabiSwarmFrontend }> = ({ fro
 
     const sys = m.system;
     const w = m.worker;
+    const total = sys.memTotalGb || 1;
+
+    // Découpage CPU (en %) et RAM (en Go) : worker / autres apps / libre.
+    const wCpu = w?.cpu ?? 0;
+    const cpuSeg = [
+        { label: 'Ton worker', val: wCpu, cls: 'worker', text: `${fmt(wCpu)} %` },
+        { label: 'Autres apps', val: Math.max(0, sys.cpu - wCpu), cls: 'other', text: `${fmt(Math.max(0, sys.cpu - wCpu))} %` },
+        { label: 'Libre', val: Math.max(0, 100 - sys.cpu), cls: 'free', text: `${fmt(Math.max(0, 100 - sys.cpu))} %` }
+    ];
+    const wMem = w?.memGb ?? 0;
+    const otherMem = Math.max(0, sys.memUsedGb - wMem);
+    const freeMem = Math.max(0, total - sys.memUsedGb);
+    const memSeg = [
+        { label: 'Ton worker', val: wMem, cls: 'worker', text: `${fmt2(wMem)} Go` },
+        { label: 'Autres apps', val: otherMem, cls: 'other', text: `${fmt2(otherMem)} Go` },
+        { label: 'Libre', val: freeMem, cls: 'free', text: `${fmt2(freeMem)} Go` }
+    ];
+    const maxProc = m.topProcs[0]?.memGb || 1;
+
     return (
         <div className="fabi-mon">
             <div className="fabi-mon-head">
@@ -53,85 +72,97 @@ export const FabiMetricsView: React.FC<{ frontend: FabiSwarmFrontend }> = ({ fro
                 <span className={`fabi-mon-badge p-${m.pressure}`}>{PRESSURE_LABEL[m.pressure]}</span>
             </div>
             <div className="fabi-mon-lead">
-                Conso temps réel de ta machine et de ton worker Fabi. Les % sont la part
-                utilisée ; le repère clair sur les barres marque le pic de la session.
+                Où part la puissance de ton PC — et surtout combien <b>ton worker Fabi</b> consomme
+                par rapport au reste. En vert = ta contribution, en gris = les autres apps.
             </div>
 
-            {/* ---- Système ---- */}
-            <div className="fabi-mon-grid">
-                <Gauge label="CPU" value={sys.cpu} text={`${fmt(sys.cpu)} %`}
-                    sub={`${sys.cpuCores} cœurs`} peak={m.peaks.cpu} />
-                <Gauge label="Mémoire" value={sys.memPct} text={`${fmt(sys.memPct)} %`}
-                    sub={`${fmt2(sys.memUsedGb)} / ${fmt2(sys.memTotalGb)} Go`} peak={m.peaks.memPct} />
-                {sys.gpu && (
-                    <Gauge label="GPU" value={sys.gpu.usage ?? 0}
-                        text={sys.gpu.usage !== undefined ? `${fmt(sys.gpu.usage)} %` : '—'}
-                        sub={sys.gpu.name} peak={undefined} dim={sys.gpu.usage === undefined} />
-                )}
+            <SegmentBar title="Processeur" caption={`${fmt(sys.cpu)} % utilisés · ${sys.cpuCores} cœurs`}
+                segments={cpuSeg} total={100} />
+            <SegmentBar title="Mémoire" caption={`${fmt2(sys.memUsedGb)} / ${fmt2(total)} Go utilisés`}
+                segments={memSeg} total={total} />
+            {sys.gpu && sys.gpu.usage !== undefined && (
+                <SegmentBar title={`GPU — ${sys.gpu.name}`} caption={`${fmt(sys.gpu.usage)} % utilisés`}
+                    segments={[
+                        { label: 'Utilisé', val: sys.gpu.usage, cls: 'other', text: `${fmt(sys.gpu.usage)} %` },
+                        { label: 'Libre', val: 100 - sys.gpu.usage, cls: 'free', text: `${fmt(100 - sys.gpu.usage)} %` }
+                    ]} total={100} />
+            )}
+
+            {/* ---- Qui consomme le plus (RAM) ---- */}
+            <div className="fabi-mon-section">
+                <div className="fabi-mon-section-head">Qui consomme le plus <span>RAM</span></div>
+                <div className="fabi-mon-proclist">
+                    {m.topProcs.length === 0 && <div className="fabi-mon-empty">Lecture des process…</div>}
+                    {m.topProcs.map((p, i) => <ProcRow key={i} p={p} max={maxProc} />)}
+                </div>
             </div>
 
-            {/* ---- Sparklines (accent neutre unique, à la DA Fabi) ---- */}
-            <div className="fabi-mon-spark-row">
-                <Spark label="CPU" history={m.history} pick={s => s.cpu} />
-                <Spark label="RAM" history={m.history} pick={s => s.mem} />
-                {w && <Spark label="Worker" history={m.history} pick={s => s.worker} />}
-            </div>
-
-            {/* ---- Worker ---- */}
+            {/* ---- Worker : résumé en une phrase ---- */}
             <div className="fabi-mon-worker">
                 <div className="fabi-mon-worker-head">
-                    <span className="fabi-mon-worker-title">Ton worker Fabi</span>
                     <span className={`fabi-mon-dot ${w?.running ? 'on' : 'off'}`} />
+                    <span className="fabi-mon-worker-title">Ton worker Fabi</span>
                     <span className="fabi-mon-worker-state">{w?.running ? 'actif — tu contribues' : 'inactif'}</span>
                 </div>
                 {w && w.running ? (
-                    <div className="fabi-mon-worker-stats">
-                        <Stat k="CPU" v={`${fmt(w.cpu)} %`} hint={`${fmt(w.cpuRaw)} % brut`} />
-                        <Stat k="Mémoire" v={`${fmt2(w.memGb)} Go`} />
-                        <Stat k="Process" v={`${w.procCount}`} />
-                        <Stat k="Pic CPU" v={`${fmt(m.peaks.workerCpu)} %`} />
-                        <Stat k="Pic RAM" v={`${fmt2(m.peaks.workerMemGb)} Go`} />
+                    <div className="fabi-mon-worker-line">
+                        Il occupe <b>{fmt2(w.memGb)} Go</b> de RAM et <b>{fmt(w.cpu)} %</b> de CPU
+                        sur {w.procCount} process — pics de la session : {fmt2(m.peaks.workerMemGb)} Go / {fmt(m.peaks.workerCpu)} %.
                     </div>
                 ) : (
-                    <div className="fabi-mon-empty">Lance un modèle pour contribuer — la conso du worker s’affichera ici.</div>
+                    <div className="fabi-mon-empty">Lance un modèle pour contribuer — sa conso apparaîtra ici.</div>
                 )}
+            </div>
+
+            {/* ---- Tendance (sparklines) ---- */}
+            <div className="fabi-mon-spark-row">
+                <Spark label="CPU" history={m.history} pick={s => s.cpu} />
+                <Spark label="RAM" history={m.history} pick={s => s.mem} />
+                {w && w.running && <Spark label="Worker" history={m.history} pick={s => s.worker} />}
             </div>
         </div>
     );
 };
 
-const Gauge: React.FC<{ label: string; value: number; text: string; sub?: string; peak?: number; dim?: boolean }>
-    = ({ label, value, text, sub, peak, dim }) => {
-        const pct = Math.max(0, Math.min(100, value));
-        const tone = pct >= 90 ? 'crit' : pct >= 75 ? 'warn' : 'ok';
-        return (
-            <div className={`fabi-mon-gauge ${dim ? 'dim' : ''}`}>
-                <div className="fabi-mon-gauge-top">
-                    <span className="fabi-mon-gauge-label">{label}</span>
-                    <span className="fabi-mon-gauge-val">{text}</span>
-                </div>
-                <div className="fabi-mon-bar">
-                    <div className={`fabi-mon-bar-fill ${tone}`} style={{ width: `${pct}%` }} />
-                    {peak !== undefined && peak > 0 && (
-                        <div className="fabi-mon-bar-peak" style={{ left: `${Math.min(100, peak)}%` }} title={`pic ${fmt(peak)} %`} />
-                    )}
-                </div>
-                {sub && <div className="fabi-mon-gauge-sub">{sub}</div>}
-            </div>
-        );
-    };
+type Seg = { label: string; val: number; cls: string; text: string };
 
-const Stat: React.FC<{ k: string; v: string; hint?: string }> = ({ k, v, hint }) => (
-    <div className="fabi-mon-stat">
-        <span className="fabi-mon-stat-k">{k}</span>
-        <span className="fabi-mon-stat-v">{v}</span>
-        {hint && <span className="fabi-mon-stat-hint">{hint}</span>}
+const SegmentBar: React.FC<{ title: string; caption: string; segments: Seg[]; total: number }>
+    = ({ title, caption, segments, total }) => (
+        <div className="fabi-mon-seg">
+            <div className="fabi-mon-seg-top">
+                <span className="fabi-mon-seg-title">{title}</span>
+                <span className="fabi-mon-seg-cap">{caption}</span>
+            </div>
+            <div className="fabi-mon-seg-bar">
+                {segments.map((s, i) => (
+                    <div key={i} className={`fabi-mon-seg-fill ${s.cls}`}
+                        style={{ width: `${pct(s.val, total)}%` }}
+                        title={`${s.label} : ${s.text}`} />
+                ))}
+            </div>
+            <div className="fabi-mon-seg-legend">
+                {segments.map((s, i) => (
+                    <span key={i} className="fabi-mon-leg">
+                        <i className={`fabi-mon-leg-dot ${s.cls}`} />{s.label} <b>{s.text}</b>
+                    </span>
+                ))}
+            </div>
+        </div>
+    );
+
+const ProcRow: React.FC<{ p: FabiProcInfo; max: number }> = ({ p, max }) => (
+    <div className={`fabi-mon-proc ${p.isWorker ? 'worker' : ''}`}>
+        <span className="fabi-mon-proc-name" title={p.name}>{p.name}</span>
+        <div className="fabi-mon-proc-bar">
+            <div className={`fabi-mon-proc-fill ${p.isWorker ? 'worker' : ''}`} style={{ width: `${pct(p.memGb, max)}%` }} />
+        </div>
+        <span className="fabi-mon-proc-val">{fmt2(p.memGb)} Go</span>
     </div>
 );
 
 const Spark: React.FC<{ label: string; history: FabiMetricSample[]; pick: (s: FabiMetricSample) => number }>
     = ({ label, history, pick }) => {
-        const W = 120, H = 30;
+        const W = 120, H = 28;
         const pts = history.length > 1
             ? history.map((s, i) => {
                 const x = (i / (history.length - 1)) * W;
@@ -142,9 +173,7 @@ const Spark: React.FC<{ label: string; history: FabiMetricSample[]; pick: (s: Fa
         const last = history.length ? pick(history[history.length - 1]) : 0;
         return (
             <div className="fabi-mon-spark">
-                <div className="fabi-mon-spark-head">
-                    <span>{label}</span><span className="fabi-mon-spark-val">{fmt(last)} %</span>
-                </div>
+                <div className="fabi-mon-spark-head"><span>{label}</span><span className="fabi-mon-spark-val">{fmt(last)} %</span></div>
                 <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="fabi-mon-spark-svg">
                     {pts && <polyline points={`0,${H} ${pts} ${W},${H}`} className="fabi-mon-spark-fill" />}
                     {pts && <polyline points={pts} className="fabi-mon-spark-line" />}
@@ -153,5 +182,11 @@ const Spark: React.FC<{ label: string; history: FabiMetricSample[]; pick: (s: Fa
         );
     };
 
+function pct(v: number, total: number): number {
+    if (!(total > 0)) {
+        return 0;
+    }
+    return Math.max(0, Math.min(100, (v / total) * 100));
+}
 function fmt(n: number): string { return (Math.round(n * 10) / 10).toString(); }
 function fmt2(n: number): string { return (Math.round(n * 100) / 100).toString(); }

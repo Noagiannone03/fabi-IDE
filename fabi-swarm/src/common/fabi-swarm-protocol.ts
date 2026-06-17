@@ -158,6 +158,15 @@ export interface FabiSwarmClient {
     onMetricsChanged(metrics: FabiMetrics): void;
 }
 
+/** Un process (ou groupe de process de même nom) qui consomme. */
+export interface FabiProcInfo {
+    name: string;
+    cpu: number;    // % normalisé sur le nombre de cœurs (0–100)
+    memGb: number;
+    /** True = c'est NOTRE worker (process parallax agrégés). */
+    isWorker: boolean;
+}
+
 /** Un point d'historique (pour les sparklines). */
 export interface FabiMetricSample {
     /** Horodatage epoch ms. */
@@ -204,6 +213,8 @@ export interface FabiMetrics {
     pressure: 'normal' | 'elevated' | 'critical';
     /** Historique glissant (ancien → récent) pour les sparklines. */
     history: FabiMetricSample[];
+    /** Top consommateurs (RAM), worker agrégé en une entrée. Pour « qui bouffe ». */
+    topProcs: FabiProcInfo[];
 }
 
 /**
