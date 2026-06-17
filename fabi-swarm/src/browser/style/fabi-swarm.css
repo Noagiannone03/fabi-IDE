@@ -562,7 +562,6 @@
 
 .fabi-mon-head { display: flex; align-items: center; gap: 10px; }
 .fabi-mon-title { font-weight: 650; font-size: 13px; }
-.fabi-mon-lead { font-size: 11px; opacity: 0.5; line-height: 1.5; margin-top: -8px; }
 .fabi-mon-badge {
     margin-left: auto; font-size: 10.5px; font-weight: 600;
     padding: 2px 9px; border-radius: 9999px;

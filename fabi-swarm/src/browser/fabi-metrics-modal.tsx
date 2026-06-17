@@ -71,10 +71,6 @@ export const FabiMetricsView: React.FC<{ frontend: FabiSwarmFrontend }> = ({ fro
                 <span className="fabi-mon-title">Ta machine</span>
                 <span className={`fabi-mon-badge p-${m.pressure}`}>{PRESSURE_LABEL[m.pressure]}</span>
             </div>
-            <div className="fabi-mon-lead">
-                Où part la puissance de ton PC — et surtout combien <b>ton worker Fabi</b> consomme
-                par rapport au reste. En vert = ta contribution, en gris = les autres apps.
-            </div>
 
             <SegmentBar title="Processeur" caption={`${fmt(sys.cpu)} % utilisés · ${sys.cpuCores} cœurs`}
                 segments={cpuSeg} total={100} />
