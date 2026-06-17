@@ -80,10 +80,16 @@ export class FabiChatInputWidget extends AIChatInputWidget {
     }
 
     protected override render(): React.ReactNode {
-        // IMPORTANT : pas de div wrapper — un conteneur (flex/block) casse le
-        // calcul de largeur de l'éditeur Monaco interne (il s'étale/déborde). Un
-        // Fragment n'ajoute AUCUNE boîte : la pill et l'input restent enfants
-        // directs du node du widget, le layout d'origine est préservé.
+        // Deux états visuels nets :
+        //  - swarm PAS prêt → le sélecteur prend toute la place (gros composant
+        //    d'état/choix de modèle) et on NE rend PAS l'input : impossible de
+        //    taper/envoyer dans le vide, et pas de champ grisé moche.
+        //  - swarm PRÊT → barre de modèle compacte EN HAUT + input réel dessous.
+        // (Pas de div wrapper autour de l'input : un conteneur casse le calcul de
+        //  largeur de l'éditeur Monaco. Un Fragment n'ajoute aucune boîte.)
+        if (this.swarm.connection?.ready !== true) {
+            return <FabiSwarmSelector frontend={this.swarm} locked />;
+        }
         return (
             <React.Fragment>
                 <FabiSwarmSelector frontend={this.swarm} />

@@ -14,7 +14,7 @@ import { FabiConnectionView } from './fabi-swarm-connection';
  * liste (choisir un modèle) / connexion (statut texte sobre + « Changer de
  * modèle »). Branché live sur FabiSwarmFrontend.
  */
-export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend }> = ({ frontend }) => {
+export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?: boolean }> = ({ frontend, locked }) => {
     const [swarms, setSwarms] = React.useState<SwarmEntry[]>(frontend.swarms);
     const [active, setActive] = React.useState<SwarmEntry | undefined>(frontend.active);
     const [connection, setConnection] = React.useState<ConnectionInfo | undefined>(frontend.connection);
@@ -54,6 +54,16 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend }> = ({ f
         const dispose = Disposable.create(() => document.removeEventListener('mousedown', onDown, true));
         return () => dispose.dispose();
     }, [open]);
+
+    // En mode verrouillé (swarm pas prêt), le composant est toujours « ouvert » :
+    // on cale la vue sur l'état réel — connexion si un modèle est choisi (on suit
+    // son chargement / capacité), liste sinon (il faut en choisir un). On clé sur
+    // l'id pour ne pas réinitialiser la vue à chaque push registry du même swarm.
+    React.useEffect(() => {
+        if (locked) {
+            setView(active ? 'connection' : 'list');
+        }
+    }, [locked, active?.id]);
 
     const openPanel = () => {
         setView(active ? 'connection' : 'list');
@@ -146,6 +156,39 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend }> = ({ f
         );
     };
 
+    // Contenu de la zone dépliée, partagé entre le dropdown (mode normal) et la
+    // carte plein-espace (mode verrouillé).
+    const body = view === 'connection' && active
+        ? <FabiConnectionView
+            active={active}
+            connection={connection}
+            worker={worker}
+            busy={busyId !== undefined}
+            onChangeModel={() => setView('list')}
+            onDisconnect={disconnect}
+        />
+        : renderList();
+
+    // --- Mode VERROUILLÉ : le swarm ne peut pas (encore) servir → le sélecteur
+    // prend toute la place de l'input (gros composant d'état/choix), et il n'y a
+    // pas d'input du tout (cf. FabiChatInputWidget.render). Dès que le swarm est
+    // prêt, l'IDE rebascule sur le rendu normal (barre compacte + input dessous).
+    if (locked) {
+        return (
+            <div className="fabi-sel fabi-sel-locked" ref={rootRef}>
+                <div className="fabi-sel-locked-card">
+                    <div className="fabi-sel-locked-head">
+                        <span className="fabi-sel-locked-title">{barLabel}</span>
+                        {connection && connection.reason !== 'pick-model' && (
+                            <span className="fabi-sel-locked-state">{connection.headline}</span>
+                        )}
+                    </div>
+                    <div className="fabi-sel-locked-body">{body}</div>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className={`fabi-sel ${open ? 'open' : ''}`} ref={rootRef}>
             {open && (
@@ -155,18 +198,7 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend }> = ({ f
                             {view === 'connection' ? 'Connexion au swarm' : 'Choisis un modèle'}
                         </span>
                     </div>
-                    <div className="fabi-sel-expand-body">
-                        {view === 'connection' && active
-                            ? <FabiConnectionView
-                                active={active}
-                                connection={connection}
-                                worker={worker}
-                                busy={busyId !== undefined}
-                                onChangeModel={() => setView('list')}
-                                onDisconnect={disconnect}
-                            />
-                            : renderList()}
-                    </div>
+                    <div className="fabi-sel-expand-body">{body}</div>
                 </div>
             )}
 

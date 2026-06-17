@@ -6,8 +6,10 @@
   },
   "scripts": {
     "//": "Theia ne tourne qu'en node@22 (Node 26 casse yargs/Theia). On lance yarn.js AVEC node@22 comme interpréteur : ce yarn a node@22 en execPath, donc son shim node interne et tous les process imbriqués (theia) tournent en node@22 — peu importe le node du shell. Un simple préfixe PATH ne suffit pas : yarn place son propre shim node en tête du PATH.",
-    "build:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd browser-app bundle",
-    "build:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd electron-app bundle",
+    "//fabi-ext": "Compile le TS de NOS extensions (fabi-swarm/branding/spaces) src->lib AVANT de bundler. Le bundle se sert de lib/ (gitignoré) ; sans cette étape, éditer un .tsx ne change RIEN dans l'app (le bundle garde l'ancien lib). lerna run build = `tsc` dans chaque package qui l'a (les apps sont ignorées).",
+    "build:fabi-ext": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run build --ignore electron-app --ignore browser-app",
+    "build:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run build --ignore electron-app --ignore browser-app && \"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd browser-app bundle",
+    "build:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run build --ignore electron-app --ignore browser-app && \"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd electron-app bundle",
     "prepare": "lerna run prepare",
     "postinstall": "theia check:theia-version",
     "start:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd browser-app start",
