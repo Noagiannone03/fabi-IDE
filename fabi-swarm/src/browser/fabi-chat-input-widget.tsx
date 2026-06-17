@@ -1,5 +1,5 @@
 import * as React from '@theia/core/shared/react';
-import { injectable, inject } from '@theia/core/shared/inversify';
+import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { URI } from '@theia/core';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
 import { CHAT_VIEW_LANGUAGE_EXTENSION } from '@theia/ai-chat-ui/lib/browser/chat-view-language-contribution';
@@ -42,16 +42,41 @@ export class FabiChatInputWidget extends AIChatInputWidget {
     }
 
     /**
-     * Fabi AI EST le produit : l'input n'est JAMAIS désactivé. Le parent appelle
-     * `setEnabled(aiActivationService.canRun)` à l'init puis sur chaque changement
-     * de `canRun` (préférence `enableAI`, confiance d'espace de travail…). On
-     * intercepte ici, à la source, et on force toujours `true` — peu importe ce
-     * que renvoie le service. Plus de placeholder « AI features are disabled », plus
-     * de champ grisé : c'est la décision produit, encodée dans NOTRE widget, pas un
-     * contournement caché. (cf. aussi FabiAIActivationService pour les clés de contexte.)
+     * Active l'input UNIQUEMENT quand le swarm peut réellement servir une requête.
+     *
+     * Le parent appelle `setEnabled(aiActivationService.canRun)` — un signal qui
+     * n'a aucun sens pour Fabi (l'IA n'est jamais « désactivée »). La vraie
+     * condition produit, c'est : « le swarm peut-il répondre MAINTENANT ? » =
+     * `connection.ready` (vérité scheduler : pipeline prête à router + worker en
+     * cours + assez de peers — cf. deriveConnection). On ignore donc l'argument du
+     * parent et on lit `connection.ready`.
+     *
+     * Sans ça, on pouvait taper + envoyer un message dans le vide et se manger un
+     * `500 "Server is not ready"` / `503` côté scheduler. Le parent ne bloque que
+     * l'ENVOI quand disabled ; on bloque AUSSI la saisie (éditeur en lecture seule)
+     * pour que l'input soit franchement inerte tant que le swarm n'est pas prêt.
+     * Le « pourquoi » détaillé (pas assez de contributeurs, chargement…) est affiché
+     * juste au-dessus par FabiSwarmSelector.
      */
     override setEnabled(_enabled: boolean): void {
-        super.setEnabled(true);
+        const ready = this.swarm.connection?.ready === true;
+        super.setEnabled(ready);
+        this.editor?.getControl().updateOptions({ readOnly: !ready });
+    }
+
+    /**
+     * Le parent règle l'état d'activation une seule fois à l'init. Or notre
+     * condition (`connection.ready`) évolue en continu (pipeline qui se forme,
+     * worker qui charge, peer qui part…). On se réabonne donc aux changements de
+     * connexion pour ré-évaluer l'activation à chaque fois, et on ré-applique
+     * l'état une fois l'éditeur Monaco prêt (le `readOnly` ne « prend » qu'après
+     * sa création).
+     */
+    @postConstruct()
+    protected override init(): void {
+        super.init();
+        this.toDispose.push(this.swarm.onConnectionChangedEvent(() => this.setEnabled(false)));
+        this.editorReady.promise.then(() => this.setEnabled(false));
     }
 
     protected override render(): React.ReactNode {

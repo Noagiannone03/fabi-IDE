@@ -480,3 +480,32 @@
 @media (prefers-reduced-motion: reduce) {
     .fabi-wa-fox, .fabi-wa-file, .fabi-wa-kbd, .fabi-wa-key, .fabi-wa-paw { animation: none; opacity: 1; }
 }
+
+/* ============================================================
+   Input désactivé tant que le swarm n'est pas prêt à servir.
+   FabiChatInputWidget.setEnabled() gate l'input sur connection.ready :
+   éditeur en lecture seule + envoi bloqué. Ici on rend cet état LISIBLE
+   (champ visiblement inerte, curseur interdit) et on CORRIGE le placeholder
+   par défaut de Theia (« AI features are disabled ») qui est faux pour Fabi —
+   l'IA n'est jamais désactivée, c'est le swarm qui n'est pas encore prêt. Le
+   « pourquoi » précis (pas assez de contributeurs, chargement…) est affiché
+   juste au-dessus par la barre de modèle (FabiSwarmSelector).
+   ============================================================ */
+.theia-ChatInput[data-ai-disabled="true"] .theia-ChatInput-Editor-Box {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.theia-ChatInput[data-ai-disabled="true"] .theia-ChatInput-Editor .monaco-editor,
+.theia-ChatInput[data-ai-disabled="true"] .theia-ChatInput-Editor .monaco-editor textarea {
+    cursor: not-allowed !important;
+}
+/* Remplace le texte par défaut du placeholder par un message correct pour Fabi.
+   On masque le texte d'origine (font-size: 0) et on injecte le nôtre en ::before. */
+.theia-ChatInput[data-ai-disabled="true"] .theia-ChatInput-Editor-Placeholder {
+    font-size: 0;
+}
+.theia-ChatInput[data-ai-disabled="true"] .theia-ChatInput-Editor-Placeholder::before {
+    content: "Swarm pas encore prêt — voir l’état au-dessus avant d’envoyer.";
+    font-size: var(--theia-content-font-size, 13px);
+    opacity: 0.8;
+}
