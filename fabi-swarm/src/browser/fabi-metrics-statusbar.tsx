@@ -26,8 +26,8 @@ export class FabiMetricsStatusBar implements FrontendApplicationContribution {
 
     protected async render(m?: FabiMetrics): Promise<void> {
         const text = m
-            ? `$(pulse) ${Math.round(m.system.cpu)}% · ${Math.round(m.system.memPct)}%`
-            : '$(pulse) —';
+            ? `$(pulse) CPU ${Math.round(m.system.cpu)}% · RAM ${Math.round(m.system.memPct)}%`
+            : '$(pulse) Moniteur';
         const color = m?.pressure === 'critical' ? 'var(--theia-errorForeground)'
             : m?.pressure === 'elevated' ? 'var(--theia-editorWarning-foreground)'
                 : undefined;

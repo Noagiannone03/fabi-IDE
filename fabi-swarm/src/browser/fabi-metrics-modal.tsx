@@ -52,6 +52,10 @@ export const FabiMetricsView: React.FC<{ frontend: FabiSwarmFrontend }> = ({ fro
                 <span className="fabi-mon-title">Ta machine</span>
                 <span className={`fabi-mon-badge p-${m.pressure}`}>{PRESSURE_LABEL[m.pressure]}</span>
             </div>
+            <div className="fabi-mon-lead">
+                Conso temps réel de ta machine et de ton worker Fabi. Les % sont la part
+                utilisée ; le repère clair sur les barres marque le pic de la session.
+            </div>
 
             {/* ---- Système ---- */}
             <div className="fabi-mon-grid">
@@ -66,11 +70,11 @@ export const FabiMetricsView: React.FC<{ frontend: FabiSwarmFrontend }> = ({ fro
                 )}
             </div>
 
-            {/* ---- Sparklines ---- */}
+            {/* ---- Sparklines (accent neutre unique, à la DA Fabi) ---- */}
             <div className="fabi-mon-spark-row">
-                <Spark label="CPU" color="#6ea8fe" history={m.history} pick={s => s.cpu} />
-                <Spark label="RAM" color="#9d7bff" history={m.history} pick={s => s.mem} />
-                {w && <Spark label="Worker" color="#f0883e" history={m.history} pick={s => s.worker} />}
+                <Spark label="CPU" history={m.history} pick={s => s.cpu} />
+                <Spark label="RAM" history={m.history} pick={s => s.mem} />
+                {w && <Spark label="Worker" history={m.history} pick={s => s.worker} />}
             </div>
 
             {/* ---- Worker ---- */}
@@ -125,8 +129,8 @@ const Stat: React.FC<{ k: string; v: string; hint?: string }> = ({ k, v, hint })
     </div>
 );
 
-const Spark: React.FC<{ label: string; color: string; history: FabiMetricSample[]; pick: (s: FabiMetricSample) => number }>
-    = ({ label, color, history, pick }) => {
+const Spark: React.FC<{ label: string; history: FabiMetricSample[]; pick: (s: FabiMetricSample) => number }>
+    = ({ label, history, pick }) => {
         const W = 120, H = 30;
         const pts = history.length > 1
             ? history.map((s, i) => {
@@ -142,8 +146,8 @@ const Spark: React.FC<{ label: string; color: string; history: FabiMetricSample[
                     <span>{label}</span><span className="fabi-mon-spark-val">{fmt(last)} %</span>
                 </div>
                 <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="fabi-mon-spark-svg">
-                    {pts && <polyline points={`0,${H} ${pts} ${W},${H}`} fill={color} fillOpacity={0.12} stroke="none" />}
-                    {pts && <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" />}
+                    {pts && <polyline points={`0,${H} ${pts} ${W},${H}`} className="fabi-mon-spark-fill" />}
+                    {pts && <polyline points={pts} className="fabi-mon-spark-line" />}
                 </svg>
             </div>
         );
