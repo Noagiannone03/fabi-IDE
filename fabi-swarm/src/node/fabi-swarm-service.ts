@@ -1,4 +1,5 @@
 import { injectable } from '@theia/core/shared/inversify';
+import { BackendApplicationContribution } from '@theia/core/lib/node';
 import {
     FabiSwarmService, FabiSwarmClient, SwarmEntry, WorkerState, RuntimeStatus,
     ConnectionInfo, FABI_REGISTRY_URL
@@ -18,7 +19,7 @@ import { getAccountToken } from './fabi-account-token';
  * côté client : le registry scanne les schedulers une fois et fan-out à tous.
  */
 @injectable()
-export class FabiSwarmServiceImpl implements FabiSwarmService {
+export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicationContribution {
 
     protected client: FabiSwarmClient | undefined;
     protected readonly runtime = new FabiRuntimeManager();
@@ -176,5 +177,31 @@ export class FabiSwarmServiceImpl implements FabiSwarmService {
         this.setActiveSwarm(undefined);
         this.setWorkerState({ kind: 'stopped' });
         return this.workerState;
+    }
+
+    /**
+     * Arrêt PROPRE quand l'IDE se ferme (BackendApplicationContribution.onStop).
+     *
+     * Theia capte SIGINT/SIGTERM, puis dans sa séquence d'arrêt il **attend** les
+     * `onStop()` des contributions AVANT d'appeler `terminateProcessTree()` qui
+     * tue tout l'arbre de process (dont notre worker, enfant par PPID — `detached`
+     * ne change que le groupe, pas le lien parent). Sans ce hook, le worker se
+     * ferait SIGKILL par l'arbre avant d'avoir envoyé son `node_leave` → nœud
+     * fantôme (rattrapé seulement ~25 s plus tard par l'éviction heartbeat).
+     *
+     * En attendant `handle.stop()` ici, on garantit que le worker reçoit SIGTERM
+     * et termine son `node_leave` (dans la fenêtre de grâce) AVANT que Theia ne
+     * coupe l'arbre → déconnexion propre du swarm à chaque fermeture de l'IDE.
+     * (`process.on('exit')` côté worker reste le dernier filet pour les cas durs.)
+     */
+    async onStop(): Promise<void> {
+        if (this.handle) {
+            try {
+                await this.handle.stop();
+            } catch {
+                /* arrêt best-effort : on ne bloque jamais la fermeture de l'IDE */
+            }
+            this.handle = undefined;
+        }
     }
 }
