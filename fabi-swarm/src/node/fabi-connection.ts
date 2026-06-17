@@ -54,7 +54,23 @@ export function deriveConnection(
             activity: 'le scheduler n\'a attribué aucune couche',
             detail: 'aucune couche allouée en 300 s — le worker redémarre ; vérifie que des peers rejoignent', ...base };
     }
-    // On charge réellement nos poids → progrès local définitif.
+    // Verdict scheduler DÉFINITIF « pas assez de contributeurs » : il prime même
+    // sur un stage worker optimiste. `failed_capacity` = "le scheduler a ESSAYÉ
+    // d'allouer et le modèle ne tient PAS sur les nœuds connectés". Sans ce test
+    // ICI (avant loading-weights/ready), un stage `loading-weights` resté collé
+    // — typiquement d'une fenêtre d'allocation transitoire, p.ex. un ghost ayant
+    // brièvement fait croire à 2 peers — masquerait cette vérité actionnable et
+    // on afficherait « Chargement »/« prêt » alors que le swarm NE PEUT PAS
+    // servir. C'est le SEUL verdict scheduler qu'on remonte avant le stage worker
+    // (les autres — waiting/pending — restent plus bas : un nœud peut légitimement
+    // charger ses poids pendant un bootstrap sain).
+    if (active.lastBootstrapResult === 'failed_capacity') {
+        return { reason: 'insufficient-capacity', ready: false, headline: 'Pas assez de contributeurs',
+            activity: `${peersTotal ?? 0} nœud(s) — ce modèle ne tient pas sur les nœuds connectés, il faut un contributeur de plus`,
+            detail: 'le swarm ne peut pas couvrir toutes les couches du modèle avec les nœuds actuels', ...base };
+    }
+    // On charge réellement nos poids → progrès local (uniquement si le scheduler
+    // n'a pas déjà tranché « pas assez de capacité » juste au-dessus).
     if (worker.stage === 'loading-weights') {
         let activity = 'chargement des poids du modèle en mémoire';
         if (worker.weightsCurrentFile) {
@@ -112,11 +128,7 @@ export function deriveConnection(
                 : `${pipelineReadyCount ?? 0}/${pipelineCount} pipeline(s) prête(s)`,
             ...base };
     }
-    if (active.lastBootstrapResult === 'failed_capacity') {
-        return { reason: 'insufficient-capacity', ready: false, headline: 'Pas assez de contributeurs',
-            activity: `${total} nœud(s) — ce modèle ne tient pas sur les nœuds connectés, il faut un contributeur de plus`,
-            detail: 'le swarm ne peut pas couvrir toutes les couches du modèle avec les nœuds actuels', ...base };
-    }
+    // (failed_capacity est déjà traité plus haut, AVANT le stage worker.)
     if (active.lastBootstrapResult === 'deferred_not_enough_nodes'
         || (active.initNodesNum !== undefined && total < active.initNodesNum)) {
         const need = active.initNodesNum;
