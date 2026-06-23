@@ -3,7 +3,7 @@
   "keywords": [
     "theia-extension"
   ],
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Fabi Swarm — provider d'inférence LLM P2P (Parallax) branché dans Theia AI",
   "author": "Noa Giannone",
   "license": "MIT",

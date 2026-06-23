@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "browser-app",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "dependencies": {
     "@theia/ai-anthropic": "1.72.2",
     "@theia/ai-chat": "1.72.2",
@@ -64,8 +64,8 @@
     "@theia/variable-resolver": "1.72.2",
     "@theia/vsx-registry": "1.72.2",
     "@theia/workspace": "1.72.2",
-    "fabi-branding": "0.0.0",
-    "fabi-swarm": "0.0.0"
+    "fabi-branding": "0.1.0",
+    "fabi-swarm": "0.1.0"
   },
   "devDependencies": {
     "@theia/cli": "1.72.2"
@@ -91,6 +91,7 @@
         "preferences": {
           "workbench.colorTheme": "fabi-islands",
           "workbench.iconTheme": "material-icon-theme",
+          "window.menuBarVisibility": "compact",
           "files.autoSave": "afterDelay",
           "editor.minimap.enabled": true,
           "security.workspace.trust.enabled": false,

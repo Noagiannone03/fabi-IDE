@@ -1,7 +1,7 @@
 {
   "private": true,
   "name": "electron-app",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "main": "lib/backend/electron-main.js",
   "dependencies": {
     "@theia/ai-anthropic": "1.72.2",
@@ -67,9 +67,9 @@
     "@theia/variable-resolver": "1.72.2",
     "@theia/vsx-registry": "1.72.2",
     "@theia/workspace": "1.72.2",
-    "fabi-branding": "0.0.0",
-    "fabi-swarm": "0.0.0",
-    "fabi-spaces": "0.0.0"
+    "fabi-branding": "0.1.0",
+    "fabi-swarm": "0.1.0",
+    "fabi-spaces": "0.1.0"
   },
   "devDependencies": {
     "@theia/cli": "1.72.2",
@@ -158,6 +158,7 @@
         "preferences": {
           "workbench.colorTheme": "fabi-islands",
           "workbench.iconTheme": "material-icon-theme",
+          "window.menuBarVisibility": "compact",
           "editor.fontFamily": "'GeistMono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace",
           "editor.fontSize": 13,
           "editor.lineHeight": 1.7,

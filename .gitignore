@@ -5,3 +5,9 @@ lib
 *-app/*
 !*-app/package.json
 !electron-app/product.json
+
+# captures de design (locales)
+tools/shots/
+
+# checkout de comparaison swarm-engine (fork + upstream) — local uniquement
+_cmp/
