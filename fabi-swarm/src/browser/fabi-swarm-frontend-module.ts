@@ -26,6 +26,17 @@ import { FabiEditorActionsContribution, FABI_CHAT_INSTANCE_FACTORY_ID } from './
 import { FabiTabRenameContribution } from './fabi-tab-rename';
 import { FabiMetricsStatusBar } from './fabi-metrics-statusbar';
 import { FabiChatInstanceWidget } from './fabi-chat-instance-widget';
+import { Agent } from '@theia/ai-core/lib/common/agent';
+import { ChatAgent } from '@theia/ai-chat/lib/common/chat-agents';
+import { DefaultChatAgentId } from '@theia/ai-chat/lib/common/chat-agent-service';
+import { DefaultChatNodeToolbarActionContribution } from '@theia/ai-chat-ui/lib/browser/chat-node-toolbar-action-contribution';
+import { FabiCodeFrontend } from './fabi-code-frontend';
+import { FabiCodeState } from './fabi-code-state';
+import { FabiCodeAgent, FABI_CODE_AGENT_ID } from './fabi-code-agent';
+import { FabiCodeEditorBridge } from './fabi-code-editor-bridge';
+import { FabiCodeRevertToolbarContribution, FabiCodeCheckpointCommands } from './fabi-code-checkpoint';
+import { ChatResponsePartRenderer } from '@theia/ai-chat-ui/lib/browser/chat-response-part-renderer';
+import { FabiToolPartRenderer, FabiThinkingPartRenderer } from './fabi-code-tool-renderer';
 
 // Renomme le panneau IA « AI Chat » → « Fabi AI ». LABEL est le champ statique
 // utilisé par ChatViewWidget pour son titre/caption ; on le change au chargement
@@ -39,6 +50,36 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // Façade frontend : proxy RPC client-aware + Events. Singleton partagé.
     bind(FabiSwarmFrontend).toSelf().inSingletonScope();
     bind(FabiSwarmService).toDynamicValue(ctx => ctx.container.get(FabiSwarmFrontend).service).inSingletonScope();
+
+    // === CERVEAU IA = OPENCODE, RENDU DANS LE CHAT THEIA (relais) ===
+    // FabiCodeAgent est un ChatAgent Theia qui ne porte aucun modèle/prompt :
+    // il relaie le message vers le sidecar OpenCode et re-streame sa sortie
+    // (texte/raisonnement/cartes d'outils) dans le chat Theia existant. Tout le
+    // cerveau (agents, prompts, modèle, contexte, outils) vit dans OpenCode.
+    bind(FabiCodeFrontend).toSelf().inSingletonScope();
+    bind(FabiCodeState).toSelf().inSingletonScope();
+    bind(FabiCodeAgent).toSelf().inSingletonScope();
+    bind(Agent).toService(FabiCodeAgent);
+    bind(ChatAgent).toService(FabiCodeAgent);
+    // Agent par défaut du chat = fabi-code (FabiSwarmModelContribution le met
+    // aussi en tête de PREFERRED_DEFAULT_AGENTS).
+    if (isBound(DefaultChatAgentId)) {
+        rebind(DefaultChatAgentId).toConstantValue({ id: FABI_CODE_AGENT_ID });
+    } else {
+        bind(DefaultChatAgentId).toConstantValue({ id: FABI_CODE_AGENT_ID });
+    }
+    // Pont éditeur : fichiers édités par OpenCode → ouverts/scrollés dans l'éditeur.
+    bind(FabiCodeEditorBridge).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiCodeEditorBridge);
+    // Checkpoints : remplace le crayon « éditer » par une flèche « restaurer »
+    // (dialogue « message + code » / « message seul ») sur les messages utilisateur.
+    rebind(DefaultChatNodeToolbarActionContribution).to(FabiCodeRevertToolbarContribution).inSingletonScope();
+    bind(FabiCodeCheckpointCommands).toSelf().inSingletonScope();
+    bind(CommandContribution).toService(FabiCodeCheckpointCommands);
+    // Rendu façon Cursor des appels d'outils + du raisonnement (prennent le
+    // dessus sur les renderers Theia par défaut via canHandle plus élevé).
+    bind(ChatResponsePartRenderer).to(FabiToolPartRenderer).inSingletonScope();
+    bind(ChatResponsePartRenderer).to(FabiThinkingPartRenderer).inSingletonScope();
 
     // Moniteur de perfs (status bar bas-droite + modale détaillée).
     bind(FabiMetricsStatusBar).toSelf().inSingletonScope();

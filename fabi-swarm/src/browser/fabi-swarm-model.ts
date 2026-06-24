@@ -16,7 +16,10 @@ const DEFAULT_CHAT_AGENT_PREF = 'ai-features.chat.defaultChatAgent';
 /** Ordre de préférence pour le défaut (par id ou nom). `Universal` d'abord :
  *  chat direct, prompt léger, AUCUN appel de routage — bien plus rapide que
  *  l'Orchestrator (qui fait un LLM call de routage avant de répondre). */
-const PREFERRED_DEFAULT_AGENTS = ['Universal', 'Coder', 'Orchestrator'];
+// `fabi-code` D'ABORD : c'est notre agent relais vers le moteur OpenCode (le
+// cerveau IA est sorti de Theia). Les agents Theia (Universal/Coder/…) ne servent
+// plus que de repli si fabi-code n'est pas dispo.
+const PREFERRED_DEFAULT_AGENTS = ['fabi-code', 'Universal', 'Coder', 'Orchestrator'];
 
 /**
  * Câble le swarm ACTIF comme modèle OpenAI-compatible dans Theia AI ET l'assigne
@@ -159,9 +162,18 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
             const enabled = (a: { id: string }) => this.agentService.isEnabled(a.id);
             const byKey = (key: string) => agents.find(a => (a.id === key || a.name === key) && enabled(a));
             const current = this.preferences.get<string>(DEFAULT_CHAT_AGENT_PREF, '');
-            // Si l'utilisateur a explicitement choisi un agent HORS de notre liste,
-            // on le respecte. Sinon (vide, ou un défaut qu'on avait posé nous-même
-            // comme Orchestrator) on (ré)applique le meilleur = Universal (rapide).
+            // On ne fait QUE OpenCode : `fabi-code` (le relais) DOIT être l'agent
+            // par défaut dès qu'il est dispo. On force, même si une préférence
+            // résiduelle pointait vers un agent Theia (sinon le message part sur le
+            // swarm → "generating" sans fin).
+            const fabi = byKey('fabi-code');
+            if (fabi) {
+                if (current !== fabi.id) {
+                    void this.preferences.set(DEFAULT_CHAT_AGENT_PREF, fabi.id, PreferenceScope.User);
+                }
+                return;
+            }
+            // Repli (fabi-code pas encore prêt) : meilleur agent généraliste dispo.
             const currentIsCustom = !!current && !PREFERRED_DEFAULT_AGENTS.some(k => byKey(k)?.id === current);
             if (currentIsCustom) {
                 return;

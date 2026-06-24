@@ -4,7 +4,11 @@ import { BackendApplicationContribution } from '@theia/core/lib/node';
 import {
     FabiSwarmService, FabiSwarmClient, FABI_SWARM_SERVICE_PATH
 } from '../common/fabi-swarm-protocol';
+import {
+    FabiCodeService, FabiCodeClient, FABI_CODE_SERVICE_PATH
+} from '../common/fabi-code-protocol';
 import { FabiSwarmServiceImpl } from './fabi-swarm-service';
+import { FabiCodeServiceImpl } from './fabi-code-service';
 
 export default new ContainerModule(bind => {
     bind(FabiSwarmServiceImpl).toSelf().inSingletonScope();
@@ -18,6 +22,21 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(ctx =>
         new RpcConnectionHandler<FabiSwarmClient>(FABI_SWARM_SERVICE_PATH, client => {
             const service = ctx.container.get<FabiSwarmServiceImpl>(FabiSwarmService);
+            service.setClient(client);
+            return service;
+        })
+    ).inSingletonScope();
+
+    // --- Moteur d'agent IA fabi-code (sidecar OpenCode) ---
+    // Tout le cerveau IA (agents, prompts, modèles, contexte, outils) vit dans
+    // OpenCode, lancé en sidecar par ce service. onStart spawn le serveur,
+    // onStop le tue proprement (Theia attend ce onStop avant process.exit).
+    bind(FabiCodeServiceImpl).toSelf().inSingletonScope();
+    bind(FabiCodeService).toService(FabiCodeServiceImpl);
+    bind(BackendApplicationContribution).toService(FabiCodeServiceImpl);
+    bind(ConnectionHandler).toDynamicValue(ctx =>
+        new RpcConnectionHandler<FabiCodeClient>(FABI_CODE_SERVICE_PATH, client => {
+            const service = ctx.container.get<FabiCodeServiceImpl>(FabiCodeService);
             service.setClient(client);
             return service;
         })

@@ -645,3 +645,423 @@
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 .fabi-mon-worker-line b { font-weight: 650; font-variant-numeric: tabular-nums; color: var(--fabi-text, #cdd0d6); }
+
+/* === Sélecteur de mode fabi-code (Agent / Ask) dans l'input du chat === */
+.fabi-mode-row {
+    display: flex;
+    gap: 4px;
+    padding: 2px 6px 6px;
+}
+.fabi-mode-pill {
+    font: inherit;
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.12));
+    background: transparent;
+    color: var(--theia-descriptionForeground);
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.fabi-mode-pill:hover {
+    color: var(--theia-foreground);
+    border-color: var(--theia-focusBorder, #EC5B2B);
+}
+.fabi-mode-pill.active {
+    background: #EC5B2B;
+    border-color: #EC5B2B;
+    color: #fff;
+}
+
+/* ===================================================================== */
+/* Composant de chat Fabi (fabi-code) — miroir d'une session OpenCode.   */
+/* ===================================================================== */
+.fabi-code-chat-widget,
+.fabi-code-chat {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.fabi-code-messages {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 18px 16px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+}
+.fabi-code-empty {
+    margin: auto;
+    max-width: 300px;
+    text-align: center;
+    color: var(--theia-descriptionForeground);
+    font-size: 12.5px;
+    line-height: 1.7;
+}
+
+/* --- messages --- */
+.fabi-msg {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+.fabi-msg-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 16px;
+}
+.fabi-msg-role {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--theia-descriptionForeground);
+    text-transform: none;
+}
+.fabi-msg-role .codicon { font-size: 13px; }
+.fabi-msg-assistant .fabi-msg-role { color: #EC5B2B; }
+
+.fabi-msg-revert {
+    opacity: 0;
+    background: transparent;
+    border: none;
+    color: var(--theia-descriptionForeground);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+    transition: opacity 0.12s ease, color 0.12s ease;
+}
+.fabi-msg-user:hover .fabi-msg-revert { opacity: 0.65; }
+.fabi-msg-revert:hover { opacity: 1; color: #EC5B2B; }
+
+.fabi-msg-user .fabi-msg-body {
+    background: var(--theia-input-background, rgba(255, 255, 255, 0.045));
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.08));
+    border-radius: 4px 14px 14px 14px;
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.fabi-msg-assistant .fabi-msg-body { padding: 0 1px; }
+
+.fabi-md { font-size: 13px; line-height: 1.68; }
+.fabi-md > :first-child { margin-top: 0; }
+.fabi-md > :last-child { margin-bottom: 0; }
+.fabi-md p { margin: 0 0 10px; }
+.fabi-md code {
+    font-family: var(--theia-code-font-family, 'GeistMono', monospace);
+    font-size: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 1px 5px;
+    border-radius: 5px;
+}
+.fabi-md pre {
+    background: var(--theia-textCodeBlock-background, rgba(0, 0, 0, 0.32));
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.07));
+    border-radius: 10px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    margin: 10px 0;
+}
+.fabi-md pre code {
+    background: none;
+    padding: 0;
+    font-size: 12.5px;
+    line-height: 1.55;
+}
+.fabi-reasoning {
+    opacity: 0.6;
+    font-size: 12.5px;
+    border-left: 2px solid var(--theia-input-border, rgba(255, 255, 255, 0.14));
+    padding-left: 12px;
+}
+.fabi-reasoning .fabi-md { font-style: italic; }
+
+/* --- cartes d'outils --- */
+.fabi-tool {
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.08));
+    border-radius: 10px;
+    margin: 8px 0;
+    overflow: hidden;
+    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.02));
+}
+.fabi-tool-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    font-size: 12px;
+    cursor: pointer;
+}
+.fabi-tool-name { font-weight: 600; }
+.fabi-tool-title {
+    color: var(--theia-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+}
+.fabi-tool-diffstat { font-size: 11px; display: flex; gap: 6px; }
+.fabi-tool-diffstat .add { color: #3fb950; }
+.fabi-tool-diffstat .del { color: #f85149; }
+.fabi-tool-caret { margin-left: auto; opacity: 0.6; }
+.fabi-tool-completed .codicon-check { color: #3fb950; }
+.fabi-tool-error .codicon-error { color: #f85149; }
+.fabi-tool-output {
+    margin: 0;
+    padding: 8px 12px;
+    border-top: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.06));
+    font-size: 11.5px;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+}
+.fabi-tool-err { color: #f85149; }
+
+.fabi-code-error {
+    color: #f85149;
+    font-size: 12px;
+    padding: 6px 10px;
+}
+
+/* --- dock de permissions (approbation de commandes) --- */
+.fabi-perm-dock { padding: 6px 12px; display: flex; flex-direction: column; gap: 8px; }
+.fabi-perm {
+    border: 1px solid #EC5B2B;
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: rgba(236, 91, 43, 0.06);
+}
+.fabi-perm-text { font-size: 12px; margin-bottom: 8px; }
+.fabi-perm-text code {
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1px 6px;
+    border-radius: 5px;
+}
+.fabi-perm-actions { display: flex; gap: 6px; }
+.fabi-perm-actions button {
+    font: inherit; font-size: 11px;
+    padding: 4px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.12));
+    background: transparent; color: var(--theia-foreground);
+}
+.fabi-perm-allow { background: #EC5B2B !important; border-color: #EC5B2B !important; color: #fff !important; }
+.fabi-perm-deny:hover { border-color: #f85149 !important; color: #f85149 !important; }
+
+/* --- barre d'input --- */
+.fabi-code-inputbar {
+    border-top: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.08));
+    padding: 8px 10px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.fabi-code-inputrow {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: var(--theia-input-background, rgba(255, 255, 255, 0.04));
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+    padding: 6px 6px 6px 12px;
+}
+.fabi-code-inputrow:focus-within { border-color: #EC5B2B; }
+.fabi-code-input {
+    flex: 1 1 auto;
+    resize: none;
+    border: none;
+    background: transparent;
+    color: var(--theia-input-foreground, var(--theia-foreground));
+    font: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    outline: none;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.fabi-code-send, .fabi-code-stop {
+    flex: 0 0 auto;
+    width: 30px; height: 30px;
+    border-radius: 9px;
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    background: #EC5B2B; color: #fff;
+}
+.fabi-code-send:disabled { opacity: 0.4; cursor: default; background: var(--theia-input-border, rgba(255,255,255,0.12)); }
+.fabi-code-stop { background: #f85149; }
+
+.fabi-code-engine-note {
+    margin: 6px 10px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    border-radius: 8px;
+    color: var(--theia-descriptionForeground);
+    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.03));
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.08));
+}
+.fabi-code-input:disabled { opacity: 0.5; }
+
+/* === On ne fait QUE OpenCode : on dégage l'agent Theia (@) + le toggle      */
+/* capabilities (outils) de l'input ; le mode = Ask/Agent (pills fabi-code).  */
+.theia-ChatInputOptions-left .option:has(.codicon-mention),
+.theia-ChatInputOptions-left .option:has(.codicon-tools) {
+    display: none !important;
+}
+
+/* ===================================================================== */
+/* Sélecteur de mode Ask/Agent dans l'input (façon Cursor) + thinking +  */
+/* cartes d'outils compactes.                                            */
+/* ===================================================================== */
+.chat-input-widget { position: relative; }
+
+/* Le chip de mode est DÉPLACÉ (cf. onUpdateRequest) dans la barre d'options
+   gauche de l'input → il s'aligne comme un vrai item à côté du 📎. */
+.fabi-mode-dd { position: relative; display: inline-flex; align-items: center; margin-right: 2px; }
+.fabi-mode-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font: inherit; font-size: 11px; line-height: 1;
+    padding: 4px 8px; border-radius: 8px;
+    border: 1px solid var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.12));
+    background: transparent; color: var(--theia-descriptionForeground);
+    cursor: pointer; transition: background 0.12s ease, color 0.12s ease;
+}
+.fabi-mode-chip:hover { background: rgba(255, 255, 255, 0.07); color: var(--theia-foreground); }
+.fabi-mode-chip .codicon { font-size: 13px; }
+.fabi-mode-chip-label { font-weight: 600; }
+.fabi-mode-chip-caret { font-size: 10px !important; opacity: 0.55; }
+
+.fabi-mode-menu {
+    /* Portalé sur document.body → position FIXE (left/bottom en inline style),
+       z-index très élevé pour passer AU-DESSUS de l'input (plus de clipping). */
+    position: fixed; z-index: 99999;
+    min-width: 252px; padding: 5px; box-sizing: border-box;
+    background: var(--fabi-ai-island, #23262c);
+    border: 1px solid var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.12));
+    border-radius: 12px;
+    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+    display: flex; flex-direction: column; gap: 2px;
+    animation: fabi-expand 0.14s ease-out;
+}
+.fabi-mode-item {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 8px 10px; border-radius: 9px; border: none; background: transparent;
+    color: var(--theia-foreground); cursor: pointer; text-align: left; width: 100%;
+}
+.fabi-mode-item:hover { background: rgba(255, 255, 255, 0.06); }
+.fabi-mode-item.active { background: rgba(236, 91, 43, 0.10); }
+.fabi-mode-item-icon { font-size: 15px !important; margin-top: 1px; color: var(--theia-descriptionForeground); }
+.fabi-mode-item.active .fabi-mode-item-icon { color: #EC5B2B; }
+.fabi-mode-item-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
+.fabi-mode-item-name { font-size: 12.5px; font-weight: 600; }
+.fabi-mode-item-desc { font-size: 11px; opacity: 0.55; line-height: 1.35; }
+.fabi-mode-item-check { font-size: 13px !important; color: #EC5B2B; margin-top: 2px; }
+
+/* --- Bloc « Réflexion » (thinking) : atténué, barre latérale, distinct --- */
+[class*="theia-think"] {
+    opacity: 0.72;
+    font-size: 12.5px;
+    border-left: 2px solid var(--theia-input-border, rgba(255, 255, 255, 0.14));
+    padding-left: 11px;
+    margin: 4px 0;
+}
+
+/* --- Cartes d'outils compactes (façon Cursor) --- */
+.theia-toolCall {
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.08));
+    border-radius: 9px;
+    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.025));
+    margin: 6px 0; padding: 7px 10px; font-size: 12px;
+}
+.theia-toolCall-args-label { font-size: 11px; opacity: 0.6; }
+.theia-toolCall-error-result { color: #f85149; }
+.theia-toolCall-response-result,
+.theia-toolCall-text-result,
+.theia-toolCall-default-result {
+    font-family: var(--theia-code-font-family, 'GeistMono', monospace);
+    font-size: 11.5px; line-height: 1.5;
+    max-height: 280px; overflow: auto;
+    margin-top: 6px;
+}
+
+/* ===================================================================== */
+/* Tool calls + Réflexion — rendu custom façon Cursor (anim d'apparition) */
+/* ===================================================================== */
+@keyframes fabi-card-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* --- carte d'appel d'outil --- */
+.fabi-tc {
+    margin: 7px 0;
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.09));
+    border-radius: 10px;
+    background: var(--theia-editorWidget-background, rgba(255, 255, 255, 0.022));
+    overflow: hidden;
+    animation: fabi-card-in 0.18s ease-out;
+}
+.fabi-tc-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 11px; font-size: 12px; cursor: default; user-select: none;
+}
+.fabi-tc[data-clickable] .fabi-tc-head { cursor: pointer; }
+.fabi-tc-icon { font-size: 14px; opacity: 0.85; flex: 0 0 auto; }
+.fabi-tc-label { font-weight: 600; flex: 0 0 auto; }
+.fabi-tc-sub {
+    color: var(--theia-descriptionForeground); opacity: 0.85;
+    font-family: var(--theia-code-font-family, 'GeistMono', monospace); font-size: 11.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0;
+}
+.fabi-tc-status { font-size: 13px !important; flex: 0 0 auto; margin-left: auto; }
+.fabi-tc-running .fabi-tc-status { color: #3fb0e0; }
+.fabi-tc-done .fabi-tc-status { color: #3fb950; }
+.fabi-tc-error .fabi-tc-status { color: #f85149; }
+.fabi-tc-confirm .fabi-tc-status { color: #EC5B2B; }
+.fabi-tc-caret { font-size: 12px !important; opacity: 0.5; flex: 0 0 auto; }
+.fabi-tc-out {
+    margin: 0; padding: 9px 12px;
+    border-top: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.07));
+    font-family: var(--theia-code-font-family, 'GeistMono', monospace);
+    font-size: 11.5px; line-height: 1.5;
+    max-height: 300px; overflow: auto; white-space: pre-wrap;
+    color: var(--theia-descriptionForeground);
+}
+.fabi-tc-confirm {
+    display: flex; gap: 6px; padding: 0 11px 9px;
+}
+.fabi-tc-confirm button {
+    font: inherit; font-size: 11px; padding: 4px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.14)); background: transparent;
+    color: var(--theia-foreground);
+}
+.fabi-tc-allow { background: #EC5B2B !important; border-color: #EC5B2B !important; color: #fff !important; }
+.fabi-tc-deny:hover { border-color: #f85149 !important; color: #f85149 !important; }
+
+/* --- bloc Réflexion (thinking) --- */
+.fabi-think {
+    margin: 7px 0;
+    animation: fabi-card-in 0.18s ease-out;
+}
+.fabi-think-head {
+    display: flex; align-items: center; gap: 7px;
+    cursor: pointer; user-select: none;
+    color: var(--theia-descriptionForeground);
+    font-size: 12px;
+}
+.fabi-think-icon { font-size: 13px; opacity: 0.8; }
+.fabi-think-title { font-weight: 600; flex: 0 0 auto; }
+.fabi-think-preview {
+    opacity: 0.6; font-style: italic;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0;
+}
+.fabi-think-caret { font-size: 12px !important; opacity: 0.5; }
+.fabi-think-body {
+    margin-top: 6px; padding-left: 20px;
+    border-left: 2px solid var(--theia-input-border, rgba(255, 255, 255, 0.12));
+    margin-left: 6px;
+    color: var(--theia-descriptionForeground); opacity: 0.78;
+    font-size: 12.5px; line-height: 1.6; white-space: pre-wrap;
+}
