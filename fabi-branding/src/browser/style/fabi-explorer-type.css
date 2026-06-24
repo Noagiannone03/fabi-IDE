@@ -1,0 +1,64 @@
+/*
+ * Fabi — TYPOGRAPHIE DE L'EXPLORATEUR (et arbres de fichiers).
+ *
+ * Theia ne donne AUCUN réglage typo à l'arbre de fichiers : il hérite juste de la
+ * police d'UI à la taille brute (13px / lignes 22px, graisse plate). Résultat :
+ * une liste « administrative » sans hiérarchie — c'est ce qui faisait « vieux ».
+ *
+ * Ici on traite l'explorateur comme un objet de design (façon Figma / Linear) :
+ *   - lignes qui RESPIRENT (un cran plus hautes) ;
+ *   - HIÉRARCHIE de graisse : dossiers plus marqués que les fichiers ;
+ *   - tracking légèrement négatif (Geist/Inter respirent mieux serrés en UI) ;
+ *   - métadonnées secondaires (git, taille) discrètes ;
+ *   - rendu net (antialiasing déjà global, on garantit calt seul ici).
+ *
+ * 100 % SÛR vis-à-vis de la virtualisation : Theia rend l'arbre via react-virtuoso,
+ * qui MESURE dynamiquement chaque ligne → changer la hauteur ne casse rien.
+ * Scope `.theia-FileTree` : on ne touche QUE les arbres de fichiers (explorateur,
+ * Open Editors), pas les autres listes.
+ *
+ * NB : les dossiers sont les seuls nœuds à posséder `.theia-ExpansionToggle`
+ * (les fichiers rendent `null` pour le toggle), d'où le ciblage via `:has()`.
+ */
+
+/* ---- Ligne : un peu plus d'air + tracking UI ---- */
+.theia-FileTree .theia-TreeNode {
+    line-height: 23px;
+    letter-spacing: -0.006em;
+    font-feature-settings: 'calt' 1;
+}
+
+/* La pastille de survol/sélection suit la ligne plus haute, sans écraser le texte. */
+.theia-FileTree .theia-TreeNodeContent {
+    padding-top: 1px;
+    padding-bottom: 1px;
+}
+
+/* ---- Nom de fichier (segment qui s'étire) : graisse de lecture nette ---- */
+.theia-FileTree .theia-TreeNodeSegmentGrow {
+    font-weight: 430;
+}
+
+/* ---- Dossiers (= nœuds avec toggle d'expansion) : un cran plus affirmés ---- *
+ * Graisse plus haute + tracking un poil plus serré → l'œil distingue
+ * instantanément la structure (dossiers) du contenu (fichiers). */
+.theia-FileTree .theia-TreeNode:has(.theia-ExpansionToggle) .theia-TreeNodeSegmentGrow {
+    font-weight: 545;
+    letter-spacing: -0.01em;
+}
+
+/* ---- Métadonnées secondaires (statut git, taille, compteurs) : discrètes ---- */
+.theia-FileTree .theia-TreeNodeInfo {
+    font-weight: 400;
+    font-size: 0.92em;
+    opacity: 0.62;
+    letter-spacing: 0;
+}
+
+/* ---- En-têtes de sections du panneau (EXPLORATEUR / OPEN EDITORS / OUTLINE) ----
+ * Petites capitales tracking large = repère de section « designé », pas un label brut. */
+.theia-view-container-part-header .label,
+.theia-view-container-part > .theia-header > .label {
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}

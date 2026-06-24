@@ -57,6 +57,9 @@ button.theia-button {
     border-radius: var(--fabi-radius-sm);
 }
 
+/* NB : la suppression des cadres de focus/sélection (outline gris « tout autour »
+   au clic) est centralisée dans fabi-no-focus-outline.css. */
+
 /* ------------------------------------------------------------------ */
 /* Onglets : coins supérieurs adoucis                                  */
 /* ------------------------------------------------------------------ */

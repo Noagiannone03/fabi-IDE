@@ -20,8 +20,10 @@
     --theia-button-hoverBackground: #3a3f48 !important;
     --theia-button-foreground: #f3f3f5 !important;
 
-    /* focus : liseré blanc translucide discret */
-    --theia-focusBorder: rgba(255, 255, 255, 0.22) !important;
+    /* focus : liseré blanc TRÈS discret (sert surtout aux champs de saisie).
+       Les listes/arbres n'en ont PAS besoin (fond de sélection déjà visible) :
+       l'outline était retiré côté sélection — cf. fabi-ui-polish.css. */
+    --theia-focusBorder: rgba(255, 255, 255, 0.12) !important;
     --theia-progressBar-background: #8a9099 !important;
 
     /* badges : gris neutre */

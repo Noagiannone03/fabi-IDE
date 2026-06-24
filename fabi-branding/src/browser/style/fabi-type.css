@@ -1,14 +1,25 @@
 /*
  * Fabi — TYPOGRAPHIE.
  *
- * Police UI = **Inter** (variable) — la référence des interfaces modernes
- * (lisible, neutre, excellente en petit). Code/terminaux = **GeistMono**.
+ * Police UI = **Geist** (variable, par Vercel) — sans-serif géométrique suisse,
+ * nette et un poil plus de caractère qu'Inter, et surtout SŒUR de **GeistMono**
+ * (déjà utilisée pour le code/terminaux) → système typographique cohérent
+ * « dev-tool 2026 ». Inter (la police de Figma) reste en repli immédiat.
+ * Code/terminaux = **GeistMono**.
  *
  * IMPORTANT : on ne touche QUE les variables de police Theia (méthode supportée)
  * + le lissage. On n'applique PAS `font-family`/`font-feature-settings` en large
  * (ex. `.lm-Widget`) : ça contaminait les polices d'icônes (codicon, Material,
  * FontAwesome) et cassait les glyphes. Les icônes sont explicitement préservées.
  */
+
+@font-face {
+    font-family: 'Geist';
+    src: url('./fonts/Geist-Variable.woff2') format('woff2');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
 
 @font-face {
     font-family: 'Inter';
@@ -36,8 +47,8 @@
 body.mac,
 body.windows,
 body.linux {
-    --theia-ui-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-    --theia-content-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --theia-ui-font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --theia-content-font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
     --theia-code-font-family: 'GeistMono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace !important;
 }
 

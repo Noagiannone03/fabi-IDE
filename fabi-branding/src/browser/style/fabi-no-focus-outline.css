@@ -1,0 +1,63 @@
+/*
+ * Fabi — ZÉRO cadre de focus/sélection « tout autour ».
+ *
+ * Le liseré gris fin qui entoure un élément quand on le clique/sélectionne ne
+ * vient pas d'UNE source mais de TROIS couches qui dessinent toutes un `outline` :
+ *
+ *   1. Arbres Theia (.theia-Tree)   → `outline: var(--theia-focusBorder) solid 1px`
+ *                                      (cf. @theia/core tree.css)
+ *   2. Listes Monaco (.monaco-list) → `outline: 1px solid var(--vscode-list-focusOutline)`
+ *      — utilisées par BEAUCOUP de vues (recherche, git, extensions, problèmes,
+ *        listes du chat IA…). La règle est INJECTÉE par le thème Monaco au focus
+ *        de la ligne → impossible à voir dans nos CSS, d'où l'effet « ça revient
+ *        partout ».
+ *   3. Selects / cards / boutons    → `outline: var(--theia-focusBorder) solid 1px`
+ *
+ * Méthode PROPRE (pas du rafistolage élément par élément) :
+ *   - on coupe à la SOURCE COULEUR : le liseré de focus des listes devient
+ *     transparent (Theia ET variables -vscode- que Monaco consomme) ;
+ *   - on neutralise l'`outline` en dur sur arbres + listes (ceinture+bretelles) ;
+ *   - l'état sélectionné reste parfaitement lisible par le FOND (surlignage),
+ *     plus jamais par une bordure.
+ *
+ * On NE touche PAS au focus des vrais contrôles de saisie (boutons, inputs,
+ * selects) : un anneau de focus discret y est utile (accessibilité clavier).
+ *
+ * Ce fichier est importé EN DERNIER → il gagne le cascade.
+ */
+
+/* 1) Source couleur : le liseré de focus/sélection des listes = transparent.
+   On couvre les noms Theia ET les noms -vscode- que Monaco lit réellement,
+   sur :root ET les classes de plateforme (Theia pose des vars sur body.mac…). */
+:root,
+body.mac,
+body.windows,
+body.linux {
+    --theia-list-focusOutline: transparent !important;
+    --theia-list-inactiveFocusOutline: transparent !important;
+    --vscode-list-focusOutline: transparent !important;
+    --vscode-list-inactiveFocusOutline: transparent !important;
+}
+
+/* 2) Arbres Theia + listes Monaco : aucun outline sur sélection/focus.
+   Le fond de sélection (--theia-list-*SelectionBackground) suffit. */
+.theia-Tree .theia-TreeNode.theia-mod-selected,
+.theia-Tree .theia-TreeNode.theia-mod-focus,
+.theia-Tree:focus-within .theia-TreeNode.theia-mod-selected,
+.theia-Tree:focus-within .theia-TreeNode.theia-mod-focus,
+.theia-Tree .ReactVirtualized__List:focus-within .theia-TreeNode.theia-mod-focus,
+.monaco-list .monaco-list-row.focused,
+.monaco-list .monaco-list-row.selected,
+.monaco-list:focus .monaco-list-row.focused,
+.monaco-list.focused .monaco-list-row.focused,
+.monaco-list:focus-within .monaco-list-row.focused {
+    outline: none !important;
+}
+
+/* 3) Onglets / items ACTIFS (barre latérale, panneau du bas) : plus de liseré
+   blanc inséré « tout autour » au clic — l'actif reste marqué par le FOND élevé
+   (surface-2), pas par une bordure. (override du box-shadow inset des îlots) */
+.theia-app-sidebar-container .lm-TabBar-tab.lm-mod-current,
+#theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab.lm-mod-current {
+    box-shadow: none !important;
+}

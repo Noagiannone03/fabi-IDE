@@ -8,6 +8,13 @@
     <title>Fabi</title>
     <style>
         @font-face {
+            font-family: 'Geist';
+            src: url('fonts/Geist-Variable.woff2') format('woff2');
+            font-weight: 100 900;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
             font-family: 'Inter';
             src: url('fonts/InterVariable.woff2') format('woff2');
             font-weight: 100 900;
@@ -18,15 +25,18 @@
         :root { --accent: #0A84FF; }
         html, body {
             margin: 0; width: 100vw; height: 100vh; overflow: hidden;
-            font-family: 'Inter', -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-family: 'Geist', 'Inter', -apple-system, "Segoe UI", Roboto, sans-serif;
             letter-spacing: -0.005em;
             -webkit-font-smoothing: antialiased;
             -webkit-user-select: none; user-select: none; cursor: default;
         }
-        /* La barre de titre reste NEUTRE (pas de teinte de couleur). */
+        /* La barre de titre reste NEUTRE (pas de teinte de couleur).
+           Pas de filet de séparation en bas : dans le design « îlots » tout flotte
+           sur le même canvas — aucune barre dure (gris clair) ne doit trancher
+           entre la barre de titre et l'espace de travail. (cf. #theia-top-panel
+           qui retire déjà sa bordure pour la même raison.) */
         body {
             background: #0b0b0e;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
         .bar { display: flex; align-items: center; height: 100%; }
         /* Réserve à gauche pour les traffic-lights macOS. */

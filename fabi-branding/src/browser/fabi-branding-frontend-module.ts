@@ -8,9 +8,11 @@
 import '../../src/browser/style/fabi-type.css';   // EN PREMIER : la typographie est la base de la DA
 import '../../src/browser/style/index.css';
 import '../../src/browser/style/fabi-ui-polish.css';
+import '../../src/browser/style/fabi-explorer-type.css';
 import '../../src/browser/style/fabi-islands.css';
 import '../../src/browser/style/fabi-activity-bar.css';
 import '../../src/browser/style/fabi-space-accent.css';
+import '../../src/browser/style/fabi-no-focus-outline.css'; // EN DERNIER : neutralise tous les cadres de focus/sélection
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
