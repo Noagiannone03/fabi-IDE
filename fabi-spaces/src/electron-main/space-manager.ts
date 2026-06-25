@@ -22,7 +22,7 @@ import { SpaceStore } from './space-store';
 import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './frontend-url';
 
 /** Largeur du rail au repos (colonne d'icônes d'espaces), en px CSS. */
-const RAIL_COLLAPSED = 58;
+const RAIL_COLLAPSED = 52;   // = largeur réelle de la colonne de tuiles (8+5+34+5) → l'explorateur est COLLÉ au rail, plus de vide à droite
 /** Largeur du rail déplié au survol (affiche les noms + la gestion, façon Arc). */
 const RAIL_EXPANDED = 250;
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
@@ -112,7 +112,7 @@ export class SpaceManager {
             minWidth: 640,
             minHeight: 400,
             title: this.opts.appName,
-            backgroundColor: '#0b0b0e',
+            backgroundColor: '#22262d',
             show: false,
             ...(mac
                 ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 13, y: 11 } }
@@ -143,9 +143,9 @@ export class SpaceManager {
     protected createChrome(): void {
         // Sidebar d'espaces (gauche) + barre de titre (haut) : deux vues de chrome.
         this.railView = this.chromeView(this.opts.railHtmlPath);
-        this.railView.setBackgroundColor('#0b0b0e');
+        this.railView.setBackgroundColor('#22262d');
         this.topbarView = this.chromeView(this.opts.topbarHtmlPath);
-        this.topbarView.setBackgroundColor('#0b0b0e');
+        this.topbarView.setBackgroundColor('#22262d');
         this.layout();
     }
 
@@ -212,7 +212,7 @@ export class SpaceManager {
         }
         const space = this.store.get(id)!;
         const view = new WebContentsView({ webPreferences: spaceWebPreferences(this.opts) });
-        view.setBackgroundColor('#0b0b0e');
+        view.setBackgroundColor('#22262d');
         this.views.set(id, view);
         this.host.contentView.addChildView(view);
         this.wireSpaceWebContents(id, view);

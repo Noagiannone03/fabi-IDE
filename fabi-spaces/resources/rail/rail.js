@@ -53,6 +53,9 @@
     // jour leur contenu + la classe .active) → la `background-color` de la tuile peut
     // transitionner en fondu au changement d'espace / de couleur.
     function render() {
+        // --accent global = couleur de l'espace actif → le rail peut diffuser une
+        // lumière colorée très douce (verre), assortie à l'espace, fondu au switch.
+        document.documentElement.style.setProperty('--accent', state.activeColor || '#0A84FF');
         const live = new Set(state.liveIds);
         const seen = new Set();
         let prev = null;

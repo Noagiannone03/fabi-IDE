@@ -4,13 +4,13 @@
    l'état déplié (250px) et l'état replié le rogne (overflow). */
 
 :root {
-    --canvas: #0b0b0e;
-    --surface: #181a1d;
-    /* Tuiles au repos : LÉGÈREMENT élevées au-dessus du canvas (elles lisent comme
-       de vrais objets posés, pas des trous noirs) — façon liste macOS / Arc. */
-    --tile: #1c1f25;
-    --tile-hover: #272b33;
-    --tile-active: #2b2f37;
+    --canvas: #22262d;
+    --surface: #292e37;
+    /* Tuiles au repos : LÉGÈREMENT élevées au-dessus du chrome #22262d (elles
+       lisent comme de vrais objets posés) — façon liste macOS / Arc. */
+    --tile: #292e37;
+    --tile-hover: #333944;
+    --tile-active: #3a4150;
     --text: #f3ece6;
     --muted: rgba(243, 236, 230, 0.55);
     --muted-2: rgba(243, 236, 230, 0.34);
@@ -39,15 +39,38 @@
 
 * { box-sizing: border-box; }
 
+/* --accent interpolable → la lumière colorée du rail fond en douceur au switch. */
+@property --accent {
+    syntax: '<color>';
+    inherits: true;
+    initial-value: #0A84FF;
+}
+
 html, body {
     margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: var(--canvas);
     color: var(--text);
-    font-family: 'Geist', 'Inter', -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-family: 'Inter', -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     letter-spacing: -0.005em;
     -webkit-font-smoothing: antialiased;
     -webkit-user-select: none; user-select: none; cursor: default;
 }
+
+/* Lumière colorée TRÈS douce de l'espace actif, diffuse depuis le haut du rail
+   (comme si le rail était du verre teinté). Sous le contenu, fondue en `screen`. */
+.rail::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 42% at 50% -6%,
+        color-mix(in oklab, var(--accent) 17%, transparent) 0%, transparent 56%);
+    mix-blend-mode: screen;
+    opacity: 0.85;
+    transition: --accent 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.rail > * { position: relative; z-index: 1; }
 
 /* La colonne : posée à la largeur dépliée ; repliée, la vue la rogne (overflow body). */
 /* Pas de filet de séparation à droite : la rail des espaces partage le même
@@ -58,7 +81,9 @@ html, body {
     width: var(--expanded-w);
     background: var(--canvas);
     display: flex; flex-direction: column;
-    padding: 9px 8px 12px;
+    /* Padding droit réduit → les tuiles d'espaces sont COLLÉES à l'explorateur
+       (même couleur de chrome) : rail + sidebar lisent comme un seul composant. */
+    padding: 9px 2px 12px 8px;
     gap: 6px;
 }
 
