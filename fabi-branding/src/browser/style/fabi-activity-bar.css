@@ -13,10 +13,21 @@
     height: 44px;
     display: flex;
     align-items: center;
+    /* Icônes CENTRÉES : l'espace gauche = l'espace droite (avant, packées à gauche
+       → gros vide à droite, déséquilibré). */
+    justify-content: center;
     gap: 4px;
     padding: 0 8px;
-    /* léger filet de séparation, pas une boîte */
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    /* Aucun filet de séparation : la barre d'icônes fait partie de la surface
+       continue de la sidebar (pas de délimitation interne). */
+}
+
+/* Largeur MINIMALE du panneau gauche = de quoi toujours montrer 4 icônes (+ le « … »).
+   Lumino lit le min-width calculé du child de split → le séparateur ne peut plus
+   descendre sous ce seuil. (barre ~206px utiles ⇒ 4 icônes garanties par le calcul
+   responsive de FabiActivityBar ; +18px de bordure d'îlot.) */
+#theia-left-content-panel {
+    min-width: 224px;
 }
 
 /* Une icône de vue = un bouton flottant compact, icône seule. */
@@ -41,7 +52,7 @@
     opacity: 1;
 }
 .fabi-activity-item .fabi-activity-icon {
-    font-size: 17px;
+    font-size: 20px;
     line-height: 1;
 }
 
@@ -55,6 +66,13 @@
 
 /* Débordement « … » + son menu déroulant (au-dessus du bouton). */
 .fabi-activity-overflow { position: relative; flex: 0 0 auto; }
+/* Voile plein écran : capte le clic « en dehors » pour fermer le menu (sous le menu). */
+.fabi-activity-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: transparent;
+}
 .fabi-activity-menu {
     position: absolute;
     bottom: calc(100% + 6px);

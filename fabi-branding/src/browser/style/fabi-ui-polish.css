@@ -30,12 +30,14 @@
     border-radius: var(--fabi-radius-sm) !important;
 }
 
+/* Boutons : pleinement ARRONDIS (pill) — style « rounded joli » cohérent avec les
+   scrollbars en pilule. Padding un peu plus large pour respirer dans la forme ronde. */
 .theia-button,
 .theia-button.main,
 .theia-button.secondary,
 button.theia-button {
-    border-radius: var(--fabi-radius-sm) !important;
-    padding: 5px 14px;
+    border-radius: 9999px !important;
+    padding: 5px 16px;
 }
 
 .theia-select-component-dropdown {

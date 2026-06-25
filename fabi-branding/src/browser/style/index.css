@@ -16,14 +16,15 @@
 
     /* Chrome de l'IDE : monochrome minimaliste (zéro orange — réservé au logo). */
     /* boutons primaires : gris neutre élevé */
-    --theia-button-background: #2f333b !important;
-    --theia-button-hoverBackground: #3a3f48 !important;
-    --theia-button-foreground: #f3f3f5 !important;
+    /* Boutons primaires = ORANGE Fabi (l'accent de la marque). */
+    --theia-button-background: #ec5b2b !important;
+    --theia-button-hoverBackground: #f06d40 !important;
+    --theia-button-foreground: #ffffff !important;
 
     /* focus : liseré blanc TRÈS discret (sert surtout aux champs de saisie).
        Les listes/arbres n'en ont PAS besoin (fond de sélection déjà visible) :
        l'outline était retiré côté sélection — cf. fabi-ui-polish.css. */
-    --theia-focusBorder: rgba(255, 255, 255, 0.12) !important;
+    --theia-focusBorder: #ec5b2b !important;
     --theia-progressBar-background: #8a9099 !important;
 
     /* badges : gris neutre */
@@ -44,7 +45,7 @@
     --theia-tab-activeBackground: #181a1d !important;
     --theia-tab-inactiveBackground: #131316 !important;
     --theia-tab-hoverBackground: #1e2025 !important;
-    --theia-tab-border: #0b0b0e !important;
+    --theia-tab-border: transparent !important;
     --theia-tab-activeForeground: #f2f3f5 !important;
     --theia-tab-inactiveForeground: #888d92 !important;
     --theia-editorGroupHeader-tabsBackground: #111114 !important;
@@ -78,7 +79,8 @@
 /* ------------------------------------------------------------------ */
 .fabi-welcome {
     overflow: auto;
-    background: var(--fabi-canvas, var(--theia-editor-background));
+    /* Page d'accueil = surface SOMBRE de contenu (comme l'éditeur / Fabi AI). */
+    background: var(--fabi-editor, var(--theia-editor-background));
     color: var(--theia-foreground);
 }
 

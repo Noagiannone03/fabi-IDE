@@ -37,6 +37,31 @@
     font-display: swap;
 }
 
+/* JetBrains Mono — la police de code des IDE JetBrains / Android Studio.
+   Fichiers STATIQUES officiels (Regular/Medium/Bold) : plus fiables que la variable
+   (la woff2 variable ne se rendait pas → l'éditeur retombait sur SF Mono). */
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-Regular.woff2') format('woff2');
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-Medium.woff2') format('woff2');
+    font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-Bold.woff2') format('woff2');
+    font-weight: 700;
+    font-style: normal;
+    font-display: swap;
+}
+
 /* Override des variables de police Theia.
    ⚠️ Theia pose `--theia-ui-font-family` sur `body.mac` / `.windows` / `.linux`
    (cf. os.css) — un ancêtre PLUS PROCHE que `:root`. Pour la résolution d'une
@@ -47,9 +72,11 @@
 body.mac,
 body.windows,
 body.linux {
-    --theia-ui-font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-    --theia-content-font-family: 'Geist', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-    --theia-code-font-family: 'GeistMono', 'SF Mono', 'JetBrains Mono', ui-monospace, monospace !important;
+    /* UI = Inter (la police d'interface des IDE JetBrains / Android Studio).
+       Code = JetBrains Mono (leur police d'éditeur par défaut). */
+    --theia-ui-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --theia-content-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+    --theia-code-font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace !important;
 }
 
 /* Inter PARTOUT : on la pose sur `body` → tout l'UI en hérite (la méthode par

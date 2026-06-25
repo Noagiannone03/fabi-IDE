@@ -1,13 +1,17 @@
-/* Effet « relié » : l'îlot EXPLORATEUR (panneau gauche) garde son fond neutre, mais
-   reçoit une AURÉOLE DOUCE (glow léger) de la couleur de l'espace actif autour de tout
-   l'îlot (entête EXPLORER comprise). Couleur injectée par le SpaceManager
-   (`--fabi-space-accent` sur :root). Animé au switch. Rien d'autre n'est teinté. */
-
+/* Lumière de l'espace actif dans l'EXPLORATEUR (panneau gauche).
+ *
+ * AVANT : un `box-shadow` (ombre portée sombre + glow) → créait un HALO SOMBRE
+ * autour du panneau = une séparation / un « espacement » avec la topbar et le rail.
+ * MAINTENANT : zéro ombre portée (l'explorateur reste COLLÉ, flush), et la couleur
+ * de l'espace diffuse en INTERNE (background-image), très douce, depuis le haut —
+ * comme le rail. Aucune séparation. Couleur injectée par le SpaceManager
+ * (`--fabi-space-accent` sur :root), fondu au switch.
+ */
 #theia-left-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
-    /* Pas de liseré (ça faisait un « cadre autour du cadre ») : juste un glow doux,
-       serré et TRÈS léger qui hugge le panneau. */
-    box-shadow:
-        var(--fabi-island-shadow, 0 8px 24px -12px rgba(0, 0, 0, 0.6)),
-        0 0 10px 0 color-mix(in srgb, var(--fabi-space-accent, transparent) 30%, transparent) !important;
-    transition: box-shadow .5s ease !important;
+    box-shadow: none !important;
+    background-image: radial-gradient(140% 38% at 50% 0%,
+        color-mix(in srgb, var(--fabi-space-accent, transparent) 12%, transparent) 0%,
+        transparent 58%) !important;
+    background-repeat: no-repeat !important;
+    transition: background-image .5s ease !important;
 }

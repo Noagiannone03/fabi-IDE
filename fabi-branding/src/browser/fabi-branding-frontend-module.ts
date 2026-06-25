@@ -12,7 +12,8 @@ import '../../src/browser/style/fabi-explorer-type.css';
 import '../../src/browser/style/fabi-islands.css';
 import '../../src/browser/style/fabi-activity-bar.css';
 import '../../src/browser/style/fabi-space-accent.css';
-import '../../src/browser/style/fabi-no-focus-outline.css'; // EN DERNIER : neutralise tous les cadres de focus/sélection
+import '../../src/browser/style/fabi-no-focus-outline.css'; // neutralise tous les cadres de focus/sélection
+import '../../src/browser/style/fabi-ui-icons.css';         // EN DERNIER : remappe les codicons en icônes Fluent rondes
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
@@ -28,6 +29,7 @@ import { FabiAboutDialog } from './about/fabi-about-dialog';
 import { FabiColorContribution } from './theme/fabi-color-contribution';
 import { FabiThemeContribution } from './theme/fabi-theme-contribution';
 import { FabiSidePanelHandler, FabiLeftPanelOpenContribution, FabiRightPanelContribution } from './shell/fabi-side-panel-handler';
+import { FabiFontRemeasureContribution } from './shell/fabi-font-remeasure-contribution';
 
 // --- Hauteur des en-têtes de sections (Explorer : Open Editors / Timeline / Outline…) ---
 // Theia positionne les *parts* d'un view-container en ABSOLU à partir d'une CONSTANTE
@@ -74,4 +76,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     // --- Panneau droit : garder IA, retirer seulement Outline ---
     bind(FabiRightPanelContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiRightPanelContribution);
+
+    // --- Re-mesure des polices monaco une fois chargées (fix police éditeur) ---
+    bind(FabiFontRemeasureContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiFontRemeasureContribution);
 });

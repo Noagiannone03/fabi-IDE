@@ -1,0 +1,131 @@
+/*
+ * Fabi — ICÔNES D'UI rondes (Fluent Icons de Microsoft, via Miguel Solorio).
+ *
+ * Theia ne supporte PAS les "product icon themes" → portage manuel : Fluent
+ * fournit une police + un mapping (nom de codicon → glyphe). On charge la police
+ * et on REMAPPE chaque codicon vers le glyphe Fluent → toutes les icônes d'UI
+ * (explorateur, recherche, git, debug, terminal, extensions, réglages, symboles,
+ * layout, chat…) passent en version RONDE. Les icônes de FICHIERS (material) et
+ * les codicons non couverts par Fluent restent inchangés.
+ *
+ * Sélecteur `.codicon.codicon-NOM::before` (double classe) : plus spécifique que
+ * le défaut `.codicon-NOM:before` ET distinct → cssnano ne le fusionne pas, donc
+ * notre remappe gagne de façon fiable.
+ *
+ * ⚠️ Généré depuis fluent-icons.json — ne pas éditer à la main (sauf bloc manuel en bas).
+ */
+@font-face {
+    font-family: 'fluent-icons';
+    src: url('./fonts/fluent-icons.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
+}
+.codicon.codicon-files::before{font-family:'fluent-icons'!important;content:"\2710"!important}
+.codicon.codicon-search::before{font-family:'fluent-icons'!important;content:"\2711"!important}
+.codicon.codicon-source-control::before{font-family:'fluent-icons'!important;content:"\2712"!important}
+.codicon.codicon-git-branch::before{font-family:'fluent-icons'!important;content:"\2712"!important}
+.codicon.codicon-debug-alt::before{font-family:'fluent-icons'!important;content:"\2713"!important}
+.codicon.codicon-extensions::before{font-family:'fluent-icons'!important;content:"\2714"!important}
+.codicon.codicon-account::before{font-family:'fluent-icons'!important;content:"\2715"!important}
+.codicon.codicon-settings-gear::before{font-family:'fluent-icons'!important;content:"\2716"!important}
+.codicon.codicon-new-file::before{font-family:'fluent-icons'!important;content:"\2717"!important}
+.codicon.codicon-new-folder::before{font-family:'fluent-icons'!important;content:"\2718"!important}
+.codicon.codicon-refresh::before{font-family:'fluent-icons'!important;content:"\2719"!important}
+.codicon.codicon-collapse-all::before{font-family:'fluent-icons'!important;content:"\271a"!important}
+.codicon.codicon-editor-layout::before{font-family:'fluent-icons'!important;content:"\271b"!important}
+.codicon.codicon-save::before{font-family:'fluent-icons'!important;content:"\271c"!important}
+.codicon.codicon-save-all::before{font-family:'fluent-icons'!important;content:"\271c"!important}
+.codicon.codicon-error::before{font-family:'fluent-icons'!important;content:"\2720"!important}
+.codicon.codicon-split-horizontal::before{font-family:'fluent-icons'!important;content:"\271e"!important}
+.codicon.codicon-split-vertical::before{font-family:'fluent-icons'!important;content:"\271f"!important}
+.codicon.codicon-compare-changes::before{font-family:'fluent-icons'!important;content:"\2721"!important}
+.codicon.codicon-clear-all::before{font-family:'fluent-icons'!important;content:"\2722"!important}
+.codicon.codicon-warning::before{font-family:'fluent-icons'!important;content:"\2723"!important}
+.codicon.codicon-bell::before{font-family:'fluent-icons'!important;content:"\2724"!important}
+.codicon.codicon-sync::before{font-family:'fluent-icons'!important;content:"\2725"!important}
+.codicon.codicon-light-bulb::before{font-family:'fluent-icons'!important;content:"\2726"!important}
+.codicon.codicon-filter::before{font-family:'fluent-icons'!important;content:"\2727"!important}
+.codicon.codicon-gear::before{font-family:'fluent-icons'!important;content:"\2728"!important}
+.codicon.codicon-debug-start::before{font-family:'fluent-icons'!important;content:"\2729"!important}
+.codicon.codicon-debug-stop::before{font-family:'fluent-icons'!important;content:"\272a"!important}
+.codicon.codicon-debug-pause::before{font-family:'fluent-icons'!important;content:"\409"!important}
+.codicon.codicon-debug-restart::before{font-family:'fluent-icons'!important;content:"\272b"!important}
+.codicon.codicon-debug-disconnect::before{font-family:'fluent-icons'!important;content:"\404"!important}
+.codicon.codicon-debug-step-into::before{font-family:'fluent-icons'!important;content:"\405"!important}
+.codicon.codicon-debug-step-out::before{font-family:'fluent-icons'!important;content:"\406"!important}
+.codicon.codicon-debug-step-back::before{font-family:'fluent-icons'!important;content:"\407"!important}
+.codicon.codicon-debug-step-over::before{font-family:'fluent-icons'!important;content:"\408"!important}
+.codicon.codicon-debug-continue::before{font-family:'fluent-icons'!important;content:"\40a"!important}
+.codicon.codicon-trash::before{font-family:'fluent-icons'!important;content:"\40c"!important}
+.codicon.codicon-add::before{font-family:'fluent-icons'!important;content:"\40d"!important}
+.codicon.codicon-close-all::before{font-family:'fluent-icons'!important;content:"\40e"!important}
+.codicon.codicon-activate-breakpoints::before{font-family:'fluent-icons'!important;content:"\40f"!important}
+.codicon.codicon-remote-explorer::before{font-family:'fluent-icons'!important;content:"\0410"!important}
+.codicon.codicon-symbol-function::before{font-family:'fluent-icons'!important;content:"\0411"!important}
+.codicon.codicon-symbol-constructor::before{font-family:'fluent-icons'!important;content:"\0411"!important}
+.codicon.codicon-remote::before{font-family:'fluent-icons'!important;content:"\0414"!important}
+.codicon.codicon-live-share::before{font-family:'fluent-icons'!important;content:"\0415"!important}
+.codicon.codicon-github::before{font-family:'fluent-icons'!important;content:"\0416"!important}
+.codicon.codicon-github-alt::before{font-family:'fluent-icons'!important;content:"\0416"!important}
+.codicon.codicon-github-inverted::before{font-family:'fluent-icons'!important;content:"\0416"!important}
+.codicon.codicon-symbol-key::before{font-family:'fluent-icons'!important;content:"\0418"!important}
+.codicon.codicon-symbol-class::before{font-family:'fluent-icons'!important;content:"\0419"!important}
+.codicon.codicon-symbol-keyword::before{font-family:'fluent-icons'!important;content:"\041a"!important}
+.codicon.codicon-symbol-structure::before{font-family:'fluent-icons'!important;content:"\041b"!important}
+.codicon.codicon-symbol-struct::before{font-family:'fluent-icons'!important;content:"\041b"!important}
+.codicon.codicon-symbol-snippet::before{font-family:'fluent-icons'!important;content:"\041c"!important}
+.codicon.codicon-symbol-string::before{font-family:'fluent-icons'!important;content:"\041d"!important}
+.codicon.codicon-symbol-event::before{font-family:'fluent-icons'!important;content:"\041e"!important}
+.codicon.codicon-symbol-namespace::before{font-family:'fluent-icons'!important;content:"\041f"!important}
+.codicon.codicon-symbol-module::before{font-family:'fluent-icons'!important;content:"\041f"!important}
+.codicon.codicon-symbol-package::before{font-family:'fluent-icons'!important;content:"\041f"!important}
+.codicon.codicon-symbol-object::before{font-family:'fluent-icons'!important;content:"\041f"!important}
+.codicon.codicon-symbol-variable::before{font-family:'fluent-icons'!important;content:"\0420"!important}
+.codicon.codicon-symbol-operator::before{font-family:'fluent-icons'!important;content:"\0421"!important}
+.codicon.codicon-symbol-numeric::before{font-family:'fluent-icons'!important;content:"\0422"!important}
+.codicon.codicon-symbol-enum::before{font-family:'fluent-icons'!important;content:"\0423"!important}
+.codicon.codicon-symbol-value::before{font-family:'fluent-icons'!important;content:"\0423"!important}
+.codicon.codicon-symbol-property::before{font-family:'fluent-icons'!important;content:"\0424"!important}
+.codicon.codicon-symbol-constant::before{font-family:'fluent-icons'!important;content:"\0425"!important}
+.codicon.codicon-symbol-parameter::before{font-family:'fluent-icons'!important;content:"\0426"!important}
+.codicon.codicon-symbol-type-parameter::before{font-family:'fluent-icons'!important;content:"\0426"!important}
+.codicon.codicon-symbol-misc::before{font-family:'fluent-icons'!important;content:"\0427"!important}
+.codicon.codicon-symbol-interface::before{font-family:'fluent-icons'!important;content:"\0428"!important}
+.codicon.codicon-symbol-field::before{font-family:'fluent-icons'!important;content:"\0429"!important}
+.codicon.codicon-symbol-file::before{font-family:'fluent-icons'!important;content:"\042a"!important}
+.codicon.codicon-symbol-boolean::before{font-family:'fluent-icons'!important;content:"\042b"!important}
+.codicon.codicon-symbol-null::before{font-family:'fluent-icons'!important;content:"\042b"!important}
+.codicon.codicon-symbol-color::before{font-family:'fluent-icons'!important;content:"\042c"!important}
+.codicon.codicon-symbol-method::before{font-family:'fluent-icons'!important;content:"\042d"!important}
+.codicon.codicon-symbol-ruler::before{font-family:'fluent-icons'!important;content:"\042e"!important}
+.codicon.codicon-symbol-enum-member::before{font-family:'fluent-icons'!important;content:"\042f"!important}
+.codicon.codicon-symbol-array::before{font-family:'fluent-icons'!important;content:"\0430"!important}
+.codicon.codicon-go-to-file::before{font-family:'fluent-icons'!important;content:"\0431"!important}
+.codicon.codicon-symbol-reference::before{font-family:'fluent-icons'!important;content:"\0431"!important}
+.codicon.codicon-symbol-folder::before{font-family:'fluent-icons'!important;content:"\0432"!important}
+.codicon.codicon-folder::before{font-family:'fluent-icons'!important;content:"\0432"!important}
+.codicon.codicon-beaker::before{font-family:'fluent-icons'!important;content:"\0433"!important}
+.codicon.codicon-lock::before{font-family:'fluent-icons'!important;content:"\0434"!important}
+.codicon.codicon-unlock::before{font-family:'fluent-icons'!important;content:"\0435"!important}
+.codicon.codicon-terminal::before{font-family:'fluent-icons'!important;content:"\0436"!important}
+.codicon.codicon-hubot::before{font-family:'fluent-icons'!important;content:"\0437"!important}
+.codicon.codicon-feedback::before{font-family:'fluent-icons'!important;content:"\0438"!important}
+.codicon.codicon-bell-dot::before{font-family:'fluent-icons'!important;content:"\0439"!important}
+.codicon.codicon-layout::before{font-family:'fluent-icons'!important;content:"\043a"!important}
+.codicon.codicon-play::before{font-family:'fluent-icons'!important;content:"\2729"!important}
+.codicon.codicon-layout-sidebar-left-off::before{font-family:'fluent-icons'!important;content:"\043c"!important}
+.codicon.codicon-layout-sidebar-right-off::before{font-family:'fluent-icons'!important;content:"\043d"!important}
+.codicon.codicon-layout-panel-off::before{font-family:'fluent-icons'!important;content:"\043e"!important}
+.codicon.codicon-layout-sidebar-left::before{font-family:'fluent-icons'!important;content:"\43f"!important}
+.codicon.codicon-layout-sidebar-right::before{font-family:'fluent-icons'!important;content:"\440"!important}
+.codicon.codicon-layout-panel::before{font-family:'fluent-icons'!important;content:"\441"!important}
+
+/* --- Mappings MANUELS : codicons Fabi absents du set Fluent → glyphe proche. ---
+   Chat IA (vue Fabi = codicon-copilot) + comment-discussion → bulle de message
+   Fluent (\0438), PAS le robot. */
+.codicon.codicon-copilot::before,
+.codicon.codicon-comment-discussion::before {
+    font-family: 'fluent-icons' !important;
+    content: "\0438" !important;
+}

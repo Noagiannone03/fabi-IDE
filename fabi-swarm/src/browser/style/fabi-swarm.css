@@ -5,9 +5,22 @@
    sombre (l'élévation = un fond plus clair), et c'est la couleur qu'on voyait
    déjà à l'ouverture du sélecteur — on l'étend à l'input. Sobre, aucun orange. */
 .chat-input-widget {
-    --fabi-ai-island: #23262c;        /* surface de l'île, distincte du fond #181a1d */
-    --fabi-ai-island-hover: #282c33;  /* survol */
-    --fabi-ai-island-edge: rgba(255, 255, 255, 0.07);
+    /* Surface de l'île CLAIREMENT au-dessus du fond de section (--fabi-surface
+       #1c1f25) → on voit franchement le relief (avant trop proche, ça se fondait). */
+    --fabi-ai-island: #2a2f37;        /* surface de l'île, nettement détachée du fond */
+    --fabi-ai-island-hover: #323843;  /* survol */
+    /* Edge réduit à un whisper : la profondeur vient de la surface + de l'ombre,
+       plus d'un gros liseré blanc (cohérent avec les îlots du shell). */
+    --fabi-ai-island-edge: rgba(255, 255, 255, 0.04);
+    --fabi-ai-island-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.38),
+        0 16px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+/* Panneau Fabi AI = surface SOMBRE de contenu (#16181b), comme l'éditeur et
+   l'accueil : les bulles et l'île d'input flottent sur ce fond foncé. */
+.chat-view-widget {
+    background: var(--fabi-editor, #16181b) !important;
 }
 
 /* ============================================================
@@ -16,20 +29,18 @@
 .chat-input-widget .theia-ChatInput-Editor-Box {
     border: none !important;
     border-radius: 0 0 14px 14px !important;
-    background: var(--fabi-ai-island, #23262c) !important;
+    background: var(--fabi-ai-island, #2a2f37) !important;
+    /* Bas de l'île : surface claire + ombre portée douce (qui descend), whisper
+       d'arête en bas. Plus de liserés blancs latéraux. */
     box-shadow:
-        inset 0 -1px 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        0 6px 20px rgba(0, 0, 0, 0.34) !important;
+        inset 0 -1px 0 0 var(--fabi-ai-island-edge),
+        var(--fabi-ai-island-shadow) !important;
 }
-/* Plus de halo/bordure orange au focus. */
+/* Plus de halo/bordure orange au focus (même élévation). */
 .chat-input-widget .theia-ChatInput-Editor-Box:focus-within {
     box-shadow:
-        inset 0 -1px 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        0 6px 20px rgba(0, 0, 0, 0.34) !important;
+        inset 0 -1px 0 0 var(--fabi-ai-island-edge),
+        var(--fabi-ai-island-shadow) !important;
 }
 /* L'éditeur Monaco interne (« Ask a question ») peint SON propre fond
    (--theia-editor-background, sombre) par-dessus l'île → la zone de saisie
@@ -68,10 +79,7 @@
     cursor: pointer;
     text-align: left;
     outline: none;
-    box-shadow:
-        inset 0 1px 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07));
+    box-shadow: inset 0 1px 0 0 var(--fabi-ai-island-edge);
     transition: background 0.13s ease;
 }
 .fabi-sel-bar:hover { background: var(--fabi-ai-island-hover, #282c33); }
@@ -79,10 +87,8 @@
 /* Ouvert : la barre reste sur la même surface élevée, coins plats (continuité avec l'expansion). */
 .fabi-sel.open .fabi-sel-bar {
     border-radius: 0;
-    background: var(--fabi-ai-island, #23262c);
-    box-shadow:
-        inset 1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        inset -1px 0 0 0 var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07));
+    background: var(--fabi-ai-island, #2a2f37);
+    box-shadow: none;
 }
 .fabi-sel.open .fabi-sel-bar:hover { background: var(--fabi-ai-island-hover, #282c33); }
 
@@ -101,10 +107,10 @@
 .fabi-sel-expand {
     box-sizing: border-box;
     border-radius: 14px 14px 0 0;
-    background: var(--fabi-ai-island, #23262c);
+    background: var(--fabi-ai-island, #2a2f37);
     box-shadow:
-        inset 0 0 0 1px var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.07)),
-        0 -12px 32px rgba(0, 0, 0, 0.5);
+        inset 0 1px 0 0 var(--fabi-ai-island-edge),
+        0 -14px 36px -6px rgba(0, 0, 0, 0.55);
     max-height: 320px;
     overflow: auto;
     animation: fabi-expand 0.16s ease-out;

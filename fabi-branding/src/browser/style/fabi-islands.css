@@ -18,27 +18,44 @@
        vraiment au lieu de paraître plates/vides. Trois niveaux :
          canvas (le vide)  <  surface (l'île)  <  surface-2 (en-têtes, onglet actif). */
     /* Palette NEUTRE sombre (pas de teinte). 3 niveaux de profondeur. */
-    --fabi-canvas: #0b0b0e;        /* fond profond derrière les îles */
-    --fabi-surface: #181a1d;       /* surface des îles */
-    --fabi-surface-2: #212429;     /* couche élevée : en-têtes de section, onglet actif */
-    --fabi-surface-3: #2b2f37;     /* survol / sélection au-dessus de surface-2 */
-    --fabi-gap: 9px;               /* écart entre les îles */
-    --fabi-island-radius: 16px;    /* rayon des îles */
+    /* Paliers d'élévation ACCENTUÉS : on creuse l'écart de valeur entre chaque
+       niveau pour que le relief SE VOIE (avant, surface≈canvas → tout se fondait).
+       Le canvas reste à #0b0b0e (= rail/topbar, pas de seam) ; tout le reste monte. */
+    /* CHROME UNIFIÉ : le canvas (fond de l'IDE, rail des espaces, light bar, sidebar)
+       = la couleur de l'explorateur. Tout le chrome partage cette teinte ; seul
+       l'ÉDITEUR se détache en îlot (--fabi-editor). */
+    /* Chrome = teinte sidebar #1c1f25 (rail, topbar, sidebar, fond) ; l'ÉDITEUR est
+       l'îlot SOMBRE #16181b (plus foncé que le chrome) → le code se détache nettement
+       et le composant éditeur lit comme une carte sombre arrondie. */
+    --fabi-canvas: #22262d;        /* chrome (rail, topbar, sidebar, fond) — un poil plus clair, même ton */
+    --fabi-surface: #22262d;       /* surface des panneaux chrome (= canvas) */
+    --fabi-editor: #101113;        /* surface SOMBRE (gris noir profond) : éditeur + Fabi AI + accueil + terminal */
+    --fabi-surface-2: #292e37;     /* couche élevée : en-têtes, onglet actif, cartes */
+    --fabi-surface-3: #343a45;     /* survol / sélection au-dessus de surface-2 */
+    --fabi-gap: 10px;              /* écart entre les îles (un peu plus d'air → vrai flottement) */
+    --fabi-island-radius: 18px;    /* rayon des îles (plus généreux, façon « islands ») */
 
     --fabi-text: #cdd0d6;          /* texte neutre clair */
 
-    /* Hairline net + ombre MULTI-COUCHES : arête lumineuse en haut (rim-light),
-       contact net, puis halo ambiant large → vraie carte Material posée.
-       (Toujours pas de verre : pas de dégradé blanc directionnel.) */
     --fabi-hairline: rgba(255, 255, 255, 0.06);
-    /* Plus d'« arête lumineuse » blanche (inset 0 1px … ) : c'était la fine ligne
-       claire en haut des panneaux qui lisait comme une délimitation moche. On garde
-       juste un hairline ténu + l'ombre ambiante → les panneaux restent posés sans
-       liseré clair. */
+
+    /* ÉLÉVATION premium (Material × Apple). Principe : la profondeur vient de la
+       LUMIÈRE (étagement des surfaces) + d'une OMBRE PORTÉE douce multi-couches —
+       JAMAIS d'un liseré blanc uniforme (le « tout autour » plat lisait cheap).
+       Trois couches d'ombre = contact net (ancrage), pénombre courte, halo ambiant
+       large et profond → l'îlot flotte vraiment sur le canvas. Un seul inset SOMBRE
+       en bas pour asseoir la base. Zéro arête blanche → zéro délimitation plate. */
     --fabi-island-shadow:
-        inset 0 0 0 1px var(--fabi-hairline),
-        0 1px 2px 0 rgba(0, 0, 0, 0.5),
-        0 14px 36px -12px rgba(0, 0, 0, 0.68);
+        0 1px 2px 0 rgba(0, 0, 0, 0.42),
+        0 6px 16px -6px rgba(0, 0, 0, 0.46),
+        0 22px 48px -18px rgba(0, 0, 0, 0.62),
+        inset 0 -1px 0 0 rgba(0, 0, 0, 0.28);
+
+    /* Ombre de CARTE : version courte de l'élévation, pour les petits objets posés
+       (input de chat, cartes, popovers…) — même langage, juste moins de drame. */
+    --fabi-card-shadow:
+        0 1px 2px 0 rgba(0, 0, 0, 0.4),
+        0 8px 22px -8px rgba(0, 0, 0, 0.5);
 
     /* DENSITÉ : on aère. En-têtes de section + onglets plus hauts → ça respire,
        fini le tassement « VS Code par défaut ». */
@@ -85,14 +102,75 @@
 
 /* la surface interne ne redessine pas de bord ; le bandeau de titre prend la
    couleur de surface pour s'unifier dans l'île */
-/* L'ESPACE DE TRAVAIL CENTRAL est COLLÉ au chrome (demande explicite) : pas de
-   gap, pas de liseré, pas d'arête, pas de coins arrondis — l'éditeur remplit sa
-   zone bord à bord. On surcharge la règle « île » ci-dessus pour le seul panneau
-   central (les panneaux latéraux / du bas gardent leur traitement). */
-#theia-main-content-panel {
+/* CHROME À PLAT : sidebar explorateur, panneau du bas, panneau IA = surface
+   continue du chrome (#1c1f25), aucun contour ni gap. SEUL l'éditeur est un îlot. */
+#theia-left-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container),
+#theia-bottom-content-panel,
+#theia-right-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
     border: none !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+}
+
+/* ÉDITEUR : on ARRONDIT LE COMPOSANT LUI-MÊME (border-radius direct + overflow
+   hidden qui clippe le contenu), SANS « truc autour » (pas de gap/border-canvas).
+   → l'éditeur est COLLÉ à l'explorateur (zéro décalage), seuls ses coins sont
+   arrondis. On surcharge la règle « île » générique : border none (tue le gap 10px),
+   pas d'ombre, surface sombre #16181b. */
+#theia-main-content-panel {
+    border: none !important;
+    /* légère marge à DROITE uniquement (gauche collée à l'explorateur = parfait) :
+       l'éditeur ne touche plus le bord droit de la fenêtre. */
+    border-right: 8px solid var(--fabi-canvas) !important;
+    border-radius: var(--fabi-island-radius) !important;
+    box-shadow: none !important;
+    overflow: hidden !important;
+    background-color: var(--fabi-editor) !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* FOND DE L'ÉDITEUR (le code) — GARANTI, indépendant du thème actif.   */
+/* ------------------------------------------------------------------ */
+/* Monaco peint le fond du code via `var(--vscode-editor-background)`
+   (cf. monaco-editor-core .../codeEditor/editor.css). Cette variable est injectée
+   au RUNTIME par le thème de couleurs ACTIF. Donc `editor.background` (qui n'existe
+   que dans le JSON de notre thème) ne s'applique QUE si fabi-islands est le thème
+   actif → sinon « le fond de l'éditeur ne change jamais ». On force la variable
+   (et l'élément de fond en filet de sécurité) → l'éditeur a TOUJOURS notre surface
+   sombre, quel que soit le thème. */
+:root,
+body.mac,
+body.windows,
+body.linux {
+    --vscode-editor-background: var(--fabi-editor) !important;
+    --vscode-editorGutter-background: var(--fabi-editor) !important;
+    --theia-editor-background: var(--fabi-editor) !important;
+}
+.monaco-editor,
+.monaco-editor .monaco-editor-background,
+.monaco-editor .margin {
+    background-color: var(--fabi-editor) !important;
+}
+
+/* Éditeur VIDE (aucun onglet ouvert) : filigrane du logo Fabi, centré, en
+   NUANCES DE GRIS/NOIR (le renard est brique → grayscale le neutralise).
+   Technique : pseudo-élément ::before peint AU-DESSUS du fond du panneau mais
+   SOUS les vrais enfants (onglets/éditeurs) → visible seulement quand la zone est
+   vide, automatiquement masqué dès qu'un éditeur opaque s'ouvre. Pas de JS, pas de
+   détection d'état : le rendu DOM s'en charge. (filter sur ::before → n'affecte PAS
+   les éditeurs, qui sont des enfants réels.) */
+#theia-main-content-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: url('./fox.svg');
+    background-repeat: no-repeat;
+    background-position: center;
+    background-size: 184px auto;
+    filter: grayscale(1) brightness(1.15);
+    opacity: 0.3;
 }
 
 .theia-side-panel {
@@ -121,10 +199,12 @@
     background-color: var(--fabi-surface-2) !important;
     background-clip: padding-box !important;
     border: 5px solid var(--fabi-surface) !important;
-    border-radius: 11px !important;
+    border-radius: 12px !important;
+    /* Chip surélevé par VALEUR (surface-2 > surface) + ombre de contact courte,
+       sans liseré blanc → cohérent avec les îlots, propre, pas de ligne plate. */
     box-shadow:
-        inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-        inset 0 1px 0 0 rgba(255, 255, 255, 0.04) !important;
+        0 1px 2px 0 rgba(0, 0, 0, 0.3),
+        inset 0 -1px 0 0 rgba(0, 0, 0, 0.22) !important;
 }
 /* Libellé d'en-tête de section : plus net, espacé, façon barre latérale macOS. */
 .theia-view-container-part-header .theia-header,
@@ -196,19 +276,34 @@
     background: rgba(255, 255, 255, 0.08) !important;
 }
 
+/* Icônes des onglets de sidebar (panneau droit : Fabi IA, terminal…) AGRANDIES.
+   Les glyphes Fluent rendent plus petit que les codicons d'origine à taille égale
+   → on remonte la taille pour qu'elles ne soient plus minuscules. */
+.lm-TabBar.theia-app-sides .lm-TabBar-tab .lm-TabBar-tabIcon,
+.lm-TabBar.theia-app-sides .lm-TabBar-tab .lm-TabBar-tabIcon.codicon,
+.lm-TabBar.theia-app-sides .lm-TabBar-tab .codicon::before {
+    font-size: 30px !important;
+}
+
 /* ------------------------------------------------------------------ */
 /* Onglets éditeur : îlots flottants (chips), marges égales → zéro saut.     */
 /* ------------------------------------------------------------------ */
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab {
-    border-radius: 9px !important;
-    margin: 4px 3px !important;
+    border-radius: 10px !important;
+    /* marge SUPÉRIEURE plus grande → les onglets sont DÉCOLLÉS du haut de l'éditeur
+       (le fond sombre de l'éditeur respire au-dessus des onglets). */
+    margin: 7px 3px 1px !important;
     padding: 0 13px !important;
     transition: background-color 0.12s ease !important;
 }
 
+/* Onglet éditeur ACTIF = chip surélevé (surface-2), arrondi, qui ressort par la
+   VALEUR (surfaces accentuées) — pas de liseré. Cohérent avec tous les autres
+   états actifs de l'IDE. */
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.lm-mod-current {
     outline: none !important;
-    box-shadow: none !important;
+    background: var(--fabi-editor) !important;   /* l'onglet actif = la surface de l'éditeur */
+    box-shadow: 0 1px 3px -1px rgba(0, 0, 0, 0.35) !important;
 }
 
 /* ------------------------------------------------------------------ */
