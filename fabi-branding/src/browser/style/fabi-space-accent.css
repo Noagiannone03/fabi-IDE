@@ -1,17 +1,22 @@
-/* Lumière de l'espace actif dans l'EXPLORATEUR (panneau gauche).
- *
- * AVANT : un `box-shadow` (ombre portée sombre + glow) → créait un HALO SOMBRE
- * autour du panneau = une séparation / un « espacement » avec la topbar et le rail.
- * MAINTENANT : zéro ombre portée (l'explorateur reste COLLÉ, flush), et la couleur
- * de l'espace diffuse en INTERNE (background-image), très douce, depuis le haut —
- * comme le rail. Aucune séparation. Couleur injectée par le SpaceManager
- * (`--fabi-space-accent` sur :root), fondu au switch.
+/* L'explorateur appartient au chrome, au même titre que le rail et la topbar.
+ * Il reste donc une surface pleine. L'accent de l'espace vit dans la tuile et le
+ * pill, pas dans un halo différent par WebContentsView qui recréerait une couture.
  */
 #theia-left-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
     box-shadow: none !important;
-    background-image: radial-gradient(140% 38% at 50% 0%,
-        color-mix(in srgb, var(--fabi-space-accent, transparent) 12%, transparent) 0%,
-        transparent 58%) !important;
-    background-repeat: no-repeat !important;
-    transition: background-image .5s ease !important;
+    background-color: var(--fabi-canvas) !important;
+    background-image: none !important;
+}
+
+/* Le core Theia réserve une bordure de panneau de 1 px même lorsqu'elle est
+ * transparente. Sur le bord gauche du shell, cette réserve se lit comme un vide.
+ * Notre layout n'utilise plus l'activity bar verticale native : aucune bordure
+ * structurelle n'est nécessaire ici. */
+#theia-left-content-panel,
+#theia-left-content-panel > .lm-Panel,
+#theia-left-content-panel > .lm-BoxPanel-child {
+    margin: 0 !important;
+    padding: 0 !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
 }

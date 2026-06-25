@@ -77,7 +77,8 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(FabiRightPanelContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiRightPanelContribution);
 
-    // --- Re-mesure des polices monaco une fois chargées (fix police éditeur) ---
+    // Charge les webfonts puis recalcule les métriques de Monaco.
     bind(FabiFontRemeasureContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiFontRemeasureContribution);
+
 });

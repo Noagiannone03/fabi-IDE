@@ -73,6 +73,11 @@ export class FabiCodeAgent implements ChatAgent {
     /** Créations en cours (évite les doublons sur invocations concurrentes). */
     protected readonly creating = new Map<string, Promise<string>>();
 
+    /** Session OpenCode déjà créée pour une session Theia ouverte. */
+    getOpenCodeSessionId(theiaSessionId: string): string | undefined {
+        return this.sessions.get(theiaSessionId);
+    }
+
     protected workspaceDir(): string | undefined {
         const roots = this.workspace.tryGetRoots();
         const root = roots[0];

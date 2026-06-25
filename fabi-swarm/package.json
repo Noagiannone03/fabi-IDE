@@ -9,7 +9,8 @@
   "license": "MIT",
   "files": [
     "lib",
-    "src"
+    "src",
+    "resources"
   ],
   "dependencies": {
     "@theia/ai-chat": "1.72.2",

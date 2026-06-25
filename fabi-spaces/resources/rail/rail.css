@@ -22,19 +22,11 @@
 }
 
 @font-face {
-    font-family: 'Geist';
-    src: url('./fonts/Geist-Variable.woff2') format('woff2');
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Inter';
+    font-family: 'Fabi UI';
     src: url('./fonts/InterVariable.woff2') format('woff2');
     font-weight: 100 900;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
 }
 
 * { box-sizing: border-box; }
@@ -50,27 +42,12 @@ html, body {
     margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: var(--canvas);
     color: var(--text);
-    font-family: 'Inter', -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    letter-spacing: -0.005em;
+    font-family: 'Fabi UI', Inter, -apple-system, "Segoe UI", sans-serif;
+    font-optical-sizing: auto;
+    letter-spacing: normal;
     -webkit-font-smoothing: antialiased;
     -webkit-user-select: none; user-select: none; cursor: default;
 }
-
-/* Lumière colorée TRÈS douce de l'espace actif, diffuse depuis le haut du rail
-   (comme si le rail était du verre teinté). Sous le contenu, fondue en `screen`. */
-.rail::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    background: radial-gradient(120% 42% at 50% -6%,
-        color-mix(in oklab, var(--accent) 17%, transparent) 0%, transparent 56%);
-    mix-blend-mode: screen;
-    opacity: 0.85;
-    transition: --accent 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.rail > * { position: relative; z-index: 1; }
 
 /* La colonne : posée à la largeur dépliée ; repliée, la vue la rogne (overflow body). */
 /* Pas de filet de séparation à droite : la rail des espaces partage le même
@@ -266,3 +243,28 @@ body.expanded .add-row .add-label { opacity: 1; }
 }
 .ctx-swatch:hover { transform: scale(1.14); }
 .ctx-swatch.sel { border-color: var(--text); }
+
+/* --------------------------------------------------- Maestro (épinglé en tête) */
+/* Le tableau de bord de supervision est un Space permanent, distinct des espaces
+   de travail : tuile en tête du rail, accent orange de marque, séparée par un fin
+   filet. Au repos, sa tuile porte déjà une teinte orange → on lit immédiatement
+   que c'est le centre de contrôle, pas un workspace. */
+.space-row.maestro {
+    position: relative;
+    margin-bottom: 5px;
+}
+.space-row.maestro::after {
+    content: "";
+    position: absolute; left: 6px; right: 6px; bottom: -3px;
+    height: 1px; background: var(--hairline);
+}
+.space-row.maestro .tile {
+    background: color-mix(in srgb, var(--accent) 15%, var(--tile));
+    color: color-mix(in srgb, var(--accent) 82%, var(--text));
+}
+.space-row.maestro:hover .tile {
+    background: color-mix(in srgb, var(--accent) 26%, var(--tile));
+    color: #fff;
+}
+/* Actif : la tuile prend le chip orange plein (règle .active générique), glyphe blanc. */
+.space-row.maestro.active .tile { color: #fff; }

@@ -18,6 +18,7 @@ import {
     SpaceDescriptor, SpacesState, SpacesIpc, SPACE_COLORS,
     NewSpaceModalInit, NewSpaceModalResult
 } from '../common/space-types';
+import { MaestroHostIpc } from 'fabi-swarm/lib/common/fabi-maestro-protocol';
 import { SpaceStore } from './space-store';
 import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './frontend-url';
 
@@ -27,6 +28,19 @@ const RAIL_COLLAPSED = 52;   // = largeur réelle de la colonne de tuiles (8+5+3
 const RAIL_EXPANDED = 250;
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
 const TOPBAR_HEIGHT = 36;
+/**
+ * Les WebContentsView sont compositées séparément par Chromium. Sur les écrans
+ * Retina, deux rectangles strictement adjacents peuvent laisser apparaître une
+ * ligne subpixel pendant un resize ou un changement d'échelle.
+ *
+ * Le chrome est toujours remis au-dessus de l'IDE dans `layout()`. On le fait donc
+ * recouvrir l'IDE d'un pixel CSS au lieu de juxtaposer trois surfaces indépendantes.
+ */
+const CHROME_OVERLAP = 1;
+/** Largeur de la colonne Maestro laissée visible à côté de la surface native. */
+const MAESTRO_PANEL_WIDTH = 390;
+const MAESTRO_PREVIEW_SURFACE = 'fabi-maestro:preview-surface';
+const MAESTRO_CLEAR_PREVIEW = 'fabi-maestro:clear-preview';
 /**
  * Nombre max de frontends Theia gardés VIVANTS en même temps. Au-delà, le Space le
  * moins récemment utilisé est suspendu (détruit → rechargé au retour, façon onglet
@@ -58,6 +72,8 @@ export class SpaceManager {
     /** Vues matérialisées (frontends vivants), par id de Space. */
     protected readonly views = new Map<string, WebContentsView>();
     protected activeId: string | undefined;
+    /** Space affiché à droite de Maestro comme un iframe natif. */
+    protected maestroPreviewId: string | undefined;
     /** Le rail est-il déplié (survol) ? Sa largeur en dépend ; il overlay l'IDE sans le pousser. */
     protected railExpanded = false;
     protected disposed = false;
@@ -71,16 +87,21 @@ export class SpaceManager {
     async boot(): Promise<void> {
         console.log('[fabi-spaces] boot: début (port', this.opts.backendPort, ')');
         this.seedIfEmpty();
+        // Le tableau de bord Maestro est toujours présent (épinglé en tête du rail).
+        this.store.ensureMaestro();
         this.createHost();
         console.log('[fabi-spaces] boot: host créé');
         this.createChrome();
         console.log('[fabi-spaces] boot: chrome créé →', this.opts.railHtmlPath);
         this.registerIpc();
 
-        // Space à afficher en premier : le dernier actif, sinon le premier de la liste.
-        const first = this.store.getActiveId() && this.store.get(this.store.getActiveId()!)
-            ? this.store.getActiveId()!
-            : this.store.getSpaces()[0]?.id;
+        // Space à afficher en premier : le dernier actif s'il existe, sinon le premier
+        // espace de TRAVAIL (on n'ouvre pas Maestro d'office au lancement — on garde
+        // l'utilisateur dans son code).
+        const lastActive = this.store.getActiveId();
+        const first = (lastActive && this.store.get(lastActive))
+            ? lastActive
+            : (this.firstWorkspaceId() ?? this.store.getSpaces()[0]?.id);
         if (first) {
             console.log('[fabi-spaces] boot: ouverture du Space', first);
             await this.open(first);
@@ -89,9 +110,17 @@ export class SpaceManager {
         console.log('[fabi-spaces] boot: fenêtre-hôte affichée ✅');
     }
 
+    /** Premier id d'espace de travail (≠ Maestro), dans l'ordre du rail. */
+    protected firstWorkspaceId(): string | undefined {
+        return this.store.getSpaces().find(s => s.kind !== 'maestro')?.id;
+    }
+
     /** Premier lancement : un Space par défaut qui restaure le workspace précédent de l'utilisateur. */
     protected seedIfEmpty(): void {
-        if (this.store.isEmpty()) {
+        // « Vide » au sens des espaces de TRAVAIL : Maestro seul ne compte pas comme
+        // un workspace utilisable → on garantit toujours au moins un espace de travail.
+        const hasWorkspace = this.store.getSpaces().some(s => s.kind !== 'maestro');
+        if (!hasWorkspace) {
             this.store.add({
                 id: this.newId(),
                 name: '',                 // dérivé du dossier (ou « Espace » si vierge)
@@ -173,20 +202,43 @@ export class SpaceManager {
         const { width: W, height: H } = this.contentBounds();
         const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
-        // L'IDE : flush sous la topbar, à droite de la sidebar. Sa largeur SUIT celle du
-        // rail → déplier la sidebar POUSSE l'IDE (reflow), comme le panneau IA. Pas d'overlay.
+        // L'IDE passe d'un pixel sous le chrome. Ce recouvrement est volontaire :
+        // il évite les coutures de compositing entre WebContentsView sans introduire
+        // de marge visuelle ni modifier la largeur utile du contenu.
         const spaceRect: Rectangle = {
-            x: railW,
-            y: TOPBAR_HEIGHT,
-            width: Math.max(0, W - railW),
-            height: Math.max(0, H - TOPBAR_HEIGHT)
+            x: Math.max(0, railW - CHROME_OVERLAP),
+            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
+            width: Math.max(0, W - railW + CHROME_OVERLAP),
+            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
         };
         for (const view of this.views.values()) {
             view.setBounds(spaceRect);
         }
 
+        if (this.activeId === 'maestro' && this.maestroPreviewId) {
+            const maestro = this.views.get('maestro');
+            const preview = this.views.get(this.maestroPreviewId);
+            if (maestro && preview) {
+                maestro.setBounds(spaceRect);
+                preview.setBounds({
+                    x: Math.min(W, spaceRect.x + MAESTRO_PANEL_WIDTH),
+                    y: spaceRect.y,
+                    width: Math.max(0, spaceRect.width - MAESTRO_PANEL_WIDTH),
+                    height: spaceRect.height
+                });
+                // Ordre explicite : Maestro en fond, surface native à droite.
+                this.host.contentView.addChildView(maestro);
+                this.host.contentView.addChildView(preview);
+            }
+        }
+
         // Rail (sidebar) : au-dessus de l'IDE pour pouvoir l'overlay quand déplié.
-        this.railView.setBounds({ x: 0, y: TOPBAR_HEIGHT, width: railW, height: Math.max(0, H - TOPBAR_HEIGHT) });
+        this.railView.setBounds({
+            x: 0,
+            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
+            width: railW,
+            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
+        });
         this.host.contentView.addChildView(this.railView);
 
         // Topbar : pleine largeur, tout en haut, au sommet.
@@ -216,7 +268,10 @@ export class SpaceManager {
         this.views.set(id, view);
         this.host.contentView.addChildView(view);
         this.wireSpaceWebContents(id, view);
-        view.webContents.loadURL(buildFrontendUrl(this.opts, space.workspacePath));
+        // Maestro charge le MÊME frontend Theia mais en « mode maestro » (?maestro=1) :
+        // aucun workspace, aucun éditeur — uniquement le tableau de bord (cf. fabi-swarm).
+        const maestro = space.kind === 'maestro';
+        view.webContents.loadURL(buildFrontendUrl(this.opts, space.workspacePath, { maestro }));
         return view;
     }
 
@@ -264,6 +319,9 @@ export class SpaceManager {
             return;
         }
         this.ensureView(id);
+        if (id !== 'maestro') {
+            this.maestroPreviewId = undefined;
+        }
         this.activeId = id;
         this.store.setActive(id);
 
@@ -402,16 +460,20 @@ export class SpaceManager {
 
     /** Ferme/supprime un Space. Bascule sur un autre (ou en recrée un) si c'était l'actif. */
     async close(id: string): Promise<void> {
+        // Maestro est permanent : on ignore toute demande de fermeture.
+        if (this.store.get(id)?.kind === 'maestro') {
+            return;
+        }
         this.destroyView(id);
         const wasActive = this.activeId === id;
         this.store.remove(id);
 
-        if (this.store.isEmpty()) {
-            this.seedIfEmpty();
-        }
+        // On garantit toujours au moins un espace de TRAVAIL (Maestro seul ne suffit pas).
+        this.seedIfEmpty();
         if (wasActive) {
             this.activeId = undefined;
-            const next = this.store.getActiveId() ?? this.store.getSpaces()[0]?.id;
+            // On bascule de préférence sur un espace de travail (pas Maestro).
+            const next = this.firstWorkspaceId() ?? this.store.getSpaces()[0]?.id;
             if (next) {
                 await this.open(next);
                 return;
@@ -476,9 +538,10 @@ export class SpaceManager {
         if (this.views.size <= MAX_LIVE) {
             return;
         }
-        // Candidats = vivants sauf l'actif, triés du moins récemment actif au plus récent.
+        // Candidats = vivants sauf l'actif ET sauf Maestro (gardé chaud pour la
+        // supervision : on veut son tableau de bord instantané au retour).
         const candidates = [...this.views.keys()]
-            .filter(id => id !== this.activeId)
+            .filter(id => id !== this.activeId && this.store.get(id)?.kind !== 'maestro')
             .map(id => ({ id, lastActive: this.store.get(id)?.lastActive ?? 0 }))
             .sort((a, b) => a.lastActive - b.lastActive);
         while (this.views.size > MAX_LIVE && candidates.length) {
@@ -507,6 +570,85 @@ export class SpaceManager {
         ipcMain.on(SpacesIpc.TOGGLE_SIDEBAR, e => { if (fromChrome(e)) { this.setExpanded(!this.railExpanded); } });
         // La topbar ET le rail peuvent piloter la fenêtre (boutons Win/Linux, double-clic).
         ipcMain.on(SpacesIpc.WINDOW, (e, action) => { if (fromChrome(e)) { this.windowControl(action); } });
+
+        // Contexte du frontend appelant (utilisé par le reporter de surfaces).
+        ipcMain.on(MaestroHostIpc.CONTEXT, e => {
+            const entry = [...this.views].find(([, view]) => view.webContents.id === e.sender.id);
+            e.returnValue = entry ? { spaceId: entry[0] } : {};
+        });
+        ipcMain.handle(MaestroHostIpc.OPEN_SURFACE, async (e, target: { spaceId?: string; widgetId?: string }) => {
+            if (!this.fromMaestro(e.sender.id) || !target?.spaceId || !target.widgetId) {
+                return false;
+            }
+            return this.routeToSurface(target.spaceId, MaestroHostIpc.ACTIVATE_SURFACE, target.widgetId);
+        });
+        ipcMain.handle(MAESTRO_PREVIEW_SURFACE, async (e, target: { spaceId?: string; widgetId?: string }) => {
+            if (!this.fromMaestro(e.sender.id) || !target?.spaceId || !target.widgetId || target.spaceId === 'maestro') {
+                return false;
+            }
+            return this.previewSurface(target.spaceId, target.widgetId);
+        });
+        ipcMain.handle(MAESTRO_CLEAR_PREVIEW, async e => {
+            if (!this.fromMaestro(e.sender.id)) {
+                return false;
+            }
+            this.maestroPreviewId = undefined;
+            for (const [id, view] of this.views) {
+                view.setVisible(id === this.activeId);
+            }
+            this.layout();
+            return true;
+        });
+        ipcMain.handle(MaestroHostIpc.SEND_TO_SURFACE, async (
+            e,
+            target: { spaceId?: string; widgetId?: string },
+            text: string
+        ) => {
+            if (!this.fromMaestro(e.sender.id) || !target?.spaceId || !target.widgetId || typeof text !== 'string') {
+                return false;
+            }
+            return this.routeToSurface(target.spaceId, MaestroHostIpc.WRITE_TERMINAL, target.widgetId, text);
+        });
+    }
+
+    protected fromMaestro(webContentsId: number): boolean {
+        const view = this.views.get('maestro');
+        return !!view && view.webContents.id === webContentsId;
+    }
+
+    /** Active le Space, attend son chargement éventuel, puis cible le widget natif. */
+    protected async routeToSurface(spaceId: string, channel: string, ...args: unknown[]): Promise<boolean> {
+        if (!this.store.get(spaceId)) {
+            return false;
+        }
+        await this.open(spaceId);
+        const view = this.views.get(spaceId);
+        if (!view || view.webContents.isDestroyed()) {
+            return false;
+        }
+        if (view.webContents.isLoading()) {
+            await new Promise<void>(resolve => view.webContents.once('did-finish-load', () => resolve()));
+        }
+        view.webContents.send(channel, ...args);
+        return true;
+    }
+
+    /** Affiche le vrai frontend du Space à droite tout en gardant Maestro à gauche. */
+    protected async previewSurface(spaceId: string, widgetId: string): Promise<boolean> {
+        if (this.activeId !== 'maestro' || !this.store.get(spaceId)) {
+            return false;
+        }
+        const preview = this.ensureView(spaceId);
+        this.maestroPreviewId = spaceId;
+        for (const [id, view] of this.views) {
+            view.setVisible(id === 'maestro' || id === spaceId);
+        }
+        this.layout();
+        if (preview.webContents.isLoading()) {
+            await new Promise<void>(resolve => preview.webContents.once('did-finish-load', () => resolve()));
+        }
+        preview.webContents.send(MaestroHostIpc.ACTIVATE_SURFACE, widgetId);
+        return true;
     }
 
     protected pushState(): void {

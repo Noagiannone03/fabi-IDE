@@ -252,7 +252,7 @@
    Frères des onglets éditeur : on reprend EXACTEMENT le vocabulaire du design
    system Fabi (fabi-islands.css) — surface élevée --fabi-surface-2, hairline +
    arête lumineuse en inset (la « carte Material posée »), rayon --fabi-radius-sm,
-   police Geist (--theia-ui-font-family), survol --fabi-surface-3. Aucun drop
+   police Inter (--theia-ui-font-family), survol --fabi-surface-3. Aucun drop
    shadow façon VS Code, aucun orange : un chip qui appartient à l'IDE. */
 .fabi-editor-action {
     display: inline-flex;
@@ -760,7 +760,7 @@
 .fabi-md > :last-child { margin-bottom: 0; }
 .fabi-md p { margin: 0 0 10px; }
 .fabi-md code {
-    font-family: var(--theia-code-font-family, 'GeistMono', monospace);
+    font-family: var(--theia-code-font-family, 'JetBrains Mono', monospace);
     font-size: 12px;
     background: rgba(255, 255, 255, 0.06);
     padding: 1px 5px;
@@ -989,7 +989,7 @@
 .theia-toolCall-response-result,
 .theia-toolCall-text-result,
 .theia-toolCall-default-result {
-    font-family: var(--theia-code-font-family, 'GeistMono', monospace);
+    font-family: var(--theia-code-font-family, 'JetBrains Mono', monospace);
     font-size: 11.5px; line-height: 1.5;
     max-height: 280px; overflow: auto;
     margin-top: 6px;
@@ -1018,7 +1018,7 @@
 .fabi-tc-label { font-weight: 600; flex: 0 0 auto; }
 .fabi-tc-sub {
     color: var(--theia-descriptionForeground); opacity: 0.85;
-    font-family: var(--theia-code-font-family, 'GeistMono', monospace); font-size: 11.5px;
+    font-family: var(--theia-code-font-family, 'JetBrains Mono', monospace); font-size: 11.5px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0;
 }
 .fabi-tc-status { font-size: 13px !important; flex: 0 0 auto; margin-left: auto; }
@@ -1030,7 +1030,7 @@
 .fabi-tc-out {
     margin: 0; padding: 9px 12px;
     border-top: 1px solid var(--theia-input-border, rgba(255, 255, 255, 0.07));
-    font-family: var(--theia-code-font-family, 'GeistMono', monospace);
+    font-family: var(--theia-code-font-family, 'JetBrains Mono', monospace);
     font-size: 11.5px; line-height: 1.5;
     max-height: 300px; overflow: auto; white-space: pre-wrap;
     color: var(--theia-descriptionForeground);

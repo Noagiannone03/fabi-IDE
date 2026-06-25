@@ -13,19 +13,11 @@
 }
 
 @font-face {
-    font-family: 'Geist';
-    src: url('./fonts/Geist-Variable.woff2') format('woff2');
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Inter';
+    font-family: 'Fabi UI';
     src: url('./fonts/InterVariable.woff2') format('woff2');
     font-weight: 100 900;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
 }
 
 * { box-sizing: border-box; }
@@ -33,8 +25,9 @@
 html, body {
     margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: transparent;
-    font-family: 'Inter', -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-    letter-spacing: -0.005em;
+    font-family: 'Fabi UI', Inter, -apple-system, "Segoe UI", sans-serif;
+    font-optical-sizing: auto;
+    letter-spacing: normal;
     -webkit-font-smoothing: antialiased;
     color: var(--text);
     -webkit-user-select: none; user-select: none; cursor: default;

@@ -23,6 +23,20 @@ export const SPACE_COLORS = [
 export type SpaceColor = typeof SPACE_COLORS[number] | string;
 
 /**
+ * Nature d'un Space.
+ *  - `workspace` (défaut) : un dossier ouvert dans un frontend Theia complet.
+ *  - `maestro` : le tableau de bord de supervision des agents IA. Pas d'éditeur,
+ *    pas d'explorateur — le frontend Theia est chargé en « mode maestro » (cf.
+ *    `?maestro=1` dans l'URL) et n'affiche QUE le widget Maestro.
+ */
+export type SpaceKind = 'workspace' | 'maestro';
+
+/** Id stable du Space Maestro (unique, épinglé, jamais supprimable). */
+export const MAESTRO_SPACE_ID = 'maestro';
+/** Accent réservé à Maestro = l'orange de marque Fabi (hors palette des espaces). */
+export const MAESTRO_ACCENT = '#EC5B2B';
+
+/**
  * Descripteur persistant d'un Space. C'est ce qui est sérialisé dans `spaces.json`
  * et envoyé au rail. Ne contient AUCUN handle natif (vue, fenêtre) — uniquement de
  * l'état sérialisable.
@@ -43,6 +57,11 @@ export interface SpaceDescriptor {
     workspacePath: string;
     /** Horodatage de dernière activation (ms epoch), pour l'ordre « récents » / la suspension. */
     lastActive: number;
+    /**
+     * Nature du Space. Absent / `workspace` → espace de travail classique.
+     * `maestro` → le tableau de bord de supervision (cf. SpaceKind).
+     */
+    kind?: SpaceKind;
 }
 
 /** Données envoyées au modal de création à son ouverture. */

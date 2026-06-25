@@ -8,7 +8,7 @@
  * Ici on traite l'explorateur comme un objet de design (façon Figma / Linear) :
  *   - lignes qui RESPIRENT (un cran plus hautes) ;
  *   - HIÉRARCHIE de graisse : dossiers plus marqués que les fichiers ;
- *   - tracking légèrement négatif (Geist/Inter respirent mieux serrés en UI) ;
+ *   - tracking calibré pour Inter aux petites tailles ;
  *   - métadonnées secondaires (git, taille) discrètes ;
  *   - rendu net (antialiasing déjà global, on garantit calt seul ici).
  *

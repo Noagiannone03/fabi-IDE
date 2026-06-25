@@ -14,7 +14,7 @@
         'remote-explorer', 'rocket', 'flame', 'star', 'gear', 'tools', 'beaker',
         'paintcan', 'book', 'bookmark', 'lightbulb', 'globe', 'database', 'cloud',
         'github', 'heart', 'key', 'lock', 'package', 'symbol-class', 'code', 'browser',
-        'window', 'dashboard', 'organization', 'project', 'notebook', 'bug'
+        'window', 'dashboard', 'organization', 'project', 'notebook', 'bug', 'pulse'
     ];
     const isCodicon = v => !!v && CODICONS.includes(v);
     // Pose dans `el` (vidé) l'icône d'un space : codicon, sinon emoji legacy, sinon initiale.
@@ -93,14 +93,19 @@
         row.addEventListener('contextmenu', e => {
             e.preventDefault();
             const s = findSpace(id);
-            if (s) { openContextMenu(e, s, row); }
+            // Maestro est permanent : pas de menu (ni renommage, ni couleur, ni fermeture).
+            if (s && s.kind !== 'maestro') { openContextMenu(e, s, row); }
         });
         wireDrag(row);
         return row;
     }
 
     function updateRow(row, space, isLive) {
+        const isMaestro = space.kind === 'maestro';
         row.classList.toggle('active', space.id === state.activeId);
+        row.classList.toggle('maestro', isMaestro);
+        // Maestro est épinglé : ni glisser-déposer, ni réordonnancement.
+        row.draggable = !isMaestro;
         row.style.setProperty('--accent', space.color);
         row.querySelector('.tile').classList.toggle('live', isLive);
         setGlyph(row.querySelector('.glyph'), space);
@@ -112,6 +117,8 @@
 
     function wireDrag(row) {
         row.addEventListener('dragstart', e => {
+            // Maestro est épinglé : on bloque le glisser dès la source.
+            if (row.classList.contains('maestro')) { e.preventDefault(); return; }
             row.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
             try { e.dataTransfer.setData('text/plain', row.dataset.id); } catch (_) { /* ignore */ }

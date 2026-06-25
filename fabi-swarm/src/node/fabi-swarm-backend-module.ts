@@ -7,8 +7,12 @@ import {
 import {
     FabiCodeService, FabiCodeClient, FABI_CODE_SERVICE_PATH
 } from '../common/fabi-code-protocol';
+import {
+    FabiMaestroService, FabiMaestroClient, FABI_MAESTRO_SERVICE_PATH, FABI_MAESTRO_REPORTER_PATH
+} from '../common/fabi-maestro-protocol';
 import { FabiSwarmServiceImpl } from './fabi-swarm-service';
 import { FabiCodeServiceImpl } from './fabi-code-service';
+import { FabiMaestroServiceImpl } from './fabi-maestro-service';
 
 export default new ContainerModule(bind => {
     bind(FabiSwarmServiceImpl).toSelf().inSingletonScope();
@@ -40,5 +44,26 @@ export default new ContainerModule(bind => {
             service.setClient(client);
             return service;
         })
+    ).inSingletonScope();
+
+    // --- Tableau de bord Maestro (supervision des agents IA) ---
+    // Service singleton qui agrège l'état de tous les chats (sidecar OpenCode) et
+    // le pousse au frontend du Space Maestro. Se branche en LECTURE sur le sidecar
+    // via FabiCodeService (mêmes baseUrl/sessions) sans toucher au chemin de chat.
+    bind(FabiMaestroServiceImpl).toSelf().inSingletonScope();
+    bind(FabiMaestroService).toService(FabiMaestroServiceImpl);
+    // Démarrage backend : installe les hooks Claude/Codex automatiquement.
+    bind(BackendApplicationContribution).toService(FabiMaestroServiceImpl);
+    bind(ConnectionHandler).toDynamicValue(ctx =>
+        new RpcConnectionHandler<FabiMaestroClient>(FABI_MAESTRO_SERVICE_PATH, client => {
+            const service = ctx.container.get<FabiMaestroServiceImpl>(FabiMaestroService);
+            service.setClient(client);
+            return service;
+        })
+    ).inSingletonScope();
+    bind(ConnectionHandler).toDynamicValue(ctx =>
+        new RpcConnectionHandler(FABI_MAESTRO_REPORTER_PATH, () =>
+            ctx.container.get<FabiMaestroServiceImpl>(FabiMaestroService)
+        )
     ).inSingletonScope();
 });

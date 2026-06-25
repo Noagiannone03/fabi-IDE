@@ -19,6 +19,15 @@ import { ChatViewWidget } from '@theia/ai-chat-ui/lib/browser/chat-view-widget';
 @injectable()
 export class FabiChatInstanceWidget extends ChatViewWidget {
 
+    /** Identité de la session portée par CE widget, utilisée par Maestro. */
+    getMaestroSession(): { id: string; title: string; updatedAt: number } {
+        return {
+            id: this.chatSession.id,
+            title: this.chatSession.title || this.title.label || 'Fabi AI',
+            updatedAt: this.chatSession.lastInteraction?.getTime() ?? Date.now()
+        };
+    }
+
     protected override initListeners(): void {
         this.toDispose.push(
             this.treeWidget.onDidSubmitEdit(request => {

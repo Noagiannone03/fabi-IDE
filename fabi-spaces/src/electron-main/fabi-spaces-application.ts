@@ -12,7 +12,7 @@
 import { injectable } from '@theia/core/shared/inversify';
 import { Deferred } from '@theia/core/lib/common/promise-util';
 import { existsSync } from 'fs';
-import { join, resolve } from 'path';
+import { join } from 'path';
 import { FabiElectronMainApplication } from 'fabi-swarm/lib/electron-main/fabi-electron-main-application';
 import { ElectronMainCommandOptions } from '@theia/core/lib/electron-main/electron-main-application';
 import { SpaceManager } from './space-manager';
@@ -46,7 +46,7 @@ export class FabiSpacesApplication extends FabiElectronMainApplication {
                 appName: this.config.applicationName,
                 backendPort: port,
                 frontendHtmlPath: this.globals.THEIA_FRONTEND_HTML_PATH,
-                preloadPath: resolve(this.globals.THEIA_APP_PROJECT_PATH, 'lib', 'frontend', 'preload.js'),
+                preloadPath: join(railDir, 'frontend-preload.js'),
                 railHtmlPath: join(railDir, 'rail.html'),
                 topbarHtmlPath: join(railDir, 'topbar.html'),
                 modalHtmlPath: join(railDir, 'modal.html'),

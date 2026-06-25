@@ -1,140 +1,195 @@
 /*
- * Fabi — TYPOGRAPHIE.
+ * Fabi - système typographique inspiré des IDE JetBrains.
  *
- * Police UI = **Geist** (variable, par Vercel) — sans-serif géométrique suisse,
- * nette et un poil plus de caractère qu'Inter, et surtout SŒUR de **GeistMono**
- * (déjà utilisée pour le code/terminaux) → système typographique cohérent
- * « dev-tool 2026 ». Inter (la police de Figma) reste en repli immédiat.
- * Code/terminaux = **GeistMono**.
+ * Interface : Inter variable, embarquée dans l'application.
+ * Éditeur, terminal et données techniques : JetBrains Mono 2.304.
  *
- * IMPORTANT : on ne touche QUE les variables de police Theia (méthode supportée)
- * + le lissage. On n'applique PAS `font-family`/`font-feature-settings` en large
- * (ex. `.lm-Widget`) : ça contaminait les polices d'icônes (codicon, Material,
- * FontAwesome) et cassait les glyphes. Les icônes sont explicitement préservées.
+ * Le nom interne "Fabi UI" protège l'interface d'une version système d'Inter.
+ * Le code conserve le nom officiel "JetBrains Mono" pour rester compatible avec
+ * les préférences utilisateur déjà enregistrées par Theia.
  */
 
 @font-face {
-    font-family: 'Geist';
-    src: url('./fonts/Geist-Variable.woff2') format('woff2');
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
-}
-
-@font-face {
-    font-family: 'Inter';
+    font-family: 'Fabi UI';
     src: url('./fonts/InterVariable.woff2') format('woff2');
     font-weight: 100 900;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
 }
 
-@font-face {
-    font-family: 'GeistMono';
-    src: url('./fonts/GeistMono-Variable.woff2') format('woff2');
-    font-weight: 100 900;
-    font-style: normal;
-    font-display: swap;
-}
-
-/* JetBrains Mono — la police de code des IDE JetBrains / Android Studio.
-   Fichiers STATIQUES officiels (Regular/Medium/Bold) : plus fiables que la variable
-   (la woff2 variable ne se rendait pas → l'éditeur retombait sur SF Mono). */
 @font-face {
     font-family: 'JetBrains Mono';
     src: url('./fonts/JetBrainsMono-Regular.woff2') format('woff2');
     font-weight: 400;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-Italic.woff2') format('woff2');
+    font-weight: 400;
+    font-style: italic;
+    font-display: block;
 }
 @font-face {
     font-family: 'JetBrains Mono';
     src: url('./fonts/JetBrainsMono-Medium.woff2') format('woff2');
     font-weight: 500;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-MediumItalic.woff2') format('woff2');
+    font-weight: 500;
+    font-style: italic;
+    font-display: block;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-SemiBold.woff2') format('woff2');
+    font-weight: 600;
+    font-style: normal;
+    font-display: block;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-SemiBoldItalic.woff2') format('woff2');
+    font-weight: 600;
+    font-style: italic;
+    font-display: block;
 }
 @font-face {
     font-family: 'JetBrains Mono';
     src: url('./fonts/JetBrainsMono-Bold.woff2') format('woff2');
     font-weight: 700;
     font-style: normal;
-    font-display: swap;
+    font-display: block;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    src: url('./fonts/JetBrainsMono-BoldItalic.woff2') format('woff2');
+    font-weight: 700;
+    font-style: italic;
+    font-display: block;
 }
 
-/* Override des variables de police Theia.
-   ⚠️ Theia pose `--theia-ui-font-family` sur `body.mac` / `.windows` / `.linux`
-   (cf. os.css) — un ancêtre PLUS PROCHE que `:root`. Pour la résolution d'une
-   variable CSS, c'est l'ancêtre le plus proche qui l'emporte (pas la specificity).
-   Donc un override sur `:root` seul est masqué par `body.mac` → la police ne
-   change jamais. On redéclare la variable AUSSI sur ces classes de plateforme. */
+/*
+ * Theia redéfinit la police sur les classes de plateforme. Monaco possède aussi
+ * son propre token monospace. Tous les points d'entrée sont alignés ici.
+ */
 :root,
 body.mac,
 body.windows,
 body.linux {
-    /* UI = Inter (la police d'interface des IDE JetBrains / Android Studio).
-       Code = JetBrains Mono (leur police d'éditeur par défaut). */
-    --theia-ui-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-    --theia-content-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
-    --theia-code-font-family: 'JetBrains Mono', 'SF Mono', ui-monospace, monospace !important;
+    --fabi-ui-font-family: 'Fabi UI', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --fabi-code-font-family: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+    --theia-ui-font-family: var(--fabi-ui-font-family) !important;
+    --theia-content-font-family: var(--fabi-ui-font-family) !important;
+    --theia-code-font-family: var(--fabi-code-font-family) !important;
+    --theia-monospace-font-family: var(--fabi-code-font-family) !important;
+    --monaco-monospace-font: var(--fabi-code-font-family) !important;
+
+    --theia-ui-font-size1: 13px;
+    --theia-content-font-size: 13px;
+    --theia-code-font-size: 13px;
+    --theia-statusBar-font-size: 12px;
 }
 
-/* Inter PARTOUT : on la pose sur `body` → tout l'UI en hérite (la méthode par
-   variables Theia ne couvre pas tout). SANS !important : les éléments d'icônes,
-   qui posent leur propre `font-family`, gardent la priorité (cf. garde-fou plus bas).
-   + features Inter (sets stylistiques discrets + ligatures contextuelles)
-   + lissage net macOS + léger tracking négatif (Inter respire mieux serré en UI). */
 body {
-    font-family: var(--theia-ui-font-family);
+    font-family: var(--fabi-ui-font-family) !important;
     font-weight: 400;
-    letter-spacing: -0.005em;
-    font-feature-settings: 'cv05' 1, 'ss01' 1, 'calt' 1;
+    letter-spacing: normal;
+    font-feature-settings: normal;
+    font-optical-sizing: auto;
+    font-kerning: normal;
+    text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
 
-/* Les champs de formulaire n'héritent PAS la police par défaut → on force. */
-input, textarea, select, button, optgroup {
-    font-family: inherit;
+input,
+textarea,
+select,
+button,
+optgroup {
+    font: inherit;
     letter-spacing: inherit;
 }
 
-/* Variations de graisse : titres / emphase en 600 (semibold) au lieu de 700
-   (bold) → plus fin, moins lourd, plus « actuel ». */
-h1, h2, h3, h4, h5, h6,
-b, strong,
+/*
+ * Ces composants Theia déclarent parfois directement la police système au lieu
+ * d'utiliser les tokens du thème.
+ */
+#theia-statusBar .element,
+.lm-Menu,
+.lm-MenuBar,
+.lm-TabBar,
+.theia-sidepanel-toolbar,
+.theia-TreeNode,
+.quick-input-widget,
+.theia-dialog,
+.theia-notification-center {
+    font-family: var(--fabi-ui-font-family) !important;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+b,
+strong,
 .theia-header,
 .theia-view-container-part-header .label,
 .theia-AgentLabel {
     font-weight: 600;
 }
 
-/* Terminaux : GeistMono (xterm pose sa propre famille). */
+code,
+pre,
+kbd,
+samp,
 .terminal,
 .xterm,
 .xterm .xterm-rows {
-    font-family: var(--theia-code-font-family) !important;
+    font-family: var(--fabi-code-font-family) !important;
+    font-variant-ligatures: contextual common-ligatures;
 }
 
-/* GARDE-FOU icônes : les polices d'icônes ne doivent JAMAIS hériter d'Inter ni de
-   son tracking/features (sinon glyphes cassés / tofu / décalés). On remet à zéro
-   features + letter-spacing partout, ET on ré-affirme la police d'icône avec
-   !important pour les familles connues — la pose large d'Inter ne peut plus les
-   contaminer. */
+#theia-statusBar .element,
+.fabi-cx-status,
+.fabi-maestro-stat,
+.fabi-maestro-pill {
+    font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Garde-fou : les glyphes d'icônes conservent leur propre font-face.
+ */
 .codicon,
 [class*='codicon-'],
-.fa, .fas, .far, .fab,
+.fa,
+.fas,
+.far,
+.fab,
 .octicon,
 .monaco-icon-label::before,
 .theia-file-icons-js,
 [class*='file-icon'] {
     font-feature-settings: normal !important;
+    font-variant: normal !important;
     letter-spacing: normal !important;
 }
 .codicon,
 [class*='codicon-'] {
     font-family: 'codicon' !important;
 }
-.fa, .fas, .far, .fab {
+.fa,
+.fas,
+.far,
+.fab {
     font-family: 'FontAwesome' !important;
 }

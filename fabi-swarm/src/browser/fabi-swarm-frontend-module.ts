@@ -1,5 +1,6 @@
 import '../../src/browser/style/fabi-swarm.css';
 import '../../src/browser/style/fabi-welcome.css';
+import '../../src/browser/style/fabi-maestro.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
@@ -37,6 +38,11 @@ import { FabiCodeEditorBridge } from './fabi-code-editor-bridge';
 import { FabiCodeRevertToolbarContribution, FabiCodeCheckpointCommands } from './fabi-code-checkpoint';
 import { ChatResponsePartRenderer } from '@theia/ai-chat-ui/lib/browser/chat-response-part-renderer';
 import { FabiToolPartRenderer, FabiThinkingPartRenderer } from './fabi-code-tool-renderer';
+import { FabiMaestroFrontend } from './maestro/fabi-maestro-frontend';
+import { MaestroWidget } from './maestro/maestro-widget';
+import { MaestroConversationWidget, MAESTRO_CONVERSATION_FACTORY_ID } from './maestro/maestro-conversation-widget';
+import { MaestroModeContribution } from './maestro/maestro-mode';
+import { MaestroSurfaceReporter } from './maestro/maestro-surface-reporter';
 
 // Renomme le panneau IA « AI Chat » → « Fabi AI ». LABEL est le champ statique
 // utilisé par ChatViewWidget pour son titre/caption ; on le change au chargement
@@ -164,4 +170,25 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(FabiTabRenameContribution).toSelf().inSingletonScope();
     bind(CommandContribution).toService(FabiTabRenameContribution);
     bind(MenuContribution).toService(FabiTabRenameContribution);
+
+    // === Tableau de bord Maestro (supervision des agents IA) ===
+    // Façade RPC (proxy + client de snapshots), injectée UNIQUEMENT par le widget
+    // → la supervision ne démarre que dans le Space Maestro. Le widget plein écran
+    // et la bascule « mode maestro » (shell masqué) ne s'activent que sur ?maestro=1.
+    bind(FabiMaestroFrontend).toSelf().inSingletonScope();
+    bind(MaestroWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(ctx => ({
+        id: MaestroWidget.ID,
+        createWidget: () => ctx.container.get(MaestroWidget)
+    })).inSingletonScope();
+    // Vue de conversation Fabi affichée dans la zone principale de Maestro.
+    bind(MaestroConversationWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(ctx => ({
+        id: MAESTRO_CONVERSATION_FACTORY_ID,
+        createWidget: () => ctx.container.get(MaestroConversationWidget)
+    })).inSingletonScope();
+    bind(MaestroModeContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(MaestroModeContribution);
+    bind(MaestroSurfaceReporter).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(MaestroSurfaceReporter);
 });

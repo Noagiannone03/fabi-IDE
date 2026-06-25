@@ -8,18 +8,11 @@
     <title>Fabi</title>
     <style>
         @font-face {
-            font-family: 'Geist';
-            src: url('fonts/Geist-Variable.woff2') format('woff2');
-            font-weight: 100 900;
-            font-style: normal;
-            font-display: swap;
-        }
-        @font-face {
-            font-family: 'Inter';
+            font-family: 'Fabi UI';
             src: url('fonts/InterVariable.woff2') format('woff2');
             font-weight: 100 900;
             font-style: normal;
-            font-display: swap;
+            font-display: block;
         }
         * { box-sizing: border-box; }
         /* --accent enregistré comme COULEUR typée → il devient INTERPOLABLE : quand
@@ -33,51 +26,17 @@
         :root { --accent: #0A84FF; }
         html, body {
             margin: 0; width: 100vw; height: 100vh; overflow: hidden;
-            font-family: 'Inter', -apple-system, "Segoe UI", Roboto, sans-serif;
-            letter-spacing: -0.005em;
+            font-family: 'Fabi UI', Inter, -apple-system, "Segoe UI", sans-serif;
+            font-optical-sizing: auto;
+            letter-spacing: normal;
             -webkit-font-smoothing: antialiased;
             -webkit-user-select: none; user-select: none; cursor: default;
         }
         body {
             position: relative;
             background: #22262d;
-            /* fondu de la teinte d'espace au switch */
-            transition: --accent 0.7s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        /* VERRE COLORÉ qui RAYONNE depuis le PILL (le nom de l'espace, ~150px du bord
-           sur mac) et se répand à GAUCHE et à DROITE (pas du haut). La couleur de
-           l'espace diffuse derrière un « verre dépoli » : ellipse horizontale centrée
-           sur le pill, fondue en `screen` sur la barre sombre → vraie lumière colorée.
-           Deux couches (cœur net + halo large diffus) → effet riche, pas un dégradé plat. */
-        body::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            background:
-                radial-gradient(280px 140% at 150px 50%,
-                    color-mix(in oklab, var(--accent) 38%, transparent) 0%,
-                    color-mix(in oklab, var(--accent) 14%, transparent) 34%,
-                    transparent 66%),
-                radial-gradient(560px 240% at 150px 50%,
-                    color-mix(in oklab, var(--accent) 12%, transparent) 0%,
-                    transparent 60%);
-            filter: saturate(1.1) blur(3px);
-            opacity: 0.55;
-            mix-blend-mode: screen;
-            transition: --accent 0.7s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        /* Arête de « vitre » : fin reflet clair en haut → l'effet lit comme du verre. */
-        body::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            z-index: 0;
-            pointer-events: none;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 45%);
-        }
-        .bar { position: relative; z-index: 1; display: flex; align-items: center; height: 100%; }
+        .bar { display: flex; align-items: center; height: 100%; }
         /* Réserve à gauche pour les traffic-lights macOS. */
         .lead { width: 8px; flex: 0 0 auto; height: 100%; -webkit-app-region: drag; }
         body.mac .lead { width: 72px; }

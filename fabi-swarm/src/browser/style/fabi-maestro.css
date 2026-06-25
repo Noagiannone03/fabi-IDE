@@ -1,0 +1,306 @@
+/* Maestro — poste de contrôle des agents IA, dans la DA « îlots » de Fabi :
+   île d'éditeur sombre, accent orange de marque, lettrage pixel-art, JetBrains
+   Mono pour le code. Deux panneaux : identité + liste live (gauche), conversation
+   (droite). Aucune entête bavarde, aucune métrique gadget. */
+
+/* ===================== Suppression du shell (mode maestro) =================
+   Maestro = UN SEUL widget plein écran dans la zone principale. On masque TOUT le
+   reste du shell : menu, status bar, panneaux latéraux, barre d'activité, et
+   TOUTES les tab bars (Lumino = préfixe `lm-`). Aucun onglet, aucune barre. */
+.fabi-maestro-mode #theia-top-panel,
+.fabi-maestro-mode #theia-statusBar,
+.fabi-maestro-mode #theia-left-content-panel,
+.fabi-maestro-mode #theia-right-content-panel,
+.fabi-maestro-mode .theia-app-left,
+.fabi-maestro-mode .theia-app-right,
+.fabi-maestro-mode .lm-TabBar,
+.fabi-maestro-mode .theia-tabBar-toolbar {
+    display: none !important;
+}
+.fabi-maestro-mode #theia-main-content-panel,
+.fabi-maestro-mode #theia-left-right-split-panel {
+    left: 0 !important;
+}
+.fabi-maestro-mode .lm-DockPanel-widget { border: none !important; }
+
+/* ============================== Tokens ==================================== */
+.fabi-maestro {
+    --m-accent: var(--fabi-space-accent, #EC5B2B);
+    /* Fond = celui de l'explorer/sidebar de l'IDE (chrome des « îlots »). Le
+       sombre est réservé à l'affichage NATIF du terminal (sa propre couleur). */
+    --m-bg: var(--theia-sideBar-background, #22262d);
+    --m-surface: #2a2f37;
+    --m-surface-2: #313742;
+    --m-text: #f3ece6;
+    --m-muted: rgba(243, 236, 230, 0.56);
+    --m-faint: rgba(243, 236, 230, 0.32);
+    --m-line: rgba(255, 255, 255, 0.08);
+    --m-gen: #FF9F0A;
+    --m-wait: #FF6B3D;
+    --m-idle: #5BD16A;
+    --m-err: #FF453A;
+    --m-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+    position: absolute; inset: 0;
+    background: var(--m-bg);
+    color: var(--m-text);
+    font-family: 'Geist', 'Inter', -apple-system, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: -0.004em;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* Mise en page : liste (gauche, fixe) + scène (droite, remplit). */
+.fabi-maestro-shell {
+    position: absolute; inset: 0;
+    display: flex; min-height: 0; overflow: hidden;
+}
+.fabi-maestro-side {
+    flex: 0 0 340px; width: 340px; min-height: 0;
+    display: flex; flex-direction: column;
+    background: var(--m-bg);
+    border-right: 1px solid var(--m-line);
+}
+.fabi-maestro-stage {
+    flex: 1 1 auto; min-width: 0; position: relative;
+    background: var(--m-bg);
+}
+/* Hôte du terminal embarqué : recouvre la scène ; le terminal y peint sa propre
+   couleur (sombre natif), comme demandé. */
+.fabi-maestro-term-host { position: absolute; inset: 0; }
+.fabi-maestro-stage-empty {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    color: var(--m-faint); font-size: 13px;
+}
+
+.fabi-maestro-id {
+    flex: 0 0 auto; padding: 22px 20px 16px;
+    border-bottom: 1px solid var(--m-line);
+}
+/* Lettrage pixel « MAESTRO » — orange, net, façon mascotte. */
+.fabi-maestro-wordmark {
+    display: block; height: 26px; width: auto;
+    image-rendering: pixelated;
+    filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
+}
+.fabi-maestro-wordmark rect { fill: var(--m-accent); }
+
+.fabi-maestro-live {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 12px; font-size: 11.5px; font-weight: 540; color: var(--m-muted);
+    text-transform: uppercase; letter-spacing: 0.6px;
+}
+.fabi-maestro-live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--m-faint);
+}
+.fabi-maestro-live-dot.on {
+    background: var(--m-gen);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--m-gen) 60%, transparent);
+    animation: fabi-maestro-ring 1.4s ease-out infinite;
+}
+.fabi-maestro-live-wait {
+    margin-left: auto; color: var(--m-wait); letter-spacing: 0.3px;
+}
+
+.fabi-maestro-list {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    padding: 8px 8px 20px; scrollbar-width: thin;
+}
+.fabi-maestro-list::-webkit-scrollbar { width: 8px; }
+.fabi-maestro-list::-webkit-scrollbar-thumb { background: var(--m-line); border-radius: 4px; }
+
+.fabi-maestro-empty {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 28px 16px; text-align: center; color: var(--m-muted);
+}
+.fabi-maestro-empty small { color: var(--m-faint); font-size: 11.5px; line-height: 1.5; }
+
+.fabi-maestro-group { margin: 6px 0 4px; }
+.fabi-maestro-group-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px 5px; font-size: 10.5px; font-weight: 650;
+    text-transform: uppercase; letter-spacing: 0.5px; color: var(--m-faint);
+}
+
+.fabi-maestro-row {
+    display: flex; align-items: flex-start; gap: 10px; width: 100%;
+    padding: 9px 10px; margin-bottom: 2px;
+    border: none; border-radius: 10px; cursor: pointer; text-align: left;
+    background: transparent; color: inherit;
+    transition: background-color .13s ease;
+}
+.fabi-maestro-row:hover { background: var(--m-surface); }
+.fabi-maestro-row.selected { background: var(--m-surface-2); }
+
+.fabi-maestro-row-body { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.fabi-maestro-row-top { display: flex; align-items: center; gap: 7px; }
+.fabi-maestro-row-title {
+    flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 560; color: var(--m-text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fabi-maestro-row-top time { flex: 0 0 auto; font-size: 10.5px; color: var(--m-faint); }
+.fabi-maestro-row-sub {
+    font-size: 11.5px; color: var(--m-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fabi-maestro-row-sub .perm { color: var(--m-wait); }
+
+/* Monogramme de source (F / C / X). */
+.fabi-maestro-src {
+    flex: 0 0 auto; width: 16px; height: 16px; border-radius: 5px;
+    display: grid; place-items: center; font-size: 9.5px; font-weight: 800;
+    font-family: var(--m-mono);
+    background: var(--m-surface-2); color: var(--m-muted);
+}
+.fabi-maestro-src.fabi { background: color-mix(in srgb, var(--m-accent) 24%, transparent); color: var(--m-accent); }
+.fabi-maestro-src.claude { background: color-mix(in srgb, #D77757 26%, transparent); color: #E5926F; }
+.fabi-maestro-src.codex { background: color-mix(in srgb, #6AA9FF 22%, transparent); color: #93C1FF; }
+
+/* Mascotte animée (renard Fabi / pixel-coder Claude-Codex). */
+.fabi-maestro-mascot {
+    flex: 0 0 auto; width: 32px; height: 40px;
+    display: grid; place-items: center; align-self: flex-start; margin-top: -2px;
+}
+.fabi-mascot-svg, .fabi-mascot-canvas { display: block; image-rendering: pixelated; }
+@keyframes fabi-maestro-z {
+    0% { opacity: 0; transform: translate(0, 0); }
+    25% { opacity: 0.95; }
+    100% { opacity: 0; transform: translate(1.5px, -6px); }
+}
+.fabi-mascot-zzz {
+    font-family: var(--m-mono); font-weight: 700;
+    animation: fabi-maestro-z 2.6s ease-out infinite;
+}
+@keyframes fabi-maestro-breathe {
+    0%, 100% { transform: scaleY(1); }
+    45% { transform: scaleY(1.05); }
+}
+.fabi-mascot-breathe {
+    transform-box: fill-box; transform-origin: 50% 100%;
+    animation: fabi-maestro-breathe 4.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .fabi-mascot-zzz, .fabi-mascot-breathe { animation: none; }
+}
+
+/* Pastille de statut. */
+.fabi-maestro-state {
+    flex: 0 0 auto; width: 9px; height: 9px; margin-top: 4px; border-radius: 50%;
+    background: var(--m-faint);
+}
+.fabi-maestro-state.idle { background: var(--m-idle); }
+.fabi-maestro-state.error { background: var(--m-err); }
+.fabi-maestro-state.waiting { background: var(--m-wait); box-shadow: 0 0 0 4px color-mix(in srgb, var(--m-wait) 18%, transparent); }
+.fabi-maestro-state.generating {
+    background: var(--m-gen);
+    animation: fabi-maestro-ring 1.4s ease-out infinite;
+}
+@keyframes fabi-maestro-ring {
+    0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--m-gen) 55%, transparent); }
+    100% { box-shadow: 0 0 0 7px transparent; }
+}
+
+/* ============================== Conversation ============================= */
+.fabi-maestro-conv {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    background: var(--m-bg);
+}
+.fabi-maestro-conv.empty { align-items: center; justify-content: center; color: var(--m-faint); }
+
+.fabi-maestro-conv-head {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 16px 22px; border-bottom: 1px solid var(--m-line);
+}
+.fabi-maestro-conv-head .who { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.fabi-maestro-conv-head h2 {
+    margin: 0; font-size: 15px; font-weight: 620; letter-spacing: -0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fabi-maestro-conv-head .meta { font-size: 11.5px; color: var(--m-faint); }
+.fabi-maestro-conv-head .acts { display: flex; gap: 8px; flex: 0 0 auto; }
+.fabi-maestro-conv-head .ghost {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 11px; border-radius: 9px; cursor: pointer;
+    background: var(--m-surface); color: var(--m-muted);
+    border: 1px solid var(--m-line); font: inherit; font-size: 12px; font-weight: 540;
+}
+.fabi-maestro-conv-head .ghost:hover { background: var(--m-surface-2); color: var(--m-text); }
+
+/* Bandeau permission (depuis les hooks). */
+.fabi-maestro-perm {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 10px;
+    margin: 12px 22px 0; padding: 11px 14px; border-radius: 11px;
+    background: color-mix(in srgb, var(--m-wait) 12%, var(--m-surface));
+    border: 1px solid color-mix(in srgb, var(--m-wait) 30%, transparent);
+    font-size: 12.5px;
+}
+.fabi-maestro-perm .codicon { color: var(--m-wait); }
+.fabi-maestro-perm code { flex: 1 1 auto; min-width: 0; font-family: var(--m-mono); font-size: 11.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--m-text); }
+.fabi-maestro-perm .perm-acts { display: flex; gap: 7px; flex: 0 0 auto; }
+.fabi-maestro-perm button {
+    padding: 5px 12px; border-radius: 8px; cursor: pointer; font: inherit; font-size: 12px; font-weight: 560;
+    background: var(--m-surface-2); color: var(--m-text); border: 1px solid var(--m-line);
+}
+.fabi-maestro-perm button.ok { background: var(--m-accent); border-color: transparent; color: #fff; }
+
+/* Fil de messages — la VRAIE conversation. */
+.fabi-maestro-thread {
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    padding: 20px 22px; display: flex; flex-direction: column; gap: 15px;
+    scrollbar-width: thin;
+}
+.fabi-maestro-thread::-webkit-scrollbar { width: 9px; }
+.fabi-maestro-thread::-webkit-scrollbar-thumb { background: var(--m-line); border-radius: 4px; }
+.fabi-maestro-thread.loading, .fabi-maestro-thread.empty {
+    align-items: center; justify-content: center; color: var(--m-faint);
+}
+.fabi-maestro-thread.loading .codicon { font-size: 22px; }
+.fabi-maestro-thread.empty p { max-width: 440px; text-align: center; line-height: 1.6; }
+
+.fabi-maestro-msg { display: flex; flex-direction: column; gap: 5px; max-width: 84%; }
+.fabi-maestro-msg.user { align-self: flex-end; align-items: flex-end; }
+.fabi-maestro-msg .role { font-size: 10.5px; font-weight: 650; color: var(--m-faint);
+    text-transform: uppercase; letter-spacing: 0.4px; padding: 0 4px; }
+.fabi-maestro-msg .bubble {
+    border-radius: 13px; padding: 11px 14px; font-size: 13.5px; line-height: 1.55;
+    background: var(--m-surface); border: 1px solid var(--m-line);
+}
+.fabi-maestro-msg.user .bubble {
+    background: color-mix(in srgb, var(--m-accent) 15%, var(--m-surface));
+    border-color: color-mix(in srgb, var(--m-accent) 26%, transparent);
+}
+.fabi-maestro-msg .text { white-space: pre-wrap; word-break: break-word; }
+.fabi-maestro-msg .tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.fabi-maestro-msg .tool {
+    display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+    padding: 3px 9px; border-radius: 7px; font-size: 11px; font-family: var(--m-mono);
+    background: var(--m-surface-2); color: var(--m-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.fabi-maestro-msg .tool .codicon { font-size: 11px; }
+.fabi-maestro-msg .tool.error { background: color-mix(in srgb, var(--m-err) 16%, transparent); color: var(--m-err); }
+.fabi-maestro-msg .tool.completed .codicon { color: var(--m-idle); }
+
+/* Composer. */
+.fabi-maestro-composer {
+    flex: 0 0 auto; display: flex; align-items: flex-end; gap: 10px;
+    padding: 14px 18px 18px; border-top: 1px solid var(--m-line);
+}
+.fabi-maestro-composer textarea {
+    flex: 1 1 auto; resize: none; max-height: 150px;
+    background: var(--m-surface); color: var(--m-text);
+    border: 1px solid var(--m-line); border-radius: 11px; padding: 11px 14px;
+    font: inherit; font-size: 13.5px; line-height: 1.5; outline: none;
+}
+.fabi-maestro-composer textarea:focus {
+    border-color: color-mix(in srgb, var(--m-accent) 55%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--m-accent) 14%, transparent);
+}
+.fabi-maestro-composer textarea::placeholder { color: var(--m-faint); }
+.fabi-maestro-composer button {
+    flex: 0 0 auto; width: 40px; height: 40px; border-radius: 11px; cursor: pointer;
+    border: none; display: grid; place-items: center; background: var(--m-accent); color: #fff;
+    transition: filter .13s ease, transform .1s ease;
+}
+.fabi-maestro-composer button:hover { filter: brightness(1.08); }
+.fabi-maestro-composer button:active { transform: scale(0.95); }
+.fabi-maestro-composer button:disabled { opacity: 0.6; cursor: default; }
