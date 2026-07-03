@@ -6,10 +6,12 @@
 // La config OpenCode (provider swarm OpenAI-compatible + flags local) est
 // injectée via l'env OPENCODE_CONFIG_CONTENT (JSON inline) — zéro fichier disque.
 
-import { spawn, type ChildProcess } from 'child_process';
+import { execFileSync, spawn, type ChildProcess } from 'child_process';
 
 const SHUTDOWN_GRACE_MS = 4000;
 const RESTART_DELAY_MS = 3000;
+const FABI_CODE_PORT_MIN = 41960;
+const FABI_CODE_PORT_MAX = 43960;
 /** Ligne stdout d'OpenCode : "opencode server listening on http://127.0.0.1:PORT". */
 const LISTEN_RE = /listening on\s+(https?:\/\/\S+)/i;
 
@@ -75,6 +77,9 @@ export function startServer(opts: ServerOpts): ServerHandle {
         }
         child = proc;
         currentPid = proc.pid;
+        if (typeof currentPid === 'number') {
+            killOrphanedSidecars(currentPid);
+        }
 
         let buf = '';
         const onChunk = (chunk: Buffer): void => {
@@ -183,4 +188,55 @@ export function startServer(opts: ServerOpts): ServerHandle {
         get url() { return url; },
         stop
     };
+}
+
+/**
+ * Nettoie les anciens sidecars Fabi qui auraient survécu à une fermeture dure
+ * de l'IDE. On ne cible que les `opencode/fabi-code serve` orphelins (PPID=1)
+ * sur la plage de ports réservée par FabiCodeService, afin d'éviter de tuer un
+ * OpenCode lancé manuellement par l'utilisateur.
+ */
+function killOrphanedSidecars(currentPid: number): void {
+    if (process.platform === 'win32') {
+        return;
+    }
+    let output = '';
+    try {
+        output = execFileSync('ps', ['-axo', 'pid=,ppid=,command='], {
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore']
+        });
+    } catch {
+        return;
+    }
+    for (const rawLine of output.split('\n')) {
+        const line = rawLine.trim();
+        const match = line.match(/^(\d+)\s+(\d+)\s+(.+)$/);
+        if (!match) {
+            continue;
+        }
+        const pid = Number(match[1]);
+        const ppid = Number(match[2]);
+        const command = match[3];
+        if (!pid || pid === currentPid || ppid !== 1) {
+            continue;
+        }
+        if (!/\b(?:opencode|fabi-code)\b.*\bserve\b/.test(command) || !command.includes('--hostname=127.0.0.1')) {
+            continue;
+        }
+        const portMatch = command.match(/(?:^|\s)--port=(\d+)(?:\s|$)/);
+        const port = portMatch ? Number(portMatch[1]) : 0;
+        if (port < FABI_CODE_PORT_MIN || port >= FABI_CODE_PORT_MAX) {
+            continue;
+        }
+        try {
+            process.kill(-pid, 'SIGTERM');
+        } catch {
+            try {
+                process.kill(pid, 'SIGTERM');
+            } catch {
+                /* déjà mort */
+            }
+        }
+    }
 }

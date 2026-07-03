@@ -14,7 +14,7 @@
   ],
   "dependencies": {
     "@theia/core": "1.72.2",
-    "fabi-swarm": "0.0.0"
+    "fabi-swarm": "0.1.0"
   },
   "devDependencies": {
     "electron": "39.8.7",

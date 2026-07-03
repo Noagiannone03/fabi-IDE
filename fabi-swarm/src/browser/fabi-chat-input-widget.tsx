@@ -29,11 +29,11 @@ export class FabiChatInputWidget extends AIChatInputWidget {
     @inject(FabiCodeState)
     protected readonly fabiMode: FabiCodeState;
 
-    /** Prêt = le moteur OpenCode (sidecar) est lancé. C'est lui le cerveau ;
-     *  le swarm n'est que le modèle qu'il appelle (ses erreurs s'affichent dans
-     *  le chat). On n'attend donc plus `swarm.ready` pour saisir. */
+    /** Prêt = le swarm peut servir une requête maintenant. OpenCode démarre lazy
+     *  au premier message ; attendre son statut ici créerait un deadlock UI :
+     *  pas d'input → pas de message → pas de démarrage OpenCode. */
     protected get ready(): boolean {
-        return this.engine.server.status === 'ready';
+        return this.swarm.connection?.ready === true;
     }
 
     /**
@@ -92,7 +92,10 @@ export class FabiChatInputWidget extends AIChatInputWidget {
     @postConstruct()
     protected override init(): void {
         super.init();
-        this.toDispose.push(this.swarm.onConnectionChangedEvent(() => this.setEnabled(false)));
+        this.toDispose.push(this.swarm.onConnectionChangedEvent(() => {
+            this.setEnabled(false);
+            this.update();
+        }));
         this.toDispose.push(this.engine.onServerStatusEvent(() => { this.setEnabled(false); this.update(); }));
         this.editorReady.promise.then(() => this.setEnabled(false));
     }

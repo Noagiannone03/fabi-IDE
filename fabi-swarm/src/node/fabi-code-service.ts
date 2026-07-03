@@ -24,10 +24,14 @@ import {
     FabiCodePermissionReply, FABI_CODE_PROVIDER_ID
 } from '../common/fabi-code-protocol';
 import {
-    FabiSwarmService, FABI_FALLBACK_SCHEDULER_URL, FABI_FALLBACK_MODEL
+    FabiSwarmService, FABI_FALLBACK_MODEL
 } from '../common/fabi-swarm-protocol';
 import { findFabiCode } from './fabi-code-runtime';
 import { startServer, ServerHandle } from './fabi-code-server';
+
+const SWARM_READY_TIMEOUT_MS = 120_000;
+const SWARM_READY_POLL_MS = 1_000;
+const SWARM_PICK_MODEL_GRACE_MS = 5_000;
 
 @injectable()
 export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationContribution {
@@ -39,11 +43,15 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected client: FabiCodeClient | undefined;
     protected server: ServerHandle | undefined;
     protected baseUrl: string | undefined;
-    protected info: FabiCodeServerInfo = { status: 'starting' };
+    protected info: FabiCodeServerInfo = { status: 'stopped' };
     /** Modèle à utiliser (providerID/modelID) — résolu au spawn. */
     protected modelId = FABI_FALLBACK_MODEL;
+    /** Signature de config réellement chargée dans le sidecar OpenCode. */
+    protected configKey: string | undefined;
     /** Contrôleurs d'abort des POST /message bloquants, par session. */
     protected readonly inflight = new Map<string, AbortController>();
+    /** Tours OpenCode en cours : résolus par session.status/session.error ou timeout. */
+    protected readonly turnWaiters = new Map<string, { resolve: () => void; timer: ReturnType<typeof setTimeout> }>();
     protected sseAbort: AbortController | undefined;
     protected stopping = false;
     /** Directory dont on écoute les events (OpenCode scope /event par workspace). */
@@ -62,8 +70,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     // ---- BackendApplicationContribution ----
 
     onStart(): void {
-        // Démarrage best-effort ; toute erreur → statut 'error' (pas de crash).
-        this.launch().catch(err => this.setStatus('error', String(err)));
+        // Démarrage lazy : le sidecar OpenCode doit être configuré avec le swarm
+        // actif. Celui-ci peut arriver quelques secondes après le boot via le
+        // registry/autoreconnect, donc createSession/prompt déclenchent le vrai
+        // launch via ensureCurrentServer().
+        this.setStatus('stopped');
     }
 
     async onStop(): Promise<void> {
@@ -73,6 +84,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             ac.abort();
         }
         this.inflight.clear();
+        for (const waiter of this.turnWaiters.values()) {
+            clearTimeout(waiter.timer);
+            waiter.resolve();
+        }
+        this.turnWaiters.clear();
         await this.server?.stop().catch(() => undefined);
     }
 
@@ -84,8 +100,9 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             this.setStatus('error', 'moteur fabi-code introuvable');
             return;
         }
-        const config = await this.buildConfig();
+        const { config, key } = await this.buildConfigWithKey();
         const port = 41960 + Math.floor(Math.random() * 2000);
+        this.configKey = key;
         this.setStatus('starting');
         this.server = startServer({
             binary: found.binary,
@@ -108,8 +125,35 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         });
     }
 
+    /** Redémarre OpenCode si le modèle/scheduler/token actif a changé depuis le spawn. */
+    protected async ensureCurrentServer(): Promise<void> {
+        if (!process.env.FABI_CODE_BASE_URL) {
+            await this.waitForConsumableSwarm();
+        }
+        const { key } = await this.buildConfigWithKey();
+        if (this.server && this.baseUrl && this.configKey === key) {
+            return;
+        }
+        this.sseAbort?.abort();
+        this.sseAbort = undefined;
+        this.baseUrl = undefined;
+        for (const ac of this.inflight.values()) {
+            ac.abort();
+        }
+        this.inflight.clear();
+        for (const waiter of this.turnWaiters.values()) {
+            clearTimeout(waiter.timer);
+            waiter.resolve();
+        }
+        this.turnWaiters.clear();
+        await this.server?.stop().catch(() => undefined);
+        this.server = undefined;
+        await this.launch();
+        await this.whenReady();
+    }
+
     /** Construit la config OpenCode : provider swarm OpenAI-compatible + local. */
-    protected async buildConfig(): Promise<Record<string, unknown>> {
+    protected async buildConfigWithKey(): Promise<{ config: Record<string, unknown>; key: string }> {
         // --- Override de TEST (env) : pointe le provider sur n'importe quel
         // endpoint OpenAI-compatible (Ollama, LM Studio…) sans toucher au code.
         //   FABI_CODE_BASE_URL  ex: http://172.18.0.12:11434/v1
@@ -125,7 +169,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             model = process.env.FABI_CODE_MODEL || FABI_FALLBACK_MODEL;
             apiKey = process.env.FABI_CODE_API_KEY || 'fabi-test';
         } else {
-            let schedulerUrl = FABI_FALLBACK_SCHEDULER_URL;
+            let schedulerUrl: string | undefined;
             model = FABI_FALLBACK_MODEL;
             try {
                 const active = await this.swarm?.getActiveSwarm();
@@ -136,8 +180,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                     model = active.model;
                 }
                 apiKey = await this.swarm?.getAccountToken();
-            } catch {
-                /* best-effort : on garde les valeurs de repli */
+            } catch (err) {
+                throw new Error(`Impossible de lire le swarm actif: ${err instanceof Error ? err.message : String(err)}`);
+            }
+            if (!schedulerUrl) {
+                throw new Error('Aucun swarm Fabi actif: choisis un modèle et attends que le worker soit prêt.');
             }
             baseURL = `${schedulerUrl.replace(/\/+$/, '')}/v1`;
         }
@@ -146,7 +193,8 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         if (apiKey) {
             options.apiKey = apiKey;
         }
-        return {
+        const key = JSON.stringify({ baseURL, model, apiKey: apiKey ?? '' });
+        const config = {
             $schema: 'https://opencode.ai/config.json',
             share: 'disabled',
             // Approbation façon Cursor : les commandes shell et les fetch web
@@ -167,13 +215,58 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                         [model]: {
                             name: model,
                             tool_call: true,
-                            limit: { context: 262144, output: 32768 }
+                            // Le swarm P2P doit rester interactif. Une limite de
+                            // sortie trop haute laisse un petit modèle tourner
+                            // longtemps et rend l'annulation coûteuse côté worker.
+                            limit: { context: 262144, output: 1024 }
                         }
                     }
                 }
             },
             model: `${FABI_CODE_PROVIDER_ID}/${model}`
         };
+        return { config, key };
+    }
+
+    protected async buildConfig(): Promise<Record<string, unknown>> {
+        return (await this.buildConfigWithKey()).config;
+    }
+
+    /**
+     * Porte d'admission avant de démarrer OpenCode ou d'envoyer un tour.
+     * Les serveurs d'inférence de prod backpressurent les requêtes quand la file
+     * ou les replicas ne sont pas prêts ; ici on applique le même principe côté
+     * desktop pour éviter un "Generating..." infini ou un fallback silencieux.
+     */
+    protected async waitForConsumableSwarm(timeoutMs = SWARM_READY_TIMEOUT_MS): Promise<void> {
+        if (!this.swarm) {
+            throw new Error('Service swarm indisponible: impossible de router le chat Fabi.');
+        }
+        const started = Date.now();
+        let lastMessage = 'connexion au swarm en cours';
+        for (;;) {
+            let active = false;
+            try {
+                active = !!(await this.swarm.getActiveSwarm());
+                const connection = await this.swarm.getConnection();
+                lastMessage = `${connection.headline}: ${connection.activity}${connection.detail ? ` (${connection.detail})` : ''}`;
+                if (active && connection.ready) {
+                    return;
+                }
+                if (!active && connection.reason === 'pick-model' && Date.now() - started >= SWARM_PICK_MODEL_GRACE_MS) {
+                    throw new Error('Aucun modèle Fabi sélectionné: choisis un swarm avant de lancer le chat.');
+                }
+            } catch (err) {
+                if (err instanceof Error && err.message.startsWith('Aucun modèle Fabi sélectionné')) {
+                    throw err;
+                }
+                lastMessage = err instanceof Error ? err.message : String(err);
+            }
+            if (Date.now() - started >= timeoutMs) {
+                throw new Error(`Le swarm Fabi n'est pas prêt après ${Math.round(timeoutMs / 1000)} s: ${lastMessage}`);
+            }
+            await new Promise<void>(resolve => setTimeout(resolve, SWARM_READY_POLL_MS));
+        }
     }
 
     protected setStatus(status: FabiCodeServerInfo['status'], detail?: string): void {
@@ -284,11 +377,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             const status = (props.status as { type?: string } | undefined)?.type;
             // 'busy' = en cours ; tout autre statut (idle/…) = tour terminé.
             if (status && status !== 'busy') {
-                this.client?.onTurnDone(sessionId);
+                this.finishTurn(sessionId);
             }
         } else if (type === 'session.error') {
             const err = props.error as { data?: { message?: string } } | undefined;
-            this.client?.onTurnDone(sessionId, err?.data?.message ?? 'erreur de session');
+            this.finishTurn(sessionId, err?.data?.message ?? 'erreur de session');
         } else if (type === 'file.edited') {
             const path = typeof props.path === 'string' ? props.path : undefined;
             if (path) {
@@ -356,8 +449,9 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     }
 
     async createSession(directory?: string): Promise<string> {
+        await this.ensureCurrentServer();
         this.ensureEventStreamFor(directory);
-        const res = await this.http('POST', '/session', {}, directory);
+        const res = await this.http('POST', '/session', { title: 'Fabi' }, directory);
         const json = JSON.parse(res) as { id?: string };
         if (!json.id) {
             throw new Error('createSession: pas d\'id retourné');
@@ -366,15 +460,18 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     }
 
     async prompt(sessionId: string, text: string, directory?: string, agent?: string): Promise<void> {
+        await this.ensureCurrentServer();
         this.ensureEventStreamFor(directory);
         const ac = new AbortController();
         this.inflight.set(sessionId, ac);
         try {
+            const done = this.waitForTurn(sessionId, ac, directory);
             const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
             if (agent) {
                 body.agent = agent; // 'build' (édite) | 'plan' (lecture seule)
             }
-            // Bloquant jusqu'à fin de tour ; les fragments arrivent via le SSE.
+            // OpenCode 1.14.x répond vite au POST, puis publie la vraie fin via /event.
+            // On attend donc session.status idle/session.error, avec timeout anti-spin.
             await this.http(
                 'POST',
                 `/session/${encodeURIComponent(sessionId)}/message`,
@@ -382,10 +479,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 directory,
                 ac.signal
             );
-            this.client?.onTurnDone(sessionId);
+            await done;
         } catch (err) {
             const aborted = (err as Error)?.name === 'AbortError';
-            this.client?.onTurnDone(sessionId, aborted ? undefined : String((err as Error)?.message ?? err));
+            this.finishTurn(sessionId, aborted ? undefined : String((err as Error)?.message ?? err));
         } finally {
             this.inflight.delete(sessionId);
         }
@@ -399,6 +496,34 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         } catch {
             /* best-effort */
         }
+    }
+
+    protected waitForTurn(sessionId: string, ac: AbortController, directory?: string): Promise<void> {
+        const previous = this.turnWaiters.get(sessionId);
+        if (previous) {
+            clearTimeout(previous.timer);
+            previous.resolve();
+        }
+        return new Promise<void>(resolve => {
+            const timer = setTimeout(() => {
+                ac.abort();
+                void this.http('POST', `/session/${encodeURIComponent(sessionId)}/abort`, {}, directory)
+                    .catch(() => undefined);
+                this.finishTurn(sessionId, 'Timeout: le moteur Fabi n\'a pas terminé le tour.');
+            }, 120000);
+            timer.unref?.();
+            this.turnWaiters.set(sessionId, { resolve, timer });
+        });
+    }
+
+    protected finishTurn(sessionId: string, error?: string): void {
+        const waiter = this.turnWaiters.get(sessionId);
+        if (waiter) {
+            clearTimeout(waiter.timer);
+            this.turnWaiters.delete(sessionId);
+            waiter.resolve();
+        }
+        this.client?.onTurnDone(sessionId, error);
     }
 
     async replyPermission(requestId: string, reply: FabiCodePermissionReply, directory?: string): Promise<void> {

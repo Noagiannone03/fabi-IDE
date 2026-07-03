@@ -1,5 +1,8 @@
 import { injectable } from '@theia/core/shared/inversify';
 import { BackendApplicationContribution } from '@theia/core/lib/node';
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { homedir } from 'os';
+import { dirname, join } from 'path';
 import {
     FabiSwarmService, FabiSwarmClient, SwarmEntry, WorkerState, RuntimeStatus,
     ConnectionInfo, FABI_REGISTRY_URL
@@ -11,6 +14,12 @@ import { deriveConnection } from './fabi-connection';
 import { getAccountToken } from './fabi-account-token';
 import { FabiMetricsCollector } from './fabi-metrics';
 import { FabiMetrics } from '../common/fabi-swarm-protocol';
+
+const SWARM_STATE_PATH = join(homedir(), '.config', 'fabi', 'swarm-state.json');
+
+interface PersistedSwarmState {
+    activeSwarmId?: string;
+}
 
 /**
  * Implémentation backend : pilote le worker Parallax (rejoindre/quitter un
@@ -31,6 +40,8 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected workerState: WorkerState = { kind: 'stopped' };
     protected activeSwarm: SwarmEntry | undefined;
     protected switching = false;
+    protected autoReconnectInFlight = false;
+    protected autoReconnectSettled = false;
     protected connection: ConnectionInfo = deriveConnection(undefined, { kind: 'stopped' });
 
     protected metrics: FabiMetricsCollector | undefined;
@@ -49,6 +60,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             if (m) {
                 client.onMetricsChanged(m);
             }
+            this.tryAutoReconnect(this.feed?.snapshot() ?? []);
         }
     }
 
@@ -88,6 +100,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                     this.recomputeConnection();
                 }
             }
+            this.tryAutoReconnect(swarms);
         });
         this.feed.start();
     }
@@ -140,6 +153,65 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         this.recomputeConnection();
     }
 
+    protected readPersistedSwarmId(): string | undefined {
+        try {
+            if (!existsSync(SWARM_STATE_PATH)) {
+                return undefined;
+            }
+            const parsed = JSON.parse(readFileSync(SWARM_STATE_PATH, 'utf-8')) as PersistedSwarmState;
+            const id = typeof parsed.activeSwarmId === 'string' ? parsed.activeSwarmId.trim() : '';
+            return id || undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    protected persistSwarmId(swarmId: string): void {
+        try {
+            mkdirSync(dirname(SWARM_STATE_PATH), { recursive: true });
+            writeFileSync(SWARM_STATE_PATH, JSON.stringify({ activeSwarmId: swarmId }, undefined, 2) + '\n', 'utf-8');
+            try {
+                chmodSync(SWARM_STATE_PATH, 0o600);
+            } catch {
+                /* chmod best-effort (Windows/NTFS). */
+            }
+        } catch {
+            /* Un état non persisté ne doit jamais empêcher la connexion. */
+        }
+    }
+
+    protected clearPersistedSwarmId(): void {
+        try {
+            rmSync(SWARM_STATE_PATH, { force: true });
+        } catch {
+            /* best-effort */
+        }
+    }
+
+    protected tryAutoReconnect(swarms: SwarmEntry[]): void {
+        if (this.autoReconnectSettled || this.autoReconnectInFlight || this.switching
+            || this.activeSwarm || this.workerState.kind !== 'stopped' || swarms.length === 0) {
+            return;
+        }
+        this.autoReconnectInFlight = true;
+        try {
+            const swarmId = this.readPersistedSwarmId();
+            if (!swarmId) {
+                this.autoReconnectSettled = true;
+                return;
+            }
+            if (!swarms.some(s => s.id === swarmId)) {
+                return;
+            }
+            this.autoReconnectSettled = true;
+            void this.connectSwarm(swarmId).catch(e => {
+                this.setWorkerState({ kind: 'error', swarmId, message: e instanceof Error ? e.message : String(e) });
+            });
+        } finally {
+            this.autoReconnectInFlight = false;
+        }
+    }
+
     // ----- connexion / déconnexion -----
 
     async connectSwarm(swarmId: string): Promise<WorkerState> {
@@ -148,6 +220,8 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         }
         if (this.activeSwarm?.id === swarmId
             && (this.workerState.kind === 'running' || this.workerState.kind === 'starting')) {
+            this.persistSwarmId(swarmId);
+            this.autoReconnectSettled = true;
             return this.workerState;
         }
 
@@ -157,6 +231,9 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             this.setWorkerState({ kind: 'error', message: `swarm "${swarmId}" introuvable dans le registry` });
             return this.workerState;
         }
+
+        this.persistSwarmId(swarm.id);
+        this.autoReconnectSettled = true;
 
         const found = this.runtime.findParallax();
         if (!found) {
@@ -198,6 +275,8 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     }
 
     async disconnect(): Promise<WorkerState> {
+        this.autoReconnectSettled = true;
+        this.clearPersistedSwarmId();
         if (this.handle) {
             await this.handle.stop();
             this.handle = undefined;

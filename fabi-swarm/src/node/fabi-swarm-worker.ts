@@ -4,6 +4,9 @@
 // AUTO-RESTART 30 s sur crash inattendu (comme le CLI), et arrêt propre du
 // process group (SIGTERM puis SIGKILL après le délai de grâce).
 
+import { createWriteStream, mkdirSync, type WriteStream } from 'fs';
+import { homedir } from 'os';
+import { join } from 'path';
 import { spawn, type ChildProcess } from 'child_process';
 import { WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
@@ -17,6 +20,7 @@ const SHUTDOWN_GRACE_MS = 6000;
 /** Délai avant re-spawn après un crash inattendu (aligné sur le CLI). */
 const RESTART_DELAY_MS = 30_000;
 const EVENT_PREFIX = '[FABI] ';
+const WORKER_LOG_DIR = join(homedir(), 'Library', 'Logs', 'Fabi');
 
 export interface WorkerHandle {
     /** PID courant (change après un auto-restart). */
@@ -43,6 +47,7 @@ export function spawnWorker(
     const startChild = (): void => {
         const args = buildJoinArgs(peer);
         const env = buildWorkerEnv();
+        const log = openWorkerLog(swarmId);
         const proc = spawn(bin, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: process.platform !== 'win32',
@@ -54,6 +59,7 @@ export function spawnWorker(
             onUpdate({ kind: 'error', swarmId, message: 'spawn parallax sans PID' });
             return;
         }
+        writeWorkerLog(log, 'launcher', `spawn pid=${currentPid} cmd=${bin} ${args.join(' ')}`);
         try {
             killOrphanedWorkers(currentPid);
         } catch {
@@ -65,8 +71,10 @@ export function spawnWorker(
         const push = () => onUpdate({ ...state });
 
         let buf = '';
-        const onChunk = (chunk: Buffer) => {
-            buf += chunk.toString('utf-8');
+        const onChunk = (source: 'stdout' | 'stderr', chunk: Buffer) => {
+            const text = chunk.toString('utf-8');
+            writeWorkerLog(log, source, text);
+            buf += text;
             let nl: number;
             while ((nl = buf.indexOf('\n')) >= 0) {
                 const line = buf.slice(0, nl);
@@ -74,11 +82,16 @@ export function spawnWorker(
                 handleLine(line, state, push);
             }
         };
-        proc.stdout?.on('data', onChunk);
-        proc.stderr?.on('data', onChunk);
+        proc.stdout?.on('data', chunk => onChunk('stdout', chunk));
+        proc.stderr?.on('data', chunk => onChunk('stderr', chunk));
 
-        proc.on('error', err => onUpdate({ kind: 'error', swarmId, message: err.message }));
+        proc.on('error', err => {
+            writeWorkerLog(log, 'launcher', `spawn error: ${err.stack ?? err.message}`);
+            onUpdate({ kind: 'error', swarmId, message: err.message });
+        });
         proc.on('close', (code, signal) => {
+            writeWorkerLog(log, 'launcher', `close code=${code} signal=${signal}`);
+            log?.end();
             if (stopped) {
                 onUpdate({ kind: 'stopped', swarmId, message: `worker arrêté (code=${code} signal=${signal})` });
                 return;
@@ -165,6 +178,27 @@ export function spawnWorker(
     };
 
     return { get pid() { return currentPid; }, stop };
+}
+
+function openWorkerLog(swarmId: string): WriteStream | undefined {
+    try {
+        mkdirSync(WORKER_LOG_DIR, { recursive: true });
+        const safeSwarmId = swarmId.replace(/[^a-z0-9_.-]/gi, '_');
+        const file = join(WORKER_LOG_DIR, `swarm-worker-${safeSwarmId}.log`);
+        const stream = createWriteStream(file, { flags: 'a' });
+        writeWorkerLog(stream, 'launcher', `--- worker launch ${new Date().toISOString()} ---`);
+        return stream;
+    } catch {
+        return undefined;
+    }
+}
+
+function writeWorkerLog(log: WriteStream | undefined, source: string, message: string): void {
+    if (!log) {
+        return;
+    }
+    const line = message.endsWith('\n') ? message : `${message}\n`;
+    log.write(`[${new Date().toISOString()}] [${source}] ${line}`);
 }
 
 /** Applique un event `[FABI] {...}` à l'état du worker (port de events.ts). */

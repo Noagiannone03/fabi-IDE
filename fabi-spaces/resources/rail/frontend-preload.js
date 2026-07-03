@@ -1,7 +1,23 @@
 // Preload des frontends Theia embarqués dans les Spaces.
-// On conserve les APIs officielles Theia puis on ajoute un bridge Maestro étroit.
-require('@theia/core/lib/electron-browser/preload').preload();
-require('@theia/filesystem/lib/electron-browser/preload').preload();
+// En app packagée, node_modules n'est pas présent comme en dev: le preload
+// officiel Theia est bundlé dans app.asar/lib/frontend/preload.js.
+const path = require('path');
+
+function loadTheiaPreload() {
+    const resourcesPath = process.resourcesPath;
+    if (resourcesPath) {
+        try {
+            require(path.join(resourcesPath, 'app.asar', 'lib', 'frontend', 'preload.js'));
+            return;
+        } catch {
+            // Dev / packaging partiel: fallback ci-dessous.
+        }
+    }
+    require('@theia/core/lib/electron-browser/preload').preload();
+    require('@theia/filesystem/lib/electron-browser/preload').preload();
+}
+
+loadTheiaPreload();
 
 const { contextBridge, ipcRenderer } = require('electron');
 

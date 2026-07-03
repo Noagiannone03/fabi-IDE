@@ -49,6 +49,8 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
 
     /** Assignation faite une fois (le modèle a un id constant). */
     protected agentsAssigned = false;
+    /** Vrai uniquement après un enregistrement effectif dans Theia. */
+    protected modelRegistered = false;
 
     async onStart(): Promise<void> {
         // Agent par défaut dès le boot (indépendant du swarm) → le chat sait
@@ -77,7 +79,7 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
         const swarm = this.frontend.active;
         const connection = this.frontend.connection;
         if (!swarm || !connection?.ready) {
-            this.openai.removeLanguageModels(FABI_MODEL_ID);
+            this.unregisterModel();
             return;
         }
         await this.wire(swarm, connection);
@@ -88,7 +90,7 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
             return;
         }
         if (connection && !connection.ready) {
-            this.openai.removeLanguageModels(FABI_MODEL_ID);
+            this.unregisterModel();
             return;
         }
         let apiKey = 'fabi-no-auth';
@@ -112,10 +114,19 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
                 supportsStructuredOutput: false,
                 developerMessageSettings: 'system'
             });
+            this.modelRegistered = true;
             await this.assignToAgents();
         } catch (e) {
             console.warn('[fabi-swarm] enregistrement du modèle échoué :', e);
         }
+    }
+
+    protected unregisterModel(): void {
+        if (!this.modelRegistered) {
+            return;
+        }
+        this.openai.removeLanguageModels(FABI_MODEL_ID);
+        this.modelRegistered = false;
     }
 
     /**

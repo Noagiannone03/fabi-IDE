@@ -15,7 +15,6 @@ import { ChatSessionsWelcomeMessageProvider } from '@theia/ai-ide/lib/browser/ch
 import { TerminalFrontendContribution } from '@theia/terminal/lib/browser/terminal-frontend-contribution';
 import { FabiSwarmService } from '../common/fabi-swarm-protocol';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
-import { FabiSwarmModelContribution } from './fabi-swarm-model';
 import { FabiChatInputWidget } from './fabi-chat-input-widget';
 import { FabiAIActivationService } from './fabi-ai-activation';
 import { FabiWelcomeMessageProvider } from './fabi-welcome-provider';
@@ -91,9 +90,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(FabiMetricsStatusBar).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiMetricsStatusBar);
 
-    // Enregistrement dynamique du modèle OpenAI-compatible (swarm actif → chat IA).
-    bind(FabiSwarmModelContribution).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(FabiSwarmModelContribution);
+    // Important : on n'enregistre PAS le swarm comme LanguageModel Theia global.
+    // Le seul chemin IA produit est FabiCodeAgent → OpenCode. Sinon Theia lance
+    // des appels parasites (ex: génération de titre de session) directement sur
+    // le scheduler P2P, ce qui crée des 429 et masque les vrais tours utilisateur.
 
     // Pas de panneau séparé : on intègre le sélecteur DANS l'input du chat IA.
     // On sous-classe AIChatInputWidget et on rebind → la WidgetFactory de Theia
