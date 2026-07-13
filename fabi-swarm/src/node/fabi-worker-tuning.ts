@@ -4,7 +4,9 @@
 // identique entre l'IDE et la ligne de commande.
 
 import { spawnSync } from 'child_process';
-import { totalmem } from 'os';
+import { randomUUID } from 'crypto';
+import { homedir, totalmem } from 'os';
+import { join } from 'path';
 import { getAccountToken } from './fabi-account-token';
 
 export type Accelerator = 'apple-silicon' | 'cuda' | 'generic';
@@ -56,26 +58,26 @@ export function getHardware(): HardwareProfile {
 export function resolveWorkerLimits(hw: HardwareProfile): WorkerLimits {
     if (hw.accelerator === 'apple-silicon' && hw.ramGb < 64) {
         if (hw.ramGb <= 24) {
-            return { maxBatchSize: '1', maxSequenceLength: '16384', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '4096', kvBlockSize: '32' };
         }
-        return { maxBatchSize: '2', maxSequenceLength: '32768', maxNumTokensPerBatch: '16384', kvBlockSize: '32' };
+        return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
     }
     if (hw.accelerator === 'cuda' && hw.vramGb !== undefined) {
         const vram = Math.round(hw.vramGb);
         if (vram <= 8) {
-            return { maxBatchSize: '1', maxSequenceLength: '8192', maxNumTokensPerBatch: '4096', kvBlockSize: '16' };
+            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '4096', kvBlockSize: '16' };
         }
         if (vram <= 12) {
-            return { maxBatchSize: '1', maxSequenceLength: '16384', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '4096', kvBlockSize: '32' };
         }
         if (vram <= 16) {
-            return { maxBatchSize: '2', maxSequenceLength: '16384', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
         }
         if (vram < 24) {
-            return { maxBatchSize: '2', maxSequenceLength: '32768', maxNumTokensPerBatch: '16384', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
         }
     }
-    return { maxBatchSize: '8', maxSequenceLength: '32768', maxNumTokensPerBatch: '16384', kvBlockSize: '32' };
+    return { maxBatchSize: '2', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
 }
 
 export function prefixCacheEnabled(): boolean {
@@ -100,6 +102,12 @@ export function buildWorkerEnv(): NodeJS.ProcessEnv {
     // worker can contribute under one account while the API client consumes with
     // another token and the scheduler gate returns 402.
     env.FABI_ACCOUNT_TOKEN = getAccountToken();
+    setIfUnset(
+        'PARALLAX_KEY_PATH',
+        join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'fabi', 'identity')
+    );
+    // Stable peer identity restores the shard; this epoch fences an old process.
+    env.FABI_WORKER_SESSION_ID = randomUUID();
     if (hw.accelerator === 'apple-silicon' && hw.ramGb < 64) {
         setIfUnset('PARALLAX_SYSTEM_RESERVE_GB', hw.ramGb <= 24 ? '4' : '6');
         return env;

@@ -11,3 +11,6 @@ tools/shots/
 
 # checkout de comparaison swarm-engine (fork + upstream) — local uniquement
 _cmp/
+
+# Dépôts de travail isolés utilisés pour auditer/intégrer le moteur, le CLI et le registry.
+audit/

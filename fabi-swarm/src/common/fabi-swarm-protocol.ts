@@ -39,6 +39,7 @@ export interface SwarmEntry {
     schedulerStatus: string | null;
     peers: number;
     totalVramGb: number;
+    maxContextTokens?: number;
     // État riche d'orchestration, poussé par le registry via SSE (pas de poll client).
     needMoreNodes?: boolean;
     initNodesNum?: number;
