@@ -123,13 +123,19 @@ pipeline de release/checksum, mais mettre à jour le pin seulement après l'E2E 
 Cette branche contient les expérimentations Runpod, lifecycle, auth, capacité, Lattica,
 MLX et Windows. Elle ne doit plus recevoir de petits patchs successifs.
 
-Des modifications locales non committées y étaient encore présentes au handoff :
+Les dernières modifications locales ont été préservées séparément afin de ne pas salir la
+branche de reconstruction :
+
+- branche d'archive : `codex/production-swarm-handoff` ;
+- commit : `04d5051` — `chore: archive final production swarm diagnostics` ;
+- branche poussée sur `origin`.
+
+Cette archive contient :
 
 - `src/parallax/cli.py` ;
 - `src/parallax/p2p/server.py` ;
 - `src/parallax/vllm/batch_info.py` ;
-- `tests/test_cli.py` ;
-- probablement `tests/test_p2p_forwarding.py`.
+- `tests/test_cli.py`.
 
 Elles correspondent notamment au nettoyage des processus enfants, au forwarding de
 notifications et à la compatibilité de signature vLLM 0.16. Les relire comme preuves de
