@@ -166,6 +166,64 @@ Le premier changement déplace les imports MLX/MLX-LM utilisés par
 donc importer le cœur sans installer une fausse pile MLX. Le comportement du backend MLX
 reste inchangé.
 
+### Avancement de la reconstruction après le handoff
+
+La branche `codex/upstream-rebuild` a ensuite reçu quatre commits Fabi isolés, tous poussés
+sur `origin` :
+
+- `3d66cfa` — `feat(windows): enable native vLLM workers` ;
+- `e3f6e3e` — `fix(scheduler): route ready local-model workers` ;
+- `811fb75` — `fix(frontend): expose local models by scheduler alias` ;
+- `660b400` — `fix(vllm): stabilize network pipeline sampling`.
+
+Le runtime communautaire vLLM 0.14.2 a été inspecté et installé dans le laboratoire Windows
+isolé. La compatibilité du correctif a aussi été vérifiée contre le code source officiel
+vLLM 0.14 : la sortie synchrone `ModelRunnerOutput.sampled_token_ids` est une liste CPU,
+alors que la sortie asynchrone fournit également les tenseurs utilisés par l'ancien chemin
+Parallax. L'adaptateur normalise désormais explicitement ces deux contrats.
+
+La génération distribuée déterministe est maintenant prouvée sur la topologie suivante :
+
+- Mac mini M4, backend MLX, couches `[0,2)` ;
+- PC Windows RTX 4080 SUPER, backend vLLM natif 0.14.2, couches `[2,28)` ;
+- modèle Qwen3-1.7B BF16 et tokenizer identiques ;
+- scheduler de laboratoire local, transport P2P entre les deux machines.
+
+Avec `async_scheduling=False`, une taille de bloc commune de 16 et le prefix cache désactivé
+sur les deux workers, huit répétitions de `What is 2 + 3?` ont toutes produit exactement `5`.
+Deux répétitions d'une génération multi-token ont toutes produit exactement `1,2,3`. Une
+requête finale indépendante a également produit `5` avec un arrêt EOS. Ce résultat valide
+la correction de l'inférence distribuée courte ; il ne valide pas encore les longs contextes,
+la capacité, le lifecycle ou le chemin Internet public.
+
+Validation locale du commit `660b400` :
+
+```text
+tests/scheduler_tests + tests/test_server_args.py + tests/test_vllm_rust_frontend.py
++ tests/test_vllm_model_runner_config.py : 71 passed, 1 skipped
+Black, Ruff et git diff --check : OK
+```
+
+La suite `pytest` complète ne collecte pas dans le venv minimal du MacBook car six modules
+de tests MLX requièrent `mlx_lm`. Cela reste une limite d'environnement de test à lever, pas
+une suite déclarée verte.
+
+Deux défauts supplémentaires ont été établis pendant ce laboratoire :
+
+1. Le prefix cache n'est pas encore un contrat distribué cohérent entre MLX et vLLM. Avec le
+   cache actif seulement côté MLX, un second prompt réutilisait trois tokens sur le premier
+   shard et envoyait 23 activations au shard vLLM qui en attendait 26. Le launcher produit
+   doit donc désactiver ce cache sur toute pipeline hétérogène, ou négocier et valider une
+   implémentation réellement commune avant de l'activer.
+2. Après redémarrage du scheduler pendant que des workers restent vivants, le mécanisme de
+   rejoin peut perdre `manual_layer_assignment`. Une succession de peers manuels et
+   automatiques a aussi déclenché un `ValueError` en essayant d'activer un node déjà repassé
+   `STANDBY`. Ce scénario de lifecycle doit obtenir un test reproductible avant correctif.
+
+Aucun déploiement n'a été effectué sur le VPS public. Les workers de laboratoire et le
+scheduler local ont été arrêtés, puis l'absence de processus worker restant a été vérifiée
+sur Windows et macOS.
+
 Validation exécutée après ce changement :
 
 ```text
@@ -247,9 +305,9 @@ Liens à relire :
 - ne pas écraser `%LOCALAPPDATA%\fabi\runtime`, qui contient l'ancien essai ;
 - le ZIP n'a pas encore été validé par checksum, inspecté ni installé au moment du handoff.
 
-Étape suivante obligatoire : calculer le SHA256 local, le comparer à une valeur publiée ou
-à une provenance vérifiable, extraire, puis lire `install.bat` et les scripts avant de les
-exécuter. Ensuite lancer une génération vLLM mono-machine déterministe avant Parallax.
+Cette étape a été exécutée dans le runtime isolé, puis prolongée jusqu'à l'E2E distribué
+décrit plus haut. Avant d'en faire un artefact produit, il reste obligatoire d'automatiser
+la vérification de provenance/checksum et de rendre l'installation reproductible.
 
 ## Modèle de capacité à construire
 
@@ -363,9 +421,11 @@ nouvelle machine, recloner explicitement les quatre dépôts plutôt que copier 
    corriger que les frontières de plateforme réellement bloquantes.
 7. Tester le même modèle et la même représentation de poids localement sur MLX. Ne pas
    mélanger un modèle MLX 4-bit avec un shard CUDA BF16 sans preuve de compatibilité bit-à-bit.
-8. Faire un E2E distribué local déterministe, petit modèle d'abord, puis contexte de code
-   réaliste avec un modèle assez grand.
-9. Ajouter l'enveloppe de capacité worker-authoritative et ses tests de propriétés.
+8. Conserver l'E2E distribué court désormais vert comme test de régression, puis tester un
+   contexte de code réaliste avec un modèle assez grand. La pipeline hétérogène doit garder
+   le prefix cache désactivé tant qu'un contrat commun n'est pas démontré.
+9. Reproduire et corriger le rejoin après redémarrage scheduler, puis ajouter l'enveloppe de
+   capacité worker-authoritative et ses tests de propriétés.
 10. Ajouter les tests des deux modes allocation/routage, puis l'exposition CLI/registry.
 11. Construire les trois artefacts runtime reproductibles, checksums et manifests.
 12. Brancher `fabi install`, tester installation propre sur macOS, Windows et Linux.
