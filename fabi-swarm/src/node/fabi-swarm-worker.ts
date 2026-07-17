@@ -2,21 +2,19 @@
 // (cf. fabi-worker-tuning), parsing des events `[FABI] {...}` émis sur stdout
 // pour remonter l'étape live (handshake → join → chargement poids → prêt),
 // AUTO-RESTART 30 s sur crash inattendu (comme le CLI), et arrêt propre du
-// process group (SIGTERM puis SIGKILL après le délai de grâce).
+// process group (SIGINT, puis SIGTERM/SIGKILL après les délais de grâce).
 
 import { createWriteStream, mkdirSync, type WriteStream } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import { WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
 
-// Délai de grâce avant SIGKILL. Parallax, sur SIGTERM, envoie un `node_leave()`
-// au scheduler (≈5 s, cf. p2p/server.py stop_p2p_server join timeout=5) pour se
-// déconnecter PROPREMENT — sinon le scheduler garde un nœud fantôme (les nœuds
-// standby/joining ne sont jamais évincés par heartbeat). 1,5 s était trop court
-// → on laisse 6 s pour que la déconnexion aboutisse.
-const SHUTDOWN_GRACE_MS = 6000;
+// Parallax intercepte SIGINT et accorde ensuite 5 s à SIGINT puis 5 s à SIGTERM
+// avant son propre SIGKILL. Fabi attend cette séquence amont avant d'escalader.
+const INTERRUPT_GRACE_MS = 12_000;
+const TERMINATE_GRACE_MS = 5_000;
 /** Délai avant re-spawn après un crash inattendu (aligné sur le CLI). */
 const RESTART_DELAY_MS = 30_000;
 const EVENT_PREFIX = '[FABI] ';
@@ -111,7 +109,7 @@ export function spawnWorker(
     startChild();
 
     // Filet anti-orphelin : si le backend (IDE) se termine sans qu'on ait appelé
-    // stop() (fermeture de l'app → Theia fait process.exit), on envoie SIGTERM au
+    // stop() (fermeture de l'app → Theia fait process.exit), on envoie SIGINT au
     // worker. Comme il est `detached`, il survit au backend le temps d'exécuter
     // sa déconnexion propre (node_leave → le scheduler le retire tout de suite,
     // pas de nœud fantôme). Handler `exit` SYNCHRONE → aucune interférence avec
@@ -122,9 +120,9 @@ export function spawnWorker(
         }
         try {
             if (process.platform !== 'win32' && currentPid) {
-                process.kill(-currentPid, 'SIGTERM');
+                process.kill(-currentPid, 'SIGINT');
             } else {
-                child?.kill('SIGTERM');
+                killWindowsProcessTree(currentPid, false);
             }
         } catch {
             /* déjà mort */
@@ -149,35 +147,72 @@ export function spawnWorker(
         }
         return new Promise<void>(resolve => {
             let done = false;
+            let terminateTimer: ReturnType<typeof setTimeout> | undefined;
+            let killTimer: ReturnType<typeof setTimeout> | undefined;
             const finish = () => { if (!done) { done = true; resolve(); } };
-            proc.once('close', finish);
+            const finishAndClear = () => {
+                if (terminateTimer) {
+                    clearTimeout(terminateTimer);
+                }
+                if (killTimer) {
+                    clearTimeout(killTimer);
+                }
+                finish();
+            };
+            proc.once('close', finishAndClear);
             try {
                 if (process.platform !== 'win32') {
-                    process.kill(-pid, 'SIGTERM');
+                    process.kill(-pid, 'SIGINT');
                 } else {
-                    proc.kill('SIGTERM');
+                    killWindowsProcessTree(pid, false);
                 }
             } catch {
-                finish();
+                finishAndClear();
                 return;
             }
-            setTimeout(() => {
+            terminateTimer = setTimeout(() => {
                 if (done) {
                     return;
                 }
                 try {
                     if (process.platform !== 'win32') {
-                        process.kill(-pid, 'SIGKILL');
+                        process.kill(-pid, 'SIGTERM');
                     } else {
-                        proc.kill('SIGKILL');
+                        killWindowsProcessTree(pid, false);
                     }
                 } catch { /* déjà mort */ }
-                finish();
-            }, SHUTDOWN_GRACE_MS).unref();
+                killTimer = setTimeout(() => {
+                    if (done) {
+                        return;
+                    }
+                    try {
+                        if (process.platform !== 'win32') {
+                            process.kill(-pid, 'SIGKILL');
+                        } else {
+                            killWindowsProcessTree(pid, true);
+                        }
+                    } catch { /* déjà mort */ }
+                    finish();
+                }, TERMINATE_GRACE_MS);
+            }, INTERRUPT_GRACE_MS);
         });
     };
 
     return { get pid() { return currentPid; }, stop };
+}
+
+function killWindowsProcessTree(pid: number | undefined, force: boolean): void {
+    if (!pid) {
+        return;
+    }
+    const args = ['/PID', String(pid), '/T'];
+    if (force) {
+        args.push('/F');
+    }
+    const result = spawnSync('taskkill.exe', args, { stdio: 'ignore', windowsHide: true });
+    if (result.error) {
+        throw result.error;
+    }
 }
 
 function openWorkerLog(swarmId: string): WriteStream | undefined {

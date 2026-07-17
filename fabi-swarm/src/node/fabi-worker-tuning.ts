@@ -130,8 +130,9 @@ export function buildJoinArgs(schedulerPeer: string): string[] {
         '--max-num-tokens-per-batch', limits.maxNumTokensPerBatch,
         '--kv-block-size', limits.kvBlockSize
     ];
-    if (prefixCacheEnabled()) {
-        args.push('--enable-prefix-cache');
+    // Current Parallax enables prefix caching by default and exposes an opt-out.
+    if (!prefixCacheEnabled()) {
+        args.push('--disable-prefix-cache');
     }
     // Windows : backend vLLM explicite (le défaut sglang est Linux-only).
     if (process.platform === 'win32') {

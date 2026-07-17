@@ -27,7 +27,6 @@ Set-Location $source
   --max-sequence-length 65536 `
   --max-num-tokens-per-batch 65536 `
   --kv-block-size 16 `
-  --enable-prefix-cache `
   --gpu-backend vllm `
   --tcp-port 19080 `
   --udp-port 19080 `

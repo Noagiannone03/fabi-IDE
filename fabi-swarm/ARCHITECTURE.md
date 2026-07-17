@@ -167,7 +167,7 @@ worker 30 s sur crash (comme le CLI).
 calcule des limites anti-OOM (paliers RAM/VRAM → batch/seq/tokens/kv-block),
 pose les réserves mémoire (`PARALLAX_SYSTEM_RESERVE_GB`,
 `PARALLAX_CUDA_SYSTEM_RESERVE_GB`), construit l'argv exact :
-`parallax join -s <peer> -r --max-batch-size … [--enable-prefix-cache]
+`parallax join -s <peer> -r --max-batch-size … [--disable-prefix-cache]
 [--gpu-backend vllm sur Windows]`. Tue les workers orphelins avant spawn.
 
 ---

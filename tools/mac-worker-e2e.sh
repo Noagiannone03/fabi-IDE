@@ -24,7 +24,6 @@ exec "$python" -m parallax.cli join \
   --max-sequence-length 65536 \
   --max-num-tokens-per-batch 65536 \
   --kv-block-size 32 \
-  --enable-prefix-cache \
   --tcp-port 19080 \
   --udp-port 19080 \
   --announce-maddrs /ip4/100.82.190.118/tcp/19080 /ip4/100.82.190.118/udp/19080/quic-v1

@@ -63,7 +63,6 @@ Configuration reseau qui a marche pour joindre apres redemarrage scheduler:
   --tcp-port 4001 \
   --announce-maddrs /ip4/<runpod_public_ip>/tcp/<mapped_4001_port> \
   --initial-peers /ip4/37.59.98.16/tcp/18120/p2p/12D3KooWRFj2e4MgiVKqJWqhSxs4HFoge8idTfZHxPTzeHrXPV4Q \
-  --enable-prefix-cache \
   --kv-cache-memory-fraction 0.50
 ```
 
@@ -188,7 +187,6 @@ Join:
   -r \
   --tcp-port 4001 \
   --announce-maddrs /ip4/<runpod_public_ip>/tcp/<mapped_4001_port> \
-  --enable-prefix-cache \
   --kv-cache-memory-fraction 0.50
 ```
 
