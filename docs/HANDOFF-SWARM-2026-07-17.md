@@ -1,5 +1,11 @@
 # Handoff Fabi Swarm — 17 juillet 2026
 
+> **Mise a jour autoritative :** lire d'abord la section
+> `Qualification finale de la session du 17 juillet 2026` en fin de document. Elle
+> contient les derniers commits, les validations effectives et l'etat exact du laboratoire.
+> Les SHA et constats precedents sont conserves comme historique, mais cette derniere section
+> fait foi en cas de contradiction.
+
 Ce document permet de reprendre le chantier dans une nouvelle session Codex et sur une
 autre machine sans rejouer les expérimentations déjà faites. Il distingue volontairement
 le produit actuellement publié, l'ancienne branche de diagnostic très modifiée, et la
@@ -486,3 +492,220 @@ est allouée, ou quand l'API répond 200. Il est terminé lorsque :
 - les trois plateformes passent leur matrice ;
 - le chemin public fonctionne sans dépendance Tailscale ;
 - les commits Fabi restent petits, isolés, testés et rebasables sur Parallax upstream.
+
+## Qualification finale de la session du 17 juillet 2026
+
+Cette section est le point de reprise autoritatif. Elle enregistre des faits observables,
+les decisions techniques et leurs justifications. Elle ne pretend pas retranscrire un
+raisonnement interne mot a mot : les preuves, alternatives examinees et causes racines
+sont detaillees afin qu'une autre IA puisse verifier chaque conclusion.
+
+### Contraintes donnees par le proprietaire du projet
+
+- rester sur les depots GitHub du compte `Noagiannone03` ;
+- partir du Parallax upstream sain et reutiliser ses solutions ou des correctifs historiques
+  isoles plutot que reecrire le moteur ;
+- consulter upstream, les issues et la documentation avant toute modification structurelle ;
+- tester le vrai pair-a-pair avec le Mac mini MLX et le PC Windows NVIDIA via Tailscale ;
+- viser l'experience produit : Fabi choisit un mode et un modele, lance le worker, puis le
+  scheduler alloue automatiquement les couches ;
+- ne pas considerer la desactivation du prefix cache comme une solution finale ;
+- documenter honnetement ce qui marche, ce qui reste a faire et ne jamais versionner les
+  identifiants communiques pendant la session.
+
+### Etat Git exact a reprendre
+
+Moteur `Noagiannone03/swarm-engine`, branche `codex/upstream-rebuild` :
+
+- base distante precedente : `bed1d7d` ;
+- `cfa8b6b` — liberation de capacite, reconnexion scheduler et resistance a la pression
+  du prefix cache ;
+- `863712f` — arret `SIGTERM` gracieux, cherry-pick exact du correctif historique isole
+  `db7cdae` ;
+- `4ce2241` — identite pair worker persistante, portage minimal de la logique utile de
+  `b9703bc` sans reprendre la branche historique entiere ;
+- `32b9baf` — `node_leave` tente meme apres l'arret du manager d'etat partage ;
+- `be90732` — la CLI attend la disparition du groupe de processus worker complet.
+
+IDE `Noagiannone03/fabi-IDE`, branche `main` :
+
+- `ad791d1` — contrat CLI actuel du prefix cache et arret supervise du worker ;
+- la presente section de handoff est le commit de documentation immediatement posterieur.
+
+CLI `Noagiannone03/fabi-cli`, branche `dev` :
+
+- `f8b839a71` — le cache actif utilise le defaut Parallax et l'opt-out emet
+  `--disable-prefix-cache`.
+
+Le remote `upstream` du moteur a ete rafraichi le 17 juillet. `upstream/main` etait toujours
+a `162354a` : aucun nouveau commit officiel n'etait disponible a cherry-pick. Le depot sale
+historique `/Users/noagiannone/Documents/swarm-engine` n'a volontairement pas ete modifie.
+
+### Ce qui a ete corrige dans le moteur
+
+1. **Premier worker et allocation automatique.** Le scheduler renouvelle maintenant le bail
+   du heartbeat de bootstrap pendant qu'il attend assez de workers. Un worker qui rejoint
+   sans plage manuelle recoit automatiquement `[0, 28)` pour Qwen3-1.7B sur le Mac mini.
+
+2. **Rejoin apres redemarrage scheduler.** La reconnexion automatique efface l'ancien etat
+   de service avant le nouveau join. Le worker retrouve le scheduler redemarre, rejoint
+   directement et recoit de nouveau sa plage sans arguments de couches.
+
+3. **Capacite concurrente.** Les reservations appartiennent au scheduler, sont indexees par
+   un identifiant de requete normalise et sont liberees sur fin HTTP, fin de stream,
+   annulation et erreur. Une condition reveille immediatement la requete suivante au lieu
+   d'attendre un heartbeat arbitraire.
+
+4. **Latence de routage.** Le heartbeat transporte la vraie valeur
+   `avg_layer_latency_ms`. La reconstruction RPC precedente recalculait parfois `inf`, ce
+   qui rendait le worker temporairement inadmissible et provoquait un `429` juste apres une
+   grosse requete pourtant terminee.
+
+5. **Chunked prefill.** Les references obsoletes de la file de prefill ont ete eliminees ;
+   elles ne peuvent plus conserver une requete deja terminee dans le scheduler de batch.
+
+6. **Cause racine du cache sous pression.** Le radix cache upstream indexait les enfants
+   seulement par le premier token d'un bloc. Deux blocs differents commencant par le meme
+   token s'ecrasaient dans le dictionnaire. Les KV blocks de la branche ecrasee restaient
+   comptes/alloues mais devenaient inaccessibles a l'eviction, d'ou `Evicted 0` puis OOM.
+   La cle est maintenant le tuple complet du bloc. Le test unitaire reproduisait avant le
+   correctif trois blocs caches mais une seule feuille accessible et une eviction limitee a
+   deux blocs ; il valide desormais la conservation et l'eviction de toutes les branches.
+
+7. **Identite stable.** Le worker utilise `PARALLAX_KEY_PATH` s'il est defini, sinon
+   `~/.parallax`, cree le dossier en mode `0700`, et fournit la cle a Lattica. Le Mac mini a
+   conserve le meme peer id sur au moins trois lancements avec
+   `/Users/gmbh/.local/share/fabi/identity`.
+
+8. **Depart gracieux.** L'arret n'abandonne plus `node_leave` quand le manager partage est
+   deja ferme ou renvoie `EOFError`/`BrokenPipeError`. Les threads ont un join borne, Lattica
+   est fermee independamment et la CLI attend aussi les descendants du groupe de processus.
+
+### Alignement IDE et CLI
+
+La reconstruction Parallax active le prefix cache par defaut. L'ancien flag
+`--enable-prefix-cache` n'existe plus dans le contrat courant :
+
+- cache actif : aucun argument, donc utilisation du defaut du moteur ;
+- cache explicitement desactive : `--disable-prefix-cache` ;
+- l'IDE, le CLI et les launchers E2E macOS/Windows utilisent maintenant ce meme contrat.
+
+Le superviseur IDE envoie sur Unix `SIGINT`, attend 12 secondes, envoie `SIGTERM`, attend
+5 secondes, puis seulement `SIGKILL`. Les timers restent references afin que Node ne quitte
+pas avant le nettoyage. Sur Windows, `taskkill.exe /PID <pid> /T` traite tout l'arbre et
+`/F` n'est ajoute qu'a la derniere escalation. Le handler synchrone de sortie applique le
+meme principe.
+
+### Resultats de validation reels
+
+Environnement valide : scheduler sur le MacBook via Tailscale, worker MLX sur le Mac mini,
+modele `Qwen3-1.7B-bf16`, 28 couches, prefix cache actif, blocs de 16 tokens et batch maximal
+de 1.
+
+- allocation sans `--start-layer`/`--end-layer` : `[0, 28)` ;
+- prompt de 2 422 tokens execute deux fois : 2 416 tokens caches/reutilises, puis latence
+  observee de 0,625 s et 0,397 s ;
+- deux prompts concurrents d'environ 4 800 tokens : HTTP 200 en 6,662 s et 7,295 s ; la
+  seconde requete a demarre immediatement apres la liberation de la reservation ;
+- redemarrage du scheduler : reconnexion directe et reallocation automatique validees ;
+- pression cache apres redemarrage propre : cinq prompts distincts de 17 519, 17 519,
+  17 519, 14 019 et 14 019 tokens, tous HTTP 200 ;
+- capacite KV observee : 64 672 tokens, soit 4 042 blocs ;
+- les evictions ont rendu des blocs (8 puis des series de 64) au lieu de `Evicted 0`, sans
+  OOM ;
+- repetition du dernier prompt : HTTP 200 en 0,772 s, avec 14 016 tokens reutilises sur
+  14 019 ;
+- arret worker : le scheduler a recu `node_leave`, passe le pair hors ligne, supprime la
+  pipeline et affiche zero pipeline enregistree immediatement ;
+- dernier essai d'arret apres `be90732` : plus aucun port worker n'ecoute ;
+- test d'integration du superviseur IDE avec un faux groupe worker : reception de `SIGINT`,
+  puis `SIGTERM` car le faux enfant ignorait volontairement l'interruption, et aucun PID
+  survivant apres 12,007 s.
+
+Suite moteur executee :
+
+```text
+PYTHONPATH=src .venv/bin/python -m pytest -q \
+  tests/test_block_radix_cache.py tests/test_rpc_connection_handler.py \
+  tests/test_backend_request_handler.py tests/test_batch_scheduler.py \
+  tests/test_cli.py tests/test_server_args.py tests/scheduler_tests \
+  tests/test_p2p_node_info.py tests/test_prefix_cache.py \
+  tests/test_vllm_prefix_cache.py tests/test_mlx_linear_prefix_cache.py
+
+113 passed, 1 warning in 1.12s
+```
+
+`compileall` et `git diff --check` ont reussi. La suite MLX complete ne peut pas etre
+collectee dans le venv local du MacBook car `mlx_lm` n'y est pas installe ; le runtime du
+Mac mini possede bien MLX et a servi les E2E ci-dessus. `yarn -s build:fabi-ext` a reussi
+dans l'IDE.
+
+Les tests CLI n'ont pas demarre pour deux dependances absentes de l'installation locale :
+
+- `bun test src/swarm/worker.test.ts` : preload `@opentui/solid/preload` introuvable ;
+- `bun typecheck` : executable `tsgo` introuvable.
+
+Ne pas installer aveuglement un gros arbre de dependances sur cette machine : il restait
+environ 1,2 Gio d'espace disque pendant la session. Les fonctions changees sont pures et
+leurs tests sont ajoutes, mais ils doivent etre executes dans l'environnement CLI complet.
+
+### Interpretation du resultat prefix cache
+
+La desactivation globale du cache n'est plus le correctif retenu. Le cas MLX mono-worker
+est actif, repete, soumis a pression et vert apres correction de la structure radix. Les
+documents officiels Parallax trouves pendant la session decrivent encore parfois
+`--enable-prefix-cache` et sont en retard par rapport au parser actuel ; le code et les
+tests du checkout courant font foi.
+
+Ce resultat ne prouve pas encore qu'une pipeline heterogene MLX + vLLM peut evincer des
+prefixes differents de chaque cote sans diverger. Il faut conserver l'activation par defaut
+pour les configurations qualifiees, mais ne declarer la pipeline heterogene prete qu'apres
+un protocole commun de replay/eviction et un E2E de pression sur les deux backends.
+
+### Etat du laboratoire a la cloture
+
+- scheduler local arrete proprement ;
+- worker Mac mini arrete, port P2P ferme et aucune pipeline enregistree ;
+- aucun processus Parallax/Fabi de laboratoire actif sur le MacBook ;
+- aucun deploiement effectue sur le VPS pendant cette phase ;
+- PC Windows non reteste pendant cette phase ; son ancien etat ne doit pas etre presente
+  comme qualifie ;
+- fichiers locaux temporaires contenant la cle de session et le launcher Windows supprimes
+  avant cloture ;
+- aucun secret ajoute aux trois depots.
+
+### Ce qui reste a faire, dans cet ordre
+
+1. **Executer les tests CLI dans un checkout complet** puis verifier que l'IDE et la CLI
+   installent/lancent exactement le commit moteur qualifie, pas un ancien runtime. Le test
+   manuel Mac a necessite un `PYTHONPATH` vers la source : le produit doit publier et pinner
+   un artefact reproductible avec checksum.
+2. **Qualifier Windows vLLM natif.** Le PC possede vLLM-Windows 0.14.2 et une RTX 4080 SUPER,
+   mais le frontend Rust vLLM requis n'a pas ete valide dans cette session. Reutiliser un
+   artefact maintenu ou la procedure officielle compatible plutot que recoder le frontend.
+3. **Tester la vraie pipeline heterogene** Mac `[0, 2)` + Windows `[2, 28)` : tokenizer,
+   revision du modele, dtype, transfert d'activations, cache hit, pression et eviction
+   doivent etre identiques/coordonnees. Ajouter un test qui force des branches partageant
+   le meme premier token.
+4. **Tester les pannes non gracieuses** : deconnexion reseau en cours de requete, kill dur,
+   expiration heartbeat, redemarrage d'un shard, annulation client et reprise sans ghost ni
+   reservation bloquee.
+5. **Valider l'admission** : verifier notamment si `Node.max_requests` doit agreger la limite
+   minimale plutot que maximale sur une pipeline heterogene. Ecrire le test avant de changer
+   ce contrat.
+6. **Valider le parcours produit complet** depuis Fabi : choix swarm/modele, lancement
+   automatique des workers, allocation DP, routage RR/DP, fermeture de l'application et
+   mise a jour/rollback du runtime.
+7. **Publier les artefacts moteur** macOS/Windows/Linux, mettre a jour le pin et le checksum
+   du registry Fabi, puis seulement deployer un scheduler de staging sur le VPS et tester le
+   chemin Lattica public sans dependance Tailscale.
+8. **Securite** : les identifiants d'acces ont ete exposes dans la conversation. Revoquer et
+   regenerer la cle SSH de session ainsi que les mots de passe concernes avant tout passage
+   en production, meme si aucun secret n'est present dans Git.
+
+### Commande de reprise courte
+
+Depuis `fabi-IDE`, la prochaine session doit lire cette section, verifier que les trois
+branches distantes pointent sur les commits listes, executer le test CLI dans son
+environnement complet, puis reprendre au point 2 ci-dessus. Ne pas deployer sur le VPS et
+ne pas merger l'ancien fork tant que la matrice macOS + Windows heterogene n'est pas verte.
