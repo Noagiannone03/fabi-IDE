@@ -59,9 +59,9 @@ comme source de tests, pas comme base à merger en bloc.
 - branche : `main`
 - commit constaté : `f94dfb7` — `feat: launch stable 64k swarm workers`
 - remote : `https://github.com/Noagiannone03/fabi-IDE.git`
-- état au handoff : `main` était aligné sur `origin/main` avant l'ajout de ce document ;
-  quatre scripts E2E locaux non suivis existent dans `tools/` et contiennent pour certains
-  des paramètres de l'ancien environnement. Ne pas les committer tels quels.
+- état au handoff : le document et les quatre scripts de laboratoire ont été ajoutés puis
+  poussés sur `origin/main`. Les scripts conservent les paramètres réseau de l'ancien E2E
+  Tailscale pour rendre le diagnostic reproductible, mais ne contiennent aucun secret.
 
 Documents préexistants :
 
@@ -72,6 +72,17 @@ Attention : `ARCHITECTURE-swarm-runtime.md` mentionne le runtime communautaire
 SystemPanic/vLLM 0.22 utilisé dans l'ancien essai. La reconstruction choisit d'abord une
 version native Windows proche du vLLM épinglé par le Parallax actuel. Le présent document
 fait foi pour la reprise.
+
+Scripts de laboratoire désormais versionnés :
+
+- `tools/mac-worker-e2e.sh` : ancien worker MLX Mac mini ;
+- `tools/windows-worker-e2e.ps1` : ancien worker RTX/vLLM ;
+- `tools/parallel-range-download.ps1` : téléchargement Windows par plages ;
+- `tools/windows-install-cuda-e2e.ps1` : bootstrap CUDA 12.6.3 vérifié par SHA256.
+
+Les deux launchers worker lisent le token depuis `~/.config/fabi/account-token` au moment
+de l'exécution. Ils ciblent l'ancien laboratoire Tailscale et ne sont pas le launcher final
+à distribuer aux utilisateurs.
 
 ### 2. CLI — `Noagiannone03/fabi-cli`
 
