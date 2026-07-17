@@ -190,18 +190,21 @@ La génération distribuée déterministe est maintenant prouvée sur la topolog
 - modèle Qwen3-1.7B BF16 et tokenizer identiques ;
 - scheduler de laboratoire local, transport P2P entre les deux machines.
 
-Avec `async_scheduling=False`, une taille de bloc commune de 16 et le prefix cache désactivé
-sur les deux workers, huit répétitions de `What is 2 + 3?` ont toutes produit exactement `5`.
-Deux répétitions d'une génération multi-token ont toutes produit exactement `1,2,3`. Une
-requête finale indépendante a également produit `5` avec un arrêt EOS. Ce résultat valide
-la correction de l'inférence distribuée courte ; il ne valide pas encore les longs contextes,
-la capacité, le lifecycle ou le chemin Internet public.
+Avec `async_scheduling=False`, une taille de bloc commune de 16 et le prefix cache actif sur
+les deux workers, une requête d'amorçage puis neuf répétitions de `What is 2 + 3?` ont toutes
+produit exactement `5`. Chacune des neuf répétitions a réutilisé le même bloc sur les deux
+shards : `16/26` tokens côté MLX et `16/26` côté vLLM. Après un second redémarrage complet,
+deux nouvelles requêtes ont encore produit `5` et le second appel a confirmé le même cache
+hit. Ce résultat valide l'inférence distribuée courte avec prefix cache ; il ne valide pas
+encore les longs contextes, la pression mémoire, la capacité, le lifecycle ou le chemin
+Internet public.
 
-Validation locale après le commit `e0aa134` :
+Validation locale après les commits `dc7aab7` et `bed1d7d` :
 
 ```text
 tests/scheduler_tests + tests/test_server_args.py + tests/test_vllm_rust_frontend.py
-+ tests/test_vllm_model_runner_config.py + tests/test_p2p_node_info.py : 72 passed, 1 skipped
++ tests/test_vllm_model_runner_config.py + tests/test_p2p_node_info.py
++ tests/test_vllm_prefix_cache.py + tests/test_p2p_transfer_metrics.py : 80 passed, 1 skipped
 Black et git diff --check : OK
 Ruff avec F541 ignoré : OK ; deux F541 préexistants restent dans parallax/p2p/server.py
 ```
@@ -210,13 +213,27 @@ La suite `pytest` complète ne collecte pas dans le venv minimal du MacBook car 
 de tests MLX requièrent `mlx_lm`. Cela reste une limite d'environnement de test à lever, pas
 une suite déclarée verte.
 
-Deux défauts supplémentaires ont été établis pendant ce laboratoire :
+Le défaut de prefix cache a été localisé dans l'adaptation vLLM Parallax, pas dans le principe
+de cache par shard. L'upstream acceptait `enable_prefix_cache` mais ne le transmettait pas au
+`CacheConfig`, gardait `enable_prefix_caching=False`, n'installait aucun block hasher et
+planifiait encore le prompt complet après un hit. `dc7aab7` câble les primitives officielles
+vLLM 0.14, ne planifie que le suffixe non caché, sélectionne les activations correspondantes
+requête par requête avant concaténation et refuse toute divergence non satisfaisable au lieu
+de compléter silencieusement avec des zéros.
 
-1. Le prefix cache n'est pas encore un contrat distribué cohérent entre MLX et vLLM. Avec le
-   cache actif seulement côté MLX, un second prompt réutilisait trois tokens sur le premier
-   shard et envoyait 23 activations au shard vLLM qui en attendait 26. Le launcher produit
-   doit donc désactiver ce cache sur toute pipeline hétérogène, ou négocier et valider une
-   implémentation réellement commune avant de l'activer.
+Le laboratoire a aussi révélé que le calcul de débit P2P amont divisait par deux appels
+successifs à `time.time()`. Sous Windows, ils pouvaient retourner la même valeur : chaque
+token produisait alors un `ZeroDivisionError` puis une seconde d'attente. `bed1d7d` utilise
+`perf_counter_ns()`, mesure une seule fois et couvre explicitement la durée nulle. Le dernier
+E2E ne contient plus aucun traceback et les deux requêtes se terminent en 7,1 secondes au
+total au lieu de subir cette attente à chaque token.
+
+Deux limites restent établies :
+
+1. Si des shards subissent plus tard des évictions différentes, le chemin sûr détecte qu'un
+   downstream demande plus d'activations que l'upstream n'en a émises et arrête la requête
+   avec une erreur explicite. Le produit doit encore négocier le minimum commun et rejouer le
+   prefill pour rendre ce cas transparent sous pression mémoire et sur plus de deux stages.
 2. Après redémarrage du scheduler pendant que des workers restent vivants, le heartbeat
    omettait `manual_layer_assignment` et le scheduler reconstruisait donc les workers comme
    automatiques. Le commit `e0aa134` conserve ce contrat et ajoute une régression unitaire.
@@ -225,8 +242,8 @@ Deux défauts supplémentaires ont été établis pendant ce laboratoire :
    doit encore être rejoué pour confirmer que sa cause racine est bien supprimée.
 
 Aucun déploiement n'a été effectué sur le VPS public. Les workers de laboratoire et le
-scheduler local ont été arrêtés, puis l'absence de processus worker restant a été vérifiée
-sur Windows et macOS.
+scheduler local ont été arrêtés après la campagne, puis l'absence de processus worker
+restant a été vérifiée sur Windows et macOS.
 
 Validation exécutée après ce changement :
 
@@ -235,8 +252,9 @@ PYTHONPATH=src <python-3.12> -m pytest tests/scheduler_tests -q
 51 passed
 ```
 
-Ne pas confondre « scheduler unit tests verts » et « produit validé » : l'inférence réelle
-Windows et distribuée reste à prouver.
+Ne pas confondre « E2E court avec cache validé » et « produit validé » : les longs contextes,
+les évictions divergentes, la capacité, les restarts et le chemin Internet public restent à
+prouver.
 
 ## Résultat du dernier E2E distribué sur l'ancienne branche
 
