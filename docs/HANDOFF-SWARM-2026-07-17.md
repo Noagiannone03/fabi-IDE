@@ -863,8 +863,8 @@ est maintenant implementee et testee ; la reservation dynamique des blocs KV res
 - IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `03435be` ;
 - CLI `Noagiannone03/fabi-cli`, branche `dev` : `f22003e` ;
 - moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `76c7dd6` ;
-- registre/release `Noagiannone03/fabi`, branche `main` : `84ad75d`, tag
-  `v2.7.0-rc19` ;
+- registre/release `Noagiannone03/fabi`, branche `main` : `4450982`, tag
+  `v2.7.0-rc20` ;
 - base de reconstruction : `be90732` ;
 - Parallax officiel compare au commit `162354a`.
 
@@ -886,18 +886,19 @@ Une execution Ruff volontairement trop large a retrouve 96 erreurs historiques d
 fichiers non modifies. Elles ne sont pas introduites par `d77834b` et ne doivent pas etre
 melangees a ce correctif.
 
-Attention : `v2.7.0-rc19` reste volontairement epingle sur `d77834b` et ne contient donc pas
-encore `331118b` ni `76c7dd6`. Qualifier l'admission sur le laboratoire distribue avant de
-deplacer le pin CLI/runtime et de produire une nouvelle release candidate ; ne pas retaguer
-`rc19`.
+Attention : `v2.7.0-rc19` et `v2.7.0-rc20` restent volontairement epingles sur `d77834b` et ne
+contiennent donc pas encore `331118b` ni `76c7dd6`. Qualifier l'admission sur le laboratoire
+distribue avant de deplacer le pin CLI/runtime et de produire une nouvelle release candidate.
 
-### Verrouillage CLI et artefact `rc19`
+### Verrouillage CLI et artefact `rc20`
 
 La premiere etape de reprise est terminee cote source et build local :
 
 - `f22003e` — `fix: pin heterogeneous swarm runtime`, pousse sur `fabi-cli/dev` ;
 - `84ad75d` — `build: ship heterogeneous swarm contract`, pousse sur `fabi/main` ;
 - tag annote `v2.7.0-rc19` pousse sur `84ad75d` ;
+- `4450982` — `ci: migrate Intel macOS release runner`, pousse sur `fabi/main` ;
+- tag annote `v2.7.0-rc20` pousse sur `4450982` ;
 - `runtime-lock.env` pointe sur les SHA complets `f22003efed050db076e6d06775ca34194a429498`
   et `d77834bb27c276ee117b5c0753b4ad30ead01d43`.
 
@@ -924,12 +925,12 @@ MANIFEST : opencode=f22003ef..., parallax=d77834bb...
 ```
 
 Le build local a utilise `FABI_SKIP_PARALLAX=1` et qualifie donc le binaire, le pin de
-fallback et le manifeste, pas encore le venv MLX embarque complet. Le workflow GitHub Actions
-multi-OS de `v2.7.0-rc19` a ete declenche sous l'identifiant `29652454187`. Au dernier
-controle, Linux ARM64 CPU, Linux x64 CPU, Linux x64 CUDA et macOS ARM64 MLX etaient termines
-avec succes ; Windows x64 CUDA etait encore en cours et macOS x64 CPU attendait un runner.
-Verifier les six jobs et les assets/checksums avant de declarer `rc19` publiee ou installable
-sur toutes les plateformes.
+fallback et le manifeste, pas encore le venv MLX embarque complet. Le run `rc19`
+`29652454187` a produit cinq jobs verts, mais son job Intel est reste indefiniment en attente :
+le label `macos-13` a ete retire par GitHub fin 2025. Le workflow utilise maintenant le label
+officiel `macos-15-intel`. Le tag `v2.7.0-rc20` a declenche le run `29654158979` et les six
+jobs, y compris Intel, ont demarre. Verifier leurs conclusions et les assets/checksums avant
+de declarer `rc20` installable sur toutes les plateformes.
 
 ### Cause racine du bug long prompt
 
@@ -1149,8 +1150,8 @@ References primaires relues pour cette decision :
 
 ### Ordre de reprise obligatoire
 
-1. **source et build local termines ; CI multi-OS partiellement verte** — pin CLI/runtime,
-   manifeste et artefact reproductible de `d77834b` sous `v2.7.0-rc19` ;
+1. **source et build local termines ; CI `rc20` en cours sur les six cibles** — pin
+   CLI/runtime, manifeste et artefact reproductible de `d77834b` ;
 2. **termine dans `331118b` et `76c7dd6`** — admission statique du contexte, erreurs OpenAI
    explicites et routage par le minimum capacite worker/contrat modele ;
 3. **termine dans `docs/SWARM-FAILOVER-DESIGN.md`** — journal de reprise inspire de Petals,
