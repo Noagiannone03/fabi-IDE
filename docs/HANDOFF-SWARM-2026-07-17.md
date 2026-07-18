@@ -1,7 +1,7 @@
 # Handoff Fabi Swarm — 17 juillet 2026
 
 > **Mise a jour autoritative :** lire d'abord la section
-> `Qualification finale de la session du 17 juillet 2026` en fin de document. Elle
+> `Reprise et qualification heterogene du 18 juillet 2026` en fin de document. Elle
 > contient les derniers commits, les validations effectives et l'etat exact du laboratoire.
 > Les SHA et constats precedents sont conserves comme historique, mais cette derniere section
 > fait foi en cas de contradiction.
@@ -709,3 +709,143 @@ Depuis `fabi-IDE`, la prochaine session doit lire cette section, verifier que le
 branches distantes pointent sur les commits listes, executer le test CLI dans son
 environnement complet, puis reprendre au point 2 ci-dessus. Ne pas deployer sur le VPS et
 ne pas merger l'ancien fork tant que la matrice macOS + Windows heterogene n'est pas verte.
+
+## Reprise et qualification heterogene du 18 juillet 2026
+
+Cette section remplace les anciens points de reprise lorsqu'ils se contredisent. Le coeur
+heterogene Mac MLX + Windows vLLM est maintenant fonctionnel en allocation automatique DP,
+mais le produit complet, le cache distribue sous pression et le chemin Internet public ne
+sont pas encore qualifies.
+
+### Etat Git autoritatif
+
+- IDE `Noagiannone03/fabi-IDE`, branche `main` : `ad58d80` ;
+- CLI `Noagiannone03/fabi-cli`, branche `dev` : `8c1c001` ; ce commit conserve le bus type
+  et epingle exactement le moteur reconstruit ;
+- moteur `Noagiannone03/swarm-engine`, nouvelle branche produit
+  `codex/dynamic-dp-product` : `14a8793` ;
+- base de reconstruction precedente : `codex/upstream-rebuild` a `be90732` ;
+- Parallax officiel `GradientHQ/parallax` verifie a `162354a` : aucun changement upstream
+  plus recent n'etait disponible.
+
+Commits de la branche produit moteur, tous pousses sur `origin` :
+
+- `3183d64` — expose allocation `dp` et routage `dp` dans le backend et la CLI ;
+- `d59f9f7` — annonce la capacite d'heberger le frontend et interdit la couche zero aux
+  runtimes incompatibles ;
+- `14a8793` — rend le bootstrap DP independant de l'ordre d'arrivee des workers.
+
+### Decisions produit validees
+
+Le mode produit retenu est le mode elastique Parallax existant : allocation `dp` et routage
+`dp`. Il doit construire des pipelines complets puis attribuer les workers admissibles
+supplementaires comme redondance, sans laisser arbitrairement des pairs en `joining`.
+Le mode `rr` reste utile comme comparaison, mais n'est pas la cible principale de Fabi.
+
+Le frontend Rust officiel de Parallax repose sur l'heritage de descripteurs POSIX et ne
+possede pas de chemin Windows natif. Il n'a pas ete recode. Chaque worker annonce desormais
+`supports_frontend`; macOS retourne vrai lorsque le binaire officiel est disponible et
+Windows retourne faux. L'allocateur peut donc utiliser Windows pour les couches suivantes
+sans jamais lui attribuer la couche zero.
+
+Le DP upstream parcourait les workers dans leur ordre d'arrivee. Si Windows, incapable de
+demarrer une pipeline, arrivait avant le seul Mac compatible frontend, le DP ignorait
+Windows, demarrait trop tard sur le Mac et ne pouvait plus revenir en arriere. La solution
+est une entree canonique du DP : workers capables d'heberger la tete en premier, puis
+capacite decroissante et identite stable. Une regression reproduit explicitement l'ordre
+Windows puis Mac.
+
+### Validation reelle du coeur heterogene
+
+Topologie du laboratoire :
+
+- scheduler sur le MacBook, API locale `3001`, allocation `dp`, routage `dp` ;
+- Mac mini M4, MLX/SGLang, modele local Qwen3-1.7B BF16, capacite parametres volontairement
+  limitee a `0.05`, frontend officiel disponible ;
+- PC Windows RTX 4080 SUPER, vLLM Windows 0.14.2 natif, backend d'attention
+  `torch_native`, frontend indisponible ;
+- taille de bloc commune : 16, sequence maximale annoncee : 4 096, batch maximal : 1 ;
+- prefix cache desactive uniquement pour ce baseline de correction numerique et chunked
+  prefill desactive avec la valeur officielle `--chunked-prefill-size 0`.
+
+Aucun worker n'a recu `--start-layer` ni `--end-layer`. Le PC a volontairement rejoint en
+premier, puis le Mac. Le scheduler a construit automatiquement :
+
+```text
+Mac mini  supports_frontend=true   [0, 2)
+Windows   supports_frontend=false  [2, 28)
+standby                              0
+```
+
+Les deux workers sont passes `READY` et actifs. L'API `/cluster/status_json` indiquait
+`available`, `need_more_nodes=false`, `allocation_strategy=dp` et `routing_strategy=dp`.
+La table de routage observee pour chaque requete etait bien Mac puis Windows.
+
+Resultats OpenAI compatibles :
+
+- `GET /v1/models` expose `Qwen/Qwen3-1.7B` ;
+- requete non streamee `What is 2 + 3?` : HTTP 200, reponse exacte `5`, 26 tokens de
+  prompt et 2 tokens de completion ;
+- cinq repetitions supplementaires : cinq reponses exactes `5` ;
+- requete streamee `What is 3 + 4?` : chunks SSE valides, contenu `7`, terminaison
+  `data: [DONE]` ;
+- les reservations scheduler ont ete liberees apres chaque fin et les workers sont revenus
+  a une charge nulle ;
+- aucune exception d'inference n'est apparue. Les messages Triton Windows sont les warnings
+  attendus du bundle lorsque le backend explicitement choisi est `torch_native`.
+
+Validation automatisee du correctif d'ordre :
+
+```text
+tests/scheduler_tests/test_layer_allocation.py
+tests/scheduler_tests/test_scheduler.py
+tests/test_rpc_connection_handler.py
+tests/test_backend_scheduler_config.py
+tests/test_p2p_node_info.py
+
+50 passed
+compileall et git diff --check : OK
+```
+
+Ruff ne signale que cinq `E741` preexistants dans `layer_allocation.py`, hors des lignes
+modifiees.
+
+### Etat exact du laboratoire pendant cette reprise
+
+Au moment de cette mise a jour, le scheduler et les deux workers sont volontairement encore
+actifs pour poursuivre la campagne cache/pression. Le scheduler charge le checkout local
+`14a8793`; les deux workers distants ont charge le code `d59f9f7`, suffisant pour leur
+contrat runtime/capacite. Avant une nouvelle campagne ou publication, arreter proprement les
+processus puis positionner les checkouts distants sur `14a8793` afin que les sources soient
+strictement identiques. Ne pas presenter cette topologie comme un test Internet : elle
+utilise encore les adresses Tailscale du laboratoire et les deux workers disposent aussi
+d'un chemin LAN direct.
+
+### Suite obligatoire, dans cet ordre
+
+1. **Cache distribue et pression.** Relancer la meme pipeline avec le prefix cache actif,
+   verifier les hits communs MLX/vLLM, les longs prompts, les evictions divergentes et le
+   replay sur les deux shards. La desactivation du cache ci-dessus n'est qu'un baseline.
+2. **Elasticite DP.** Ajouter un worker compatible, verifier qu'il est alloue en redondance
+   plutot que laisse en attente, puis mesurer repartition, fairness et capacite sous requetes
+   concurrentes.
+3. **Admission et routage adaptes au contexte OpenCode.** Ne pas router seulement sur le
+   texte utilisateur. Compter le prompt final rendu par le tokenizer, y compris systeme,
+   historique, outils et resultats, ajouter la sortie maximale demandee et une marge de
+   securite. Un chemin n'est admissible que si chaque shard respecte sa longueur maximale
+   et sa capacite KV encore disponible. Pour les petits prompts, preferer le pipeline
+   admissible le plus leger ; pour les gros contextes, choisir un chemin qui tient la
+   reservation entiere ou retourner une erreur explicite. Avant implementation, comparer
+   les mecanismes officiels Parallax, vLLM, SGLang et MLX et reutiliser leurs metriques de
+   tokenizer/KV plutot que creer une estimation parallele.
+4. **Pannes et lifecycle.** Tester annulation stream, coupure reseau, kill dur d'un shard,
+   heartbeat expire, rejoin et redemarrage scheduler sans ghost ni reservation bloquee.
+5. **Parcours Fabi complet.** Choix du modele dans l'IDE/OpenCode, installation du runtime,
+   lancement automatique sans couches manuelles, generation code streamee et arret propre.
+6. **Internet sans Tailscale.** Deployer seulement ensuite un scheduler de staging, tester
+   deux reseaux/NAT distincts avec hole punching/relay Lattica et observer le chemin reel.
+7. **Release reproductible.** Construire les artefacts macOS/Windows/Linux, checksums,
+   provenance, pins registry/CLI, rollback et matrice de qualification avant production.
+
+Aucun secret ne doit entrer dans Git. Les identifiants communiques en conversation doivent
+etre regeneres avant toute mise en production.
