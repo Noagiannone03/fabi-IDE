@@ -859,9 +859,11 @@ budget de contexte restent volontairement non declares comme termines.
 
 ### Etat Git autoritatif
 
-- IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `052832b` ;
-- CLI `Noagiannone03/fabi-cli`, branche `dev` : `8c1c001` ;
+- IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `5d31287` ;
+- CLI `Noagiannone03/fabi-cli`, branche `dev` : `f22003e` ;
 - moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `d77834b` ;
+- registre/release `Noagiannone03/fabi`, branche `main` : `84ad75d`, tag
+  `v2.7.0-rc19` ;
 - base de reconstruction : `be90732` ;
 - Parallax officiel compare au commit `162354a`.
 
@@ -879,6 +881,44 @@ Ruff cible, Ruff format, compileall et git diff --check : OK
 Une execution Ruff volontairement trop large a retrouve 96 erreurs historiques dans des
 fichiers non modifies. Elles ne sont pas introduites par `d77834b` et ne doivent pas etre
 melangees a ce correctif.
+
+### Verrouillage CLI et artefact `rc19`
+
+La premiere etape de reprise est terminee cote source et build local :
+
+- `f22003e` — `fix: pin heterogeneous swarm runtime`, pousse sur `fabi-cli/dev` ;
+- `84ad75d` — `build: ship heterogeneous swarm contract`, pousse sur `fabi/main` ;
+- tag annote `v2.7.0-rc19` pousse sur `84ad75d` ;
+- `runtime-lock.env` pointe sur les SHA complets `f22003efed050db076e6d06775ca34194a429498`
+  et `d77834bb27c276ee117b5c0753b4ad30ead01d43`.
+
+Le contrat Git pur (`runtime-source.ts`) est separe de l'installateur interactif. Le CLI
+initialise un depot vide, fetch le SHA qualifie, checkout `FETCH_HEAD` en detached et refuse
+de lancer un runtime gere dont `HEAD` differe. Trois tests unitaires valident le pin, le
+checkout par SHA et la conservation d'un override de branche explicite. Le fetch reel depuis
+GitHub a aussi ete execute et a produit exactement `d77834bb...`.
+
+L'installateur PowerShell/WSL ne force plus par defaut la branche mutable `fabi-patches` :
+en l'absence d'override utilisateur, il laisse maintenant le CLI appliquer son SHA qualifie.
+Cela ferme une divergence ou une installation WSL pouvait contourner silencieusement le pin
+produit.
+
+Qualification locale hors iCloud du chemin release, avec Bun `1.3.13` :
+
+```text
+tests runtime-source : 3 passed
+typecheck packages/opencode : OK
+Prettier cible + git diff --check + bash -n : OK
+build fabi-darwin-arm64 --single : smoke test --version OK
+tarball FABI_SKIP_PARALLAX=1 : 21 MiB, SHA-256 verifie
+MANIFEST : opencode=f22003ef..., parallax=d77834bb...
+```
+
+Le build local a utilise `FABI_SKIP_PARALLAX=1` et qualifie donc le binaire, le pin de
+fallback et le manifeste, pas encore le venv MLX embarque complet. Le workflow GitHub Actions
+multi-OS de `v2.7.0-rc19` a ete declenche sous l'identifiant `29652454187`. Il etait encore
+`queued` lors de cette ecriture : verifier les six jobs et les assets/checksums avant de
+declarer `rc19` publiee ou installable sur toutes les plateformes.
 
 ### Cause racine du bug long prompt
 
@@ -1062,7 +1102,8 @@ References primaires relues pour cette decision :
 
 ### Ordre de reprise obligatoire
 
-1. mettre a jour le pin CLI/runtime et produire un artefact reproductible de `d77834b` ;
+1. **source et build local termines ; CI multi-OS en attente** — pin CLI/runtime, manifeste
+   et artefact reproductible de `d77834b` sous `v2.7.0-rc19` ;
 2. ajouter l'admission statique du contexte et les erreurs OpenAI explicites, puis tester les
    limites avant tout travail de routage avance ;
 3. concevoir le journal de reprise a partir de l'algorithme Petals et chiffrer memoire/reseau
