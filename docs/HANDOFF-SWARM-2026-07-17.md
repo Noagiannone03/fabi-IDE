@@ -1050,6 +1050,14 @@ Pour Fabi, cette idee implique une evolution architecturale explicite :
    peut etre trop cher. Comparer replay depuis tokens, checkpoints periodiques compresses et
    double envoi vers une replique chaude avant de choisir.
 
+Le chiffrage et la machine d'etats retenue sont maintenant detailles dans
+`docs/SWARM-FAILOVER-DESIGN.md`. La premiere implementation doit etre un journal de tokens
+avec epochs et replay froid exact ; le journal BF16 distribue puis la replique chaude sont
+des accelerations ulterieures. Pour Qwen3-1.7B, une frontiere coute 128 MiB a 32k, 160 MiB a
+40 960 et 256 MiB a 64k. Une replique chaude de `[2,28)` double respectivement environ
+3,25 GiB, 4,06 GiB ou 6,50 GiB de KV. Deux workers sans couverture dupliquee ne peuvent pas
+etre declares recuperables.
+
 Les projets Exo et GPUStack sont utiles pour la decouverte, le placement topologique et la
 gestion d'instances, mais ils ne constituent pas une preuve de reprise KV equivalente dans
 la topologie heterogene actuelle. Ne pas copier leur orchestration en la presentant comme
@@ -1145,8 +1153,8 @@ References primaires relues pour cette decision :
    manifeste et artefact reproductible de `d77834b` sous `v2.7.0-rc19` ;
 2. **termine dans `331118b` et `76c7dd6`** — admission statique du contexte, erreurs OpenAI
    explicites et routage par le minimum capacite worker/contrat modele ;
-3. concevoir le journal de reprise a partir de l'algorithme Petals et chiffrer memoire/reseau
-   sur 32k/64k avant de coder ;
+3. **termine dans `docs/SWARM-FAILOVER-DESIGN.md`** — journal de reprise inspire de Petals,
+   epochs/fencing et couts memoire/reseau chiffres sur 32k/40k/64k ;
 4. ajouter une troisieme machine/replique et qualifier le DP elastique ;
 5. implementer la reprise par etapes avec tests de panne reproductibles ;
 6. valider le parcours IDE/OpenCode complet, y compris gros prompts outils et streaming ;
