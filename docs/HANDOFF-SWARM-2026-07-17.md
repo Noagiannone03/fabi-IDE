@@ -854,33 +854,40 @@ etre regeneres avant toute mise en production.
 
 Cette section est la nouvelle source de verite. Le coeur Mac MLX + Windows vLLM est
 maintenant qualifie avec prefix cache actif, contexte long et parametres worker par defaut.
-Le chemin Internet sans Tailscale, la reprise en cours de generation et le routage selon le
-budget de contexte restent volontairement non declares comme termines.
+Le chemin Internet sans Tailscale et la reprise en cours de generation restent
+volontairement non declares comme termines. L'admission statique selon le budget de contexte
+est maintenant implementee et testee ; la reservation dynamique des blocs KV reste a faire.
 
 ### Etat Git autoritatif
 
-- IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `5d31287` ;
+- IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `03435be` ;
 - CLI `Noagiannone03/fabi-cli`, branche `dev` : `f22003e` ;
-- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `d77834b` ;
+- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `331118b` ;
 - registre/release `Noagiannone03/fabi`, branche `main` : `84ad75d`, tag
   `v2.7.0-rc19` ;
 - base de reconstruction : `be90732` ;
 - Parallax officiel compare au commit `162354a`.
 
-Nouveau commit moteur, pousse sur `origin` :
+Nouveaux commits moteur, pousses sur `origin` :
 
 - `d77834b` — `fix(runtime): negotiate heterogeneous prefill contract`.
+- `331118b` — `feat(scheduler): admit requests by context capacity`.
 
 Validation locale du commit :
 
 ```text
 tests scheduler + P2P/RPC + protocole moteur + prefix cache : 105 passed
 Ruff cible, Ruff format, compileall et git diff --check : OK
+apres admission de contexte : 139 passed
 ```
 
 Une execution Ruff volontairement trop large a retrouve 96 erreurs historiques dans des
 fichiers non modifies. Elles ne sont pas introduites par `d77834b` et ne doivent pas etre
 melangees a ce correctif.
+
+Attention : `v2.7.0-rc19` reste volontairement epingle sur `d77834b` et ne contient donc pas
+encore `331118b`. Qualifier l'admission sur le laboratoire distribue avant de deplacer le pin
+CLI/runtime et de produire une nouvelle release candidate ; ne pas retaguer `rc19`.
 
 ### Verrouillage CLI et artefact `rc19`
 
@@ -916,9 +923,11 @@ MANIFEST : opencode=f22003ef..., parallax=d77834bb...
 
 Le build local a utilise `FABI_SKIP_PARALLAX=1` et qualifie donc le binaire, le pin de
 fallback et le manifeste, pas encore le venv MLX embarque complet. Le workflow GitHub Actions
-multi-OS de `v2.7.0-rc19` a ete declenche sous l'identifiant `29652454187`. Il etait encore
-`queued` lors de cette ecriture : verifier les six jobs et les assets/checksums avant de
-declarer `rc19` publiee ou installable sur toutes les plateformes.
+multi-OS de `v2.7.0-rc19` a ete declenche sous l'identifiant `29652454187`. Au dernier
+controle, Linux ARM64 CPU, Linux x64 CPU, Linux x64 CUDA et macOS ARM64 MLX etaient termines
+avec succes ; Windows x64 CUDA etait encore en cours et macOS x64 CPU attendait un runner.
+Verifier les six jobs et les assets/checksums avant de declarer `rc19` publiee ou installable
+sur toutes les plateformes.
 
 ### Cause racine du bug long prompt
 
@@ -1046,24 +1055,42 @@ une continuation exacte de requete.
 
 ### Admission et routage selon le contexte
 
-Le scheduler courant route encore sans connaitre le prompt final rendu. Le produit doit
-tokeniser apres application du chat template et compter : systeme, historique, schemas
-d'outils, resultats d'outils, contexte de code, pieces multimodales eventuelles et sortie
-maximale demandee.
+Le commit `331118b` implemente la premiere etape de ce contrat. Le scheduler applique le chat
+template du tokenizer Transformers canonique du modele, avec systeme, historique, schemas
+d'outils, resultats d'outils et contexte de code, puis ajoute `max_completion_tokens` ou
+`max_tokens` (128 par defaut, identique au runtime). Le tokenizer est charge paresseusement,
+mis en cache par modele et respecte le mode Hugging Face local uniquement.
+
+Chaque requete transporte maintenant son budget jusqu'au routeur. DP, RR et le routeur
+randomise excluent tout shard dont `max_sequence_length` est inferieur au budget. La longueur
+statique d'une pipeline est le minimum de ses shards ; le scheduler expose le maximum des
+pipelines completes dans `/cluster/status_json`. Le calcul ignore volontairement la charge
+instantanee pour distinguer une requete impossible d'une pipeline compatible mais occupee.
+
+Le test avec le vrai tokenizer local `Qwen/Qwen3-1.7B` et une conversation de type OpenCode
+(systeme, historique, appel et resultat d'outil, gros bloc de code) a compte 12 220 tokens de
+prompt et reserve 4 096 tokens de sortie, soit une route exigee de 16 316 tokens. Un premier
+essai a aussi revele que le chargeur MLX existant attend un chemin local de modele sur Mac ;
+le scheduler utilise donc directement `transformers.AutoTokenizer`, contrat commun Mac et
+Windows, plutot que d'introduire un cas special MLX.
 
 Contrat cible :
 
 ```text
-budget = prompt_rendu + max_output + marge_de_securite
+budget_statique = prompt_rendu + max_output
+admission_dynamique = reservation de budget_statique sur chaque shard
 ```
 
-Une route est admissible seulement si chaque shard du chemin annonce une longueur maximale
-compatible et assez de blocs KV libres/reservables. La capacite d'une pipeline est donc le
-minimum de ses shards, pas la valeur du worker le plus large.
+Une route est deja admissible seulement si chaque shard du chemin annonce une longueur
+maximale compatible. La seconde partie, encore a implementer, doit verifier et reserver
+assez de blocs KV libres sur tous les shards. La capacite d'une pipeline est le minimum de
+ses shards, pas la valeur du worker le plus large.
 
 - budget superieur a toute longueur statique disponible : HTTP 400 `invalid_request_error`
   avec tokens requis et maximum disponible ;
-- longueur compatible mais KV momentanement indisponible : HTTP 429/503 retryable ;
+- longueur compatible mais pipelines momentanement occupees : attente bornee puis HTTP 429 ;
+- longueur compatible mais KV momentanement insuffisant : metriques et reservation encore a
+  implementer, puis HTTP 429/503 retryable ;
 - aucune troncature silencieuse, aucun lancement en esperant eviter l'OOM ;
 - petit prompt : pipeline admissible la plus legere/rapide ;
 - gros prompt : pipeline qui reserve le budget complet, avec affinite de prefixe si plusieurs
@@ -1087,12 +1114,14 @@ References primaires relues pour cette decision :
 - [Exo](https://github.com/exo-explore/exo) et
   [GPUStack](https://github.com/gpustack/gpustack) pour comparaison d'orchestration.
 
-### Matrice de tests a ajouter
+### Matrice de tests de contexte et de reprise
 
-1. prompt exactement a la limite, limite moins un et limite plus un ;
-2. prompt OpenCode reel avec systeme, outils et historique, pas seulement texte utilisateur ;
-3. plusieurs pipelines avec limites 4k/32k/64k : verifier la route choisie et le rejet 400 ;
-4. KV temporairement sature : attente bornee puis 429, sans head-of-line blocking ;
+1. **fait** — limites exactes 4k/32k/64k acceptees et `limite + 1` refusee ;
+2. **fait** — prompt OpenCode reel avec systeme, outils et historique tokenise par Qwen ;
+3. **fait** — DP choisit le chemin rapide 4k pour un petit prompt, le chemin 32k compatible
+   pour un gros prompt et retourne HTTP 400 avant reservation si aucun chemin ne suffit ;
+4. **a faire** — KV temporairement sature : attente bornee puis 429, sans head-of-line
+   blocking ;
 5. depart du head, d'un shard median et du dernier shard pendant prefill puis decode ;
 6. replique froide, replique chaude et absence de replique ;
 7. checksum divergent ou modele/revision differents : reprise refusee ;
@@ -1102,10 +1131,10 @@ References primaires relues pour cette decision :
 
 ### Ordre de reprise obligatoire
 
-1. **source et build local termines ; CI multi-OS en attente** — pin CLI/runtime, manifeste
-   et artefact reproductible de `d77834b` sous `v2.7.0-rc19` ;
-2. ajouter l'admission statique du contexte et les erreurs OpenAI explicites, puis tester les
-   limites avant tout travail de routage avance ;
+1. **source et build local termines ; CI multi-OS partiellement verte** — pin CLI/runtime,
+   manifeste et artefact reproductible de `d77834b` sous `v2.7.0-rc19` ;
+2. **termine dans `331118b`** — admission statique du contexte, erreurs OpenAI explicites et
+   routage par `max_sequence_length`, avec limites 4k/32k/64k ;
 3. concevoir le journal de reprise a partir de l'algorithme Petals et chiffrer memoire/reseau
    sur 32k/64k avant de coder ;
 4. ajouter une troisieme machine/replique et qualifier le DP elastique ;
