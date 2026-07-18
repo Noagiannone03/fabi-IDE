@@ -856,13 +856,15 @@ Cette section est la nouvelle source de verite. Le coeur Mac MLX + Windows vLLM 
 maintenant qualifie avec prefix cache actif, contexte long et parametres worker par defaut.
 Le chemin Internet sans Tailscale et la reprise en cours de generation restent
 volontairement non declares comme termines. L'admission statique selon le budget de contexte
-est maintenant implementee et testee ; la reservation dynamique des blocs KV reste a faire.
+est maintenant implementee et testee. La reservation dynamique des blocs KV mesuree par les
+executors est implementee dans `2ce70ee` et doit maintenant etre qualifiee sur le laboratoire
+Mac + Windows avant d'etre epinglee dans le CLI.
 
 ### Etat Git autoritatif
 
 - IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `03435be` ;
 - CLI `Noagiannone03/fabi-cli`, branche `dev` : `f22003e` ;
-- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `76c7dd6` ;
+- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `2ce70ee` ;
 - registre/release `Noagiannone03/fabi`, branche `main` : `4450982`, tag
   `v2.7.0-rc20` ;
 - base de reconstruction : `be90732` ;
@@ -873,13 +875,15 @@ Nouveaux commits moteur, pousses sur `origin` :
 - `d77834b` — `fix(runtime): negotiate heterogeneous prefill contract`.
 - `331118b` — `feat(scheduler): admit requests by context capacity`.
 - `76c7dd6` — `fix(scheduler): cap routes by model context`.
+- `2ce70ee` — `feat(scheduler): reserve measured KV capacity`.
 
 Validation locale du commit :
 
 ```text
 tests scheduler + P2P/RPC + protocole moteur + prefix cache : 105 passed
 Ruff cible, Ruff format, compileall et git diff --check : OK
-apres admission de contexte et plafond modele : 142 passed
+apres admission statique, plafond modele et reservation KV mesuree : 298 passed, 6 skipped
+(tests materiels indisponibles dans l'environnement local), aucune regression logicielle
 ```
 
 Une execution Ruff volontairement trop large a retrouve 96 erreurs historiques dans des
@@ -887,7 +891,7 @@ fichiers non modifies. Elles ne sont pas introduites par `d77834b` et ne doivent
 melangees a ce correctif.
 
 Attention : `v2.7.0-rc19` et `v2.7.0-rc20` restent volontairement epingles sur `d77834b` et ne
-contiennent donc pas encore `331118b` ni `76c7dd6`. Qualifier l'admission sur le laboratoire
+contiennent donc pas encore `331118b`, `76c7dd6` ni `2ce70ee`. Qualifier l'admission sur le laboratoire
 distribue avant de deplacer le pin CLI/runtime et de produire une nouvelle release candidate.
 
 ### Verrouillage CLI et artefact `rc20`
@@ -1099,16 +1103,32 @@ budget_statique = prompt_rendu + max_output
 admission_dynamique = reservation de budget_statique sur chaque shard
 ```
 
-Une route est deja admissible seulement si chaque shard du chemin annonce une longueur
-maximale compatible. La seconde partie, encore a implementer, doit verifier et reserver
-assez de blocs KV libres sur tous les shards. La capacite d'une pipeline est le minimum de
-ses shards, pas la valeur du worker le plus large.
+Le commit `2ce70ee` implemente la seconde partie sans formule VRAM theorique. Apres chargement
+du modele, chaque executor publie la geometrie de son allocateur reel : `num_gpu_blocks *
+block_size` pour MLX, la taille en tokens du pool SGLang, et le nombre de pages du block pool
+vLLM multiplie par leur taille. Le nombre maximal de requetes publie est celui du scheduler
+runtime initialise. Un worker qui ne publie pas cette telemetrie a une capacite de contexte
+nulle et ne recoit aucun prompt ; il reste visible pendant son initialisation, mais une
+estimation materielle ne devient jamais une decision d'admission.
+
+Le scheduler arrondit `prompt + max_output` a la granularite physique de chaque shard et
+reserve ce nombre de tokens sur chaque noeud de la route. Selection et reservation sont une
+transaction protegee : deux dispatchs concurrents ne peuvent pas consommer les memes
+derniers blocs. En cas de heartbeat ou depart entre le snapshot et la mutation, le scheduler
+annule les reservations partielles et recalcule une fois la route sans tuer sa boucle. La
+fin normale, l'erreur et la deconnexion liberent le meme budget exactement une fois. Une
+reallocation de couches invalide immediatement l'ancienne geometrie KV jusqu'a la mesure du
+nouvel executor.
+
+La capacite d'une pipeline reste le minimum de ses shards, pas la valeur du worker le plus
+large. Le statut cluster expose maintenant, par worker, la presence de telemetrie, la
+capacite et la taille de bloc mesurees, les tokens reserves et les tokens restants.
 
 - budget superieur a toute longueur statique disponible : HTTP 400 `invalid_request_error`
   avec tokens requis et maximum disponible ;
 - longueur compatible mais pipelines momentanement occupees : attente bornee puis HTTP 429 ;
-- longueur compatible mais KV momentanement insuffisant : metriques et reservation encore a
-  implementer, puis HTTP 429/503 retryable ;
+- longueur compatible mais KV momentanement insuffisant : attente bornee puis HTTP 429 ;
+- executor encore en chargement ou sans telemetrie KV : HTTP 503 `context_route_not_ready` ;
 - aucune troncature silencieuse, aucun lancement en esperant eviter l'OOM ;
 - petit prompt : pipeline admissible la plus legere/rapide ;
 - gros prompt : pipeline qui reserve le budget complet, avec affinite de prefixe si plusieurs
@@ -1129,6 +1149,7 @@ References primaires relues pour cette decision :
 - [Petals — inference fault-tolerant sur Internet](https://arxiv.org/abs/2312.08361) ;
 - [vLLM — contrat `max_model_len`](https://docs.vllm.ai/en/stable/api/vllm/config/model/) ;
 - [vLLM — scheduler et budgets de tokens](https://docs.vllm.ai/en/v0.11.0/api/vllm/config/scheduler.html) ;
+- [vLLM — gestionnaire du block pool KV](https://docs.vllm.ai/en/stable/api/vllm/v1/core/kv_cache_manager/) ;
 - [Exo](https://github.com/exo-explore/exo) et
   [GPUStack](https://github.com/gpustack/gpustack) pour comparaison d'orchestration.
 
@@ -1139,8 +1160,8 @@ References primaires relues pour cette decision :
 3. **fait** — DP choisit le chemin rapide 4k pour un petit prompt, le chemin 32k compatible
    pour un gros prompt et retourne HTTP 400 avant reservation si aucun chemin ne suffit ;
 4. **fait** — un worker 64k associe a un modele 32k est plafonne par le contrat modele ;
-5. **a faire** — KV temporairement sature : attente bornee puis 429, sans head-of-line
-   blocking ;
+5. **fait en tests locaux, E2E distribue a faire** — KV temporairement sature, reservation
+   arrondie aux blocs, liberation, dispatch concurrent atomique et worker sans telemetrie ;
 6. depart du head, d'un shard median et du dernier shard pendant prefill puis decode ;
 7. replique froide, replique chaude et absence de replique ;
 8. checksum divergent ou modele/revision differents : reprise refusee ;
@@ -1152,15 +1173,18 @@ References primaires relues pour cette decision :
 
 1. **source et build local termines ; CI `rc20` en cours sur les six cibles** — pin
    CLI/runtime, manifeste et artefact reproductible de `d77834b` ;
-2. **termine dans `331118b` et `76c7dd6`** — admission statique du contexte, erreurs OpenAI
-   explicites et routage par le minimum capacite worker/contrat modele ;
+2. **termine dans `331118b`, `76c7dd6` et `2ce70ee`** — admission statique du contexte,
+   erreurs OpenAI explicites, telemetrie KV mesuree et reservation atomique par blocs ;
 3. **termine dans `docs/SWARM-FAILOVER-DESIGN.md`** — journal de reprise inspire de Petals,
    epochs/fencing et couts memoire/reseau chiffres sur 32k/40k/64k ;
-4. ajouter une troisieme machine/replique et qualifier le DP elastique ;
-5. implementer la reprise par etapes avec tests de panne reproductibles ;
-6. valider le parcours IDE/OpenCode complet, y compris gros prompts outils et streaming ;
-7. tester seulement ensuite deux NAT distincts sans Tailscale via hole punching/relay ;
-8. publier les artefacts signes/checksum, pins, rollback et matrice de release.
+4. reconstruire le CLI avec `2ce70ee`, puis qualifier sur Mac + Windows la telemetrie et la
+   saturation KV avec plusieurs petits/gros prompts ;
+5. chronometrer le scenario OpenCode 12 220 tokens d'entree + 4 096 tokens reserves ;
+6. ajouter une troisieme machine/replique et qualifier le DP elastique ;
+7. implementer la reprise par etapes avec tests de panne reproductibles ;
+8. valider le parcours IDE/OpenCode complet, y compris gros prompts outils et streaming ;
+9. tester seulement ensuite deux NAT distincts sans Tailscale via hole punching/relay ;
+10. publier les artefacts signes/checksum, pins, rollback et matrice de release.
 
 ### Etat du laboratoire a la cloture
 
