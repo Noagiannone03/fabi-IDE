@@ -862,7 +862,7 @@ est maintenant implementee et testee ; la reservation dynamique des blocs KV res
 
 - IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `03435be` ;
 - CLI `Noagiannone03/fabi-cli`, branche `dev` : `f22003e` ;
-- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `331118b` ;
+- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `76c7dd6` ;
 - registre/release `Noagiannone03/fabi`, branche `main` : `84ad75d`, tag
   `v2.7.0-rc19` ;
 - base de reconstruction : `be90732` ;
@@ -872,13 +872,14 @@ Nouveaux commits moteur, pousses sur `origin` :
 
 - `d77834b` — `fix(runtime): negotiate heterogeneous prefill contract`.
 - `331118b` — `feat(scheduler): admit requests by context capacity`.
+- `76c7dd6` — `fix(scheduler): cap routes by model context`.
 
 Validation locale du commit :
 
 ```text
 tests scheduler + P2P/RPC + protocole moteur + prefix cache : 105 passed
 Ruff cible, Ruff format, compileall et git diff --check : OK
-apres admission de contexte : 139 passed
+apres admission de contexte et plafond modele : 142 passed
 ```
 
 Une execution Ruff volontairement trop large a retrouve 96 erreurs historiques dans des
@@ -886,8 +887,9 @@ fichiers non modifies. Elles ne sont pas introduites par `d77834b` et ne doivent
 melangees a ce correctif.
 
 Attention : `v2.7.0-rc19` reste volontairement epingle sur `d77834b` et ne contient donc pas
-encore `331118b`. Qualifier l'admission sur le laboratoire distribue avant de deplacer le pin
-CLI/runtime et de produire une nouvelle release candidate ; ne pas retaguer `rc19`.
+encore `331118b` ni `76c7dd6`. Qualifier l'admission sur le laboratoire distribue avant de
+deplacer le pin CLI/runtime et de produire une nouvelle release candidate ; ne pas retaguer
+`rc19`.
 
 ### Verrouillage CLI et artefact `rc19`
 
@@ -1067,6 +1069,13 @@ statique d'une pipeline est le minimum de ses shards ; le scheduler expose le ma
 pipelines completes dans `/cluster/status_json`. Le calcul ignore volontairement la charge
 instantanee pour distinguer une requete impossible d'une pipeline compatible mais occupee.
 
+Le commit `76c7dd6` ferme un second depassement : la capacite annoncee par les workers est
+maintenant plafonnee par la limite commune des configurations du modele canonique et de sa
+variante MLX. `Qwen/Qwen3-1.7B` annonce 40 960 dans `max_position_embeddings` et sa fiche
+officielle 32 768 tokens natifs. Le laboratoire a prouve 15k, pas 64k. Une cible 64k exige
+un modele qui la declare ou une configuration YaRN/RoPE identique et qualifiee sur MLX et
+vLLM ; passer seulement `--max-sequence-length 65536` ne constitue plus une promesse acceptee.
+
 Le test avec le vrai tokenizer local `Qwen/Qwen3-1.7B` et une conversation de type OpenCode
 (systeme, historique, appel et resultat d'outil, gros bloc de code) a compte 12 220 tokens de
 prompt et reserve 4 096 tokens de sortie, soit une route exigee de 16 316 tokens. Un premier
@@ -1120,21 +1129,22 @@ References primaires relues pour cette decision :
 2. **fait** — prompt OpenCode reel avec systeme, outils et historique tokenise par Qwen ;
 3. **fait** — DP choisit le chemin rapide 4k pour un petit prompt, le chemin 32k compatible
    pour un gros prompt et retourne HTTP 400 avant reservation si aucun chemin ne suffit ;
-4. **a faire** — KV temporairement sature : attente bornee puis 429, sans head-of-line
+4. **fait** — un worker 64k associe a un modele 32k est plafonne par le contrat modele ;
+5. **a faire** — KV temporairement sature : attente bornee puis 429, sans head-of-line
    blocking ;
-5. depart du head, d'un shard median et du dernier shard pendant prefill puis decode ;
-6. replique froide, replique chaude et absence de replique ;
-7. checksum divergent ou modele/revision differents : reprise refusee ;
-8. streaming : aucun token duplique ou perdu autour du failover ;
-9. kill dur, perte reseau, heartbeat expire et retour tardif de l'ancien worker ;
-10. pression prefix cache heterogene avec evictions differentes apres reprise.
+6. depart du head, d'un shard median et du dernier shard pendant prefill puis decode ;
+7. replique froide, replique chaude et absence de replique ;
+8. checksum divergent ou modele/revision differents : reprise refusee ;
+9. streaming : aucun token duplique ou perdu autour du failover ;
+10. kill dur, perte reseau, heartbeat expire et retour tardif de l'ancien worker ;
+11. pression prefix cache heterogene avec evictions differentes apres reprise.
 
 ### Ordre de reprise obligatoire
 
 1. **source et build local termines ; CI multi-OS partiellement verte** — pin CLI/runtime,
    manifeste et artefact reproductible de `d77834b` sous `v2.7.0-rc19` ;
-2. **termine dans `331118b`** — admission statique du contexte, erreurs OpenAI explicites et
-   routage par `max_sequence_length`, avec limites 4k/32k/64k ;
+2. **termine dans `331118b` et `76c7dd6`** — admission statique du contexte, erreurs OpenAI
+   explicites et routage par le minimum capacite worker/contrat modele ;
 3. concevoir le journal de reprise a partir de l'algorithme Petals et chiffrer memoire/reseau
    sur 32k/64k avant de coder ;
 4. ajouter une troisieme machine/replique et qualifier le DP elastique ;
