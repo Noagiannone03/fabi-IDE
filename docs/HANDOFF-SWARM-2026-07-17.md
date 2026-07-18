@@ -1,7 +1,7 @@
 # Handoff Fabi Swarm — 17 juillet 2026
 
 > **Mise a jour autoritative :** lire d'abord la section
-> `Reprise et qualification heterogene du 18 juillet 2026` en fin de document. Elle
+> `Qualification du contrat heterogene et reprise produit du 18 juillet 2026` en fin de document. Elle
 > contient les derniers commits, les validations effectives et l'etat exact du laboratoire.
 > Les SHA et constats precedents sont conserves comme historique, mais cette derniere section
 > fait foi en cas de contradiction.
@@ -849,3 +849,238 @@ d'un chemin LAN direct.
 
 Aucun secret ne doit entrer dans Git. Les identifiants communiques en conversation doivent
 etre regeneres avant toute mise en production.
+
+## Qualification du contrat heterogene et reprise produit du 18 juillet 2026
+
+Cette section est la nouvelle source de verite. Le coeur Mac MLX + Windows vLLM est
+maintenant qualifie avec prefix cache actif, contexte long et parametres worker par defaut.
+Le chemin Internet sans Tailscale, la reprise en cours de generation et le routage selon le
+budget de contexte restent volontairement non declares comme termines.
+
+### Etat Git autoritatif
+
+- IDE `Noagiannone03/fabi-IDE`, branche `main` avant la presente mise a jour : `052832b` ;
+- CLI `Noagiannone03/fabi-cli`, branche `dev` : `8c1c001` ;
+- moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` : `d77834b` ;
+- base de reconstruction : `be90732` ;
+- Parallax officiel compare au commit `162354a`.
+
+Nouveau commit moteur, pousse sur `origin` :
+
+- `d77834b` — `fix(runtime): negotiate heterogeneous prefill contract`.
+
+Validation locale du commit :
+
+```text
+tests scheduler + P2P/RPC + protocole moteur + prefix cache : 105 passed
+Ruff cible, Ruff format, compileall et git diff --check : OK
+```
+
+Une execution Ruff volontairement trop large a retrouve 96 erreurs historiques dans des
+fichiers non modifies. Elles ne sont pas introduites par `d77834b` et ne doivent pas etre
+melangees a ce correctif.
+
+### Cause racine du bug long prompt
+
+Avec la valeur Parallax par defaut `chunked_prefill_size=1024`, le shard MLX envoyait les
+activations des 1 024 premiers tokens. L'adaptateur vLLM Parallax formait cependant toujours
+un batch du prompt complet, par exemple 2 429 tokens, car son scheduler interne est construit
+avec `enable_chunked_prefill=False`. Le downstream reclamait donc plus d'activations que le
+head n'en avait envoyees. L'ancienne propagation d'erreur ne remontait pas proprement cette
+exception au frontend, ce qui pouvait produire ensuite une reponse HTTP 200 corrompue.
+
+Ce n'est pas un bug a masquer dans le cache. La recherche upstream confirme le contrat :
+
+- Parallax PR `#469` ajoute le chunked prefill MLX et le valide MLX vers MLX ;
+- Parallax PR `#470` ajoute le chemin SGLang ;
+- l'aide CLI officielle decrit l'option pour MLX/SGLang ;
+- l'adaptateur vLLM Parallax courant n'implemente pas la progression de chunks ;
+- vLLM gere officiellement le chunking dans son propre scheduler, avec le nombre de tokens
+  deja calcules et `max_num_batched_tokens`. Injecter des chunks d'activations externes sans
+  ce contrat n'est pas equivalent.
+
+La solution retenue est donc une negociation de capacite de bout en bout, pas un nouveau
+cas special dans le calcul :
+
+1. chaque worker annonce le backend reel, le support du chunked prefill, sa preference et
+   la valeur effectivement chargee ;
+2. le scheduler calcule un contrat commun pour tous les workers alloues ;
+3. un vLLM Parallax abaisse automatiquement ce contrat a zero ;
+4. toute pipeline reste non routable tant que chaque shard n'a pas recharge exactement ce
+   contrat ;
+5. un join/leave dynamique peut renegocier le contrat et declencher un rechargement propre ;
+6. un worker ancien qui n'annonce pas ces champs echoue en mode ferme au lieu d'etre suppose
+   compatible ;
+7. `/cluster/status_json` expose `chunked_prefill_size` et `prefill_contract_ready`.
+
+Le protocole P2P transporte aussi maintenant une terminaison `ERROR` distincte d'un abort
+client. Une exception downstream libere les ressources, parcourt la pipeline et devient une
+erreur frontend au lieu d'une completion reussie mais invalide.
+
+### Qualification reelle sans parametres manuels
+
+Les deux machines distantes ont charge exactement `d77834b`. Aucun worker n'a recu :
+
+- `--start-layer` ;
+- `--end-layer` ;
+- `--chunked-prefill-size 0` ;
+- `--disable-prefix-cache`.
+
+Le PC Windows a volontairement rejoint avant le Mac. Les annonces initiales ont ete :
+
+```text
+Windows RTX 4080 SUPER  backend vLLM  support chunk=false  preference=1024  actif=0
+Mac mini M4             backend MLX   support chunk=true   preference=1024  actif=1024
+```
+
+Le scheduler a automatiquement negocie zero, puis construit :
+
+```text
+Mac mini  [0, 2)    frontend=true
+Windows   [2, 28)   frontend=false
+standby   0
+```
+
+Apres chargement, `/cluster/status_json` a retourne `available`, allocation `dp`, routage
+`dp`, `chunked_prefill_size=0`, `prefill_contract_ready=true`, avec les deux workers
+`available`. La route des requetes etait Mac puis Windows.
+
+Les appels ont tous utilise le vrai point d'entree produit du scheduler,
+`POST :3001/v1/chat/completions`. Appeler directement le frontend d'un worker en mode
+scheduler est invalide, car cette voie contourne l'injection de la table DP ; le worker
+refuse correctement une requete sans route.
+
+Resultats observes :
+
+- court non streame, sentinelle `FABISHORT-31415` : exact, HTTP 200, 1,207 s ;
+- repetition courte : exacte, HTTP 200, 1,038 s, hit commun de 16 tokens ;
+- long contexte de code inerte : 14 991 tokens de prompt, sentinelle exacte
+  `FABIAUTH-92731`, HTTP 200, 9,569 s ;
+- deux repetitions longues : sentinelle exacte, HTTP 200, 0,992 s puis 0,992 s ;
+- les deux shards ont reutilise exactement 14 976 tokens sur 14 991, soit 936 blocs de 16 ;
+- streaming : chunks SSE recomposes en `FABISTREAM-27182`, terminaison `[DONE]`, HTTP 200,
+  0,774 s ;
+- aucun `Distributed prefix cache mismatch`, aucune exception d'inference et aucune fausse
+  completion reussie dans les logs de cette campagne.
+
+Un prompt artificiel compose de 15 000 repetitions du meme token a produit une sortie de
+mauvaise qualite mais un transport correct. Le meme budget sous forme de contexte de code
+varie a produit la sentinelle exacte trois fois. Cela distingue une faiblesse semantique du
+petit Qwen sur une entree pathologique d'un defaut de pipeline.
+
+### Reprise apres perte d'un worker : decision de conception, pas encore implementation
+
+Parallax ne fournit pas actuellement la reprise en cours de generation demandee. Son issue
+officielle `#411`, « Save streaming response and continue generation if worker node fails »,
+est encore une feature ouverte. Le heartbeat et le rebootstrap actuels reconstruisent la
+capacite du cluster, mais ne restaurent pas l'etat KV d'une requete en vol.
+
+Petals fournit la reference de conception la plus directement applicable. Son algorithme
+fault-tolerant conserve deux caches : KV sur les serveurs et entrees de chaque etage chez le
+client. Si un serveur disparait, le client choisit une ou plusieurs repliques couvrant les
+memes couches et rejoue les entrees d'etage conservees pour reconstruire leur KV. Les
+activations peuvent circuler directement entre serveurs tout en etant copiees au client,
+avec verification asynchrone par checksum.
+
+Pour Fabi, cette idee implique une evolution architecturale explicite :
+
+1. garantir au moins une couverture de secours pour chaque intervalle avant de declarer une
+   pipeline « recoverable » ;
+2. journaliser, sous une limite memoire stricte, les activations aux frontieres d'etages ou
+   une representation permettant de les recalculer ;
+3. associer chaque requete a une version de modele, une route, une generation/epoch et des
+   checksums afin d'interdire les sorties tardives de l'ancien shard ;
+4. lors d'une panne, geler l'emission SSE, choisir une couverture compatible
+   modele/revision/dtype/blocs/contrat prefill, reconstruire son KV, puis reprendre sans
+   dupliquer les tokens deja livres ;
+5. si aucune couverture n'existe, retourner une erreur explicite et liberer toutes les
+   reservations ; ne jamais inventer une continuation a partir d'un KV incomplet ;
+6. mesurer le cout reel : conserver toutes les activations de frontiere d'un contexte 64k
+   peut etre trop cher. Comparer replay depuis tokens, checkpoints periodiques compresses et
+   double envoi vers une replique chaude avant de choisir.
+
+Les projets Exo et GPUStack sont utiles pour la decouverte, le placement topologique et la
+gestion d'instances, mais ils ne constituent pas une preuve de reprise KV equivalente dans
+la topologie heterogene actuelle. Ne pas copier leur orchestration en la presentant comme
+une continuation exacte de requete.
+
+### Admission et routage selon le contexte
+
+Le scheduler courant route encore sans connaitre le prompt final rendu. Le produit doit
+tokeniser apres application du chat template et compter : systeme, historique, schemas
+d'outils, resultats d'outils, contexte de code, pieces multimodales eventuelles et sortie
+maximale demandee.
+
+Contrat cible :
+
+```text
+budget = prompt_rendu + max_output + marge_de_securite
+```
+
+Une route est admissible seulement si chaque shard du chemin annonce une longueur maximale
+compatible et assez de blocs KV libres/reservables. La capacite d'une pipeline est donc le
+minimum de ses shards, pas la valeur du worker le plus large.
+
+- budget superieur a toute longueur statique disponible : HTTP 400 `invalid_request_error`
+  avec tokens requis et maximum disponible ;
+- longueur compatible mais KV momentanement indisponible : HTTP 429/503 retryable ;
+- aucune troncature silencieuse, aucun lancement en esperant eviter l'OOM ;
+- petit prompt : pipeline admissible la plus legere/rapide ;
+- gros prompt : pipeline qui reserve le budget complet, avec affinite de prefixe si plusieurs
+  chemins sont possibles.
+
+Ce comportement suit les contrats utiles de vLLM : `max_model_len` couvre prompt plus sortie,
+les entrees trop longues sont rejetees explicitement et les tokens batches/KV sont des
+ressources distinctes. L'issue Parallax `#342` sur la preallocation KV est encore ouverte ;
+il faut donc construire l'admission Fabi au-dessus de metriques reelles et testees, pas
+supposer cette garantie deja presente.
+
+References primaires relues pour cette decision :
+
+- [Parallax PR 469 — MLX chunked prefill](https://github.com/GradientHQ/parallax/pull/469) ;
+- [Parallax PR 470 — SGLang chunked prefill](https://github.com/GradientHQ/parallax/pull/470) ;
+- [Parallax issue 411 — continuation apres panne worker](https://github.com/GradientHQ/parallax/issues/411) ;
+- [Parallax issue 342 — preallocation KV](https://github.com/GradientHQ/parallax/issues/342) ;
+- [Petals — inference fault-tolerant sur Internet](https://arxiv.org/abs/2312.08361) ;
+- [vLLM — contrat `max_model_len`](https://docs.vllm.ai/en/stable/api/vllm/config/model/) ;
+- [vLLM — scheduler et budgets de tokens](https://docs.vllm.ai/en/v0.11.0/api/vllm/config/scheduler.html) ;
+- [Exo](https://github.com/exo-explore/exo) et
+  [GPUStack](https://github.com/gpustack/gpustack) pour comparaison d'orchestration.
+
+### Matrice de tests a ajouter
+
+1. prompt exactement a la limite, limite moins un et limite plus un ;
+2. prompt OpenCode reel avec systeme, outils et historique, pas seulement texte utilisateur ;
+3. plusieurs pipelines avec limites 4k/32k/64k : verifier la route choisie et le rejet 400 ;
+4. KV temporairement sature : attente bornee puis 429, sans head-of-line blocking ;
+5. depart du head, d'un shard median et du dernier shard pendant prefill puis decode ;
+6. replique froide, replique chaude et absence de replique ;
+7. checksum divergent ou modele/revision differents : reprise refusee ;
+8. streaming : aucun token duplique ou perdu autour du failover ;
+9. kill dur, perte reseau, heartbeat expire et retour tardif de l'ancien worker ;
+10. pression prefix cache heterogene avec evictions differentes apres reprise.
+
+### Ordre de reprise obligatoire
+
+1. mettre a jour le pin CLI/runtime et produire un artefact reproductible de `d77834b` ;
+2. ajouter l'admission statique du contexte et les erreurs OpenAI explicites, puis tester les
+   limites avant tout travail de routage avance ;
+3. concevoir le journal de reprise a partir de l'algorithme Petals et chiffrer memoire/reseau
+   sur 32k/64k avant de coder ;
+4. ajouter une troisieme machine/replique et qualifier le DP elastique ;
+5. implementer la reprise par etapes avec tests de panne reproductibles ;
+6. valider le parcours IDE/OpenCode complet, y compris gros prompts outils et streaming ;
+7. tester seulement ensuite deux NAT distincts sans Tailscale via hole punching/relay ;
+8. publier les artefacts signes/checksum, pins, rollback et matrice de release.
+
+### Etat du laboratoire a la cloture
+
+- scheduler local arrete proprement ;
+- worker Mac arrete avec `SIGINT` et `node_leave` observe ;
+- worker Windows et son arbre runtime arretes ;
+- aucun processus de laboratoire ne doit rester actif ;
+- aucun deploiement produit effectue sur le VPS ;
+- les adresses Tailscale ont servi uniquement au laboratoire ; le chemin Internet public
+  n'est pas qualifie ;
+- aucun secret ajoute a Git. Les identifiants exposes en conversation doivent etre revoques
+  avant production.
