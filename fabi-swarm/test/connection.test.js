@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { deriveConnection } = require('../lib/node/fabi-connection');
+const { deriveConnection, requireContribution } = require('../lib/node/fabi-connection');
 
 const swarm = (overrides = {}) => ({
     id: 'qwen',
@@ -63,4 +63,29 @@ test('surfaces capacity, scheduler and worker failures instead of optimistic sta
         deriveConnection(swarm(), { kind: 'error', message: 'worker exited' }).reason,
         'worker-crashed'
     );
+});
+
+test('keeps the prompt locked until contribution is authorized', () => {
+    const transport = deriveConnection(
+        swarm({ schedulerStatus: 'available', pipelineReady: true, nodesActive: 2 }),
+        { kind: 'running', stage: 'ready' }
+    );
+    assert.equal(transport.ready, true);
+
+    const pending = requireContribution(transport, { allowed: false, reason: 'no_eligible_worker' });
+    assert.equal(pending.ready, false);
+    assert.equal(pending.reason, 'contribution-pending');
+
+    const denied = requireContribution(
+        transport,
+        { allowed: false, reason: 'no_eligible_worker' },
+        true
+    );
+    assert.equal(denied.ready, false);
+    assert.equal(denied.reason, 'contribution-required');
+    const busy = requireContribution(transport, { allowed: false, reason: 'capacity_reached' }, true);
+    assert.equal(busy.ready, false);
+    assert.equal(busy.reason, 'contribution-pending');
+    assert.match(busy.headline, /déjà utilisée/);
+    assert.equal(requireContribution(transport, { allowed: true, reason: 'eligible' }), transport);
 });

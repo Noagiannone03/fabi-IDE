@@ -20,7 +20,7 @@ export const FABI_REGISTRY_URL = 'https://server.undefinedstudio.fr/fabi-registr
 export const FABI_FALLBACK_SCHEDULER_URL = 'https://server.undefinedstudio.fr/fabi-scheduler';
 export const FABI_FALLBACK_SCHEDULER_PEER = '12D3KooWKLCTHRAhMEafQfaGZTAEx8kJjeMqpXDDeyhBGVotuSfR';
 /** Modèle de repli si rien n'est annoncé. */
-export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-Coder-30B-A3B-Instruct';
+export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-1.7B';
 /** Id du provider tel qu'enregistré dans Theia AI. */
 export const FABI_MODEL_ID = 'fabi-swarm';
 
@@ -97,6 +97,8 @@ export type ConnectionReason =
     | 'connecting'             // handshake / join / découverte
     | 'need-more-peers'        // pas assez de nœuds pour bootstrapper
     | 'insufficient-capacity'  // assez de nœuds mais pipeline impossible
+    | 'contribution-pending'   // pipeline prêt, admission du compte en confirmation
+    | 'contribution-required'  // aucun worker prêt de ce compte n'est reconnu
     | 'loading-model';         // chargement des poids / peers en init
 
 /** Présentation dérivée poussée à l'UI (écran de connexion fidèle au CLI). */
@@ -244,6 +246,12 @@ export interface FabiSwarmService {
     getWorkerState(): Promise<WorkerState>;
     /** État de connexion dérivé courant (worker + scheduler). */
     getConnection(): Promise<ConnectionInfo>;
+    /**
+     * Attend le prochain état réellement routable, sans polling. La promesse est
+     * réveillée directement par les mêmes événements worker/registry qui pilotent
+     * l'UI. Elle rejette à l'expiration ou si aucun modèle n'est sélectionné.
+     */
+    waitUntilReady(timeoutMs?: number): Promise<ConnectionInfo>;
     /** État du runtime moteur (installé / en cours / absent). */
     getRuntimeStatus(): Promise<RuntimeStatus>;
     /** Télécharge/prépare le runtime moteur si absent (idempotent). */

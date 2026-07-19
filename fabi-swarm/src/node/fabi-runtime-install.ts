@@ -29,9 +29,9 @@ export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
-export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc22';
-export const QUALIFIED_OPENCODE_COMMIT = 'd551cc6912d66e8d712f2dbd3554f2fc4573800e';
-export const QUALIFIED_PARALLAX_COMMIT = 'c54e402be2254048e7b750b12ca174534c10a086';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc24';
+export const QUALIFIED_OPENCODE_COMMIT = '0dd48bc1a6cb4a6145d7fe444ffd316a30b0f1f6';
+export const QUALIFIED_PARALLAX_COMMIT = '59dc2bb82c956848a320a54079d30747da3bcdc3';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
 
 export interface RuntimeManifest {
@@ -123,7 +123,7 @@ export function validateRuntimeManifest(raw: string, expected: RuntimeContract):
     return manifest;
 }
 
-function runtimeManifestIsQualified(root: string): boolean {
+export function runtimeManifestIsQualified(root: string): boolean {
     try {
         const manifest = readFileSync(join(root, 'MANIFEST'), 'utf8');
         validateRuntimeManifest(manifest, configuredRuntimeContract());
@@ -177,6 +177,13 @@ export function parallaxBinaryIn(root: string): string | undefined {
         ? [join(root, 'runtime', 'parallax-venv', 'Scripts', 'parallax.exe')]
         : [join(root, 'runtime', 'parallax-venv', 'bin', 'parallax')];
     return candidates.find(existsSync);
+}
+
+/** Chemin du binaire OpenCode/Fabi dans le layout exact d'une release. */
+export function fabiCodeBinaryIn(root: string): string | undefined {
+    const name = osPlatform() === 'win32' ? 'fabi.exe' : 'fabi';
+    const candidate = join(root, 'bin', name);
+    return existsSync(candidate) ? candidate : undefined;
 }
 
 /** Localise parallax sans rien télécharger : override env > bundlé > install partagé. */

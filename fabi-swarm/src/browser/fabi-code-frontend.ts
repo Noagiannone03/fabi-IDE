@@ -26,7 +26,7 @@ export class FabiCodeFrontend implements FabiCodeClient {
     protected readonly engineEventEmitter = new Emitter<FabiCodeEvent>();
 
     /** Dernier état serveur (rendu immédiat à l'attache). */
-    server: FabiCodeServerInfo = { status: 'starting' };
+    server: FabiCodeServerInfo = { status: 'stopped', activeTurns: 0, activity: 'idle' };
 
     readonly onServerStatusEvent: Event<FabiCodeServerInfo> = this.serverEmitter.event;
     readonly onPartEvent: Event<FabiCodePart> = this.partEmitter.event;

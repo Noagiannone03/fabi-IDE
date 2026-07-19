@@ -4,6 +4,7 @@
 // en dernier recours, poll périodique. Tourne côté Node (backend Theia).
 
 import { SwarmEntry } from '../common/fabi-swarm-protocol';
+import { createParser } from 'eventsource-parser';
 
 interface SwarmsResponse {
     apiVersion: string;
@@ -129,20 +130,21 @@ export class RegistryFeed {
             this.stopPollFallback();   // le SSE prend le relais
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
-            let buf = '';
+            const parser = createParser({
+                maxBufferSize: 4 * 1024 * 1024,
+                onRetry: retryMs => {
+                    this.backoffMs = Math.max(1_000, Math.min(retryMs, 30_000));
+                },
+                onEvent: event => this.handleData(event.data)
+            });
             for (;;) {
                 const { done, value } = await reader.read();
                 if (done) {
+                    parser.feed(decoder.decode());
+                    parser.reset({ consume: true });
                     break;
                 }
-                buf += decoder.decode(value, { stream: true });
-                let sep: number;
-                // Les events SSE sont séparés par une ligne vide (\n\n).
-                while ((sep = buf.indexOf('\n\n')) >= 0) {
-                    const block = buf.slice(0, sep);
-                    buf = buf.slice(sep + 2);
-                    this.handleBlock(block);
-                }
+                parser.feed(decoder.decode(value, { stream: true }));
             }
         } catch {
             /* coupure réseau → reconnexion plus bas */
@@ -157,14 +159,7 @@ export class RegistryFeed {
         setTimeout(() => void this.connectStream(), wait);
     }
 
-    private handleBlock(block: string): void {
-        // Un bloc = des lignes `event: x` / `data: y` ; on ignore les `:` (keepalive).
-        let data = '';
-        for (const line of block.split('\n')) {
-            if (line.startsWith('data:')) {
-                data += line.slice(5).trimStart();
-            }
-        }
+    private handleData(data: string): void {
         if (!data) {
             return;
         }

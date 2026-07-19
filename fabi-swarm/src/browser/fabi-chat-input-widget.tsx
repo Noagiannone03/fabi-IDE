@@ -127,11 +127,11 @@ export class FabiChatInputWidget extends AIChatInputWidget {
         // (Pas de div wrapper autour de l'input : un conteneur casse le calcul de
         //  largeur de l'éditeur Monaco. Un Fragment n'ajoute aucune boîte.)
         if (!this.ready) {
-            return <FabiSwarmSelector frontend={this.swarm} locked />;
+            return <FabiSwarmSelector frontend={this.swarm} engine={this.engine} locked />;
         }
         return (
             <React.Fragment>
-                <FabiSwarmSelector frontend={this.swarm} />
+                <FabiSwarmSelector frontend={this.swarm} engine={this.engine} />
                 {super.render()}
                 <FabiModeDropdown state={this.fabiMode} onChange={() => this.update()} />
             </React.Fragment>

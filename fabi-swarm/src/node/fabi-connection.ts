@@ -10,6 +10,40 @@
 
 import { ConnectionInfo, SwarmEntry, WorkerState } from '../common/fabi-swarm-protocol';
 
+/** Apply the scheduler-authoritative account gate to an otherwise ready route. */
+export function requireContribution(
+    transport: ConnectionInfo,
+    access: { allowed: boolean; reason: string },
+    attemptsExhausted = false
+): ConnectionInfo {
+    if (!transport.ready || access.allowed) {
+        return transport;
+    }
+    if (access.reason === 'capacity_reached') {
+        return {
+            ...transport,
+            ready: false,
+            reason: 'contribution-pending',
+            headline: 'Contribution déjà utilisée',
+            activity: 'ce worker sert déjà une génération — le prompt se libère à sa fin'
+        };
+    }
+    const definitive = ['invalid_credential', 'missing_credential'].includes(access.reason)
+        || (attemptsExhausted && access.reason === 'no_eligible_worker');
+    return {
+        ...transport,
+        ready: false,
+        reason: definitive ? 'contribution-required' : 'contribution-pending',
+        headline: definitive ? 'Contribution non reconnue' : 'Validation de la contribution',
+        activity: definitive
+            ? 'ce compte ne possède aucun worker prêt sur ce modèle'
+            : 'le scheduler confirme ton worker et son allocation…',
+        detail: definitive
+            ? 'Reconnecte le worker avec le même compte Fabi que cet IDE.'
+            : undefined
+    };
+}
+
 export function deriveConnection(
     active: SwarmEntry | undefined,
     worker: WorkerState

@@ -27,6 +27,10 @@ export interface FabiCodeServerInfo {
     /** URL locale du serveur (http://127.0.0.1:PORT) une fois prêt. */
     url?: string;
     detail?: string;
+    /** Nombre de tours réellement en cours dans OpenCode (0 hors génération). */
+    activeTurns: number;
+    /** Phase agrégée des tours, distincte du cycle de vie du sidecar. */
+    activity: 'idle' | 'preparing' | 'generating';
 }
 
 /**

@@ -97,6 +97,8 @@
 .fabi-sel-bar-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fabi-sel-bar-sub { opacity: 0.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fabi-sel-bar-sub.ready { color: var(--theia-testing-iconPassed, #3fb950); opacity: 0.9; }
+.fabi-sel-bar-sub.generating { color: var(--theia-progressBar-background, #3794ff); opacity: 1; }
+.fabi-sel-bar-sub.error { color: var(--theia-errorForeground, #f85149); opacity: 1; }
 .fabi-sel-caret { font-size: 12px !important; opacity: 0.45; margin-left: auto; flex: 0 0 auto; }
 
 /* ============================================================

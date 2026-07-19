@@ -3,6 +3,8 @@ import { Disposable, DisposableCollection } from '@theia/core';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
 import { SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo } from '../common/fabi-swarm-protocol';
 import { FabiConnectionView } from './fabi-swarm-connection';
+import { FabiCodeFrontend } from './fabi-code-frontend';
+import { FabiCodeServerInfo } from '../common/fabi-code-protocol';
 
 /**
  * Sélecteur de swarm = sommet de l'input du chat. Rendu comme frère adjacent de
@@ -14,12 +16,17 @@ import { FabiConnectionView } from './fabi-swarm-connection';
  * liste (choisir un modèle) / connexion (statut texte sobre + « Changer de
  * modèle »). Branché live sur FabiSwarmFrontend.
  */
-export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?: boolean }> = ({ frontend, locked }) => {
+export const FabiSwarmSelector: React.FC<{
+    frontend: FabiSwarmFrontend;
+    engine: FabiCodeFrontend;
+    locked?: boolean;
+}> = ({ frontend, engine, locked }) => {
     const [swarms, setSwarms] = React.useState<SwarmEntry[]>(frontend.swarms);
     const [active, setActive] = React.useState<SwarmEntry | undefined>(frontend.active);
     const [connection, setConnection] = React.useState<ConnectionInfo | undefined>(frontend.connection);
     const [runtime, setRuntime] = React.useState<RuntimeStatus | undefined>(frontend.runtime);
     const [worker, setWorker] = React.useState<WorkerState>(frontend.worker);
+    const [code, setCode] = React.useState<FabiCodeServerInfo>(engine.server);
     const [open, setOpen] = React.useState(false);
     const [view, setView] = React.useState<'list' | 'connection'>('list');
     const [busyId, setBusyId] = React.useState<string | undefined>(undefined);
@@ -34,10 +41,12 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?:
         d.push(frontend.onConnectionChangedEvent(c => setConnection(c)));
         d.push(frontend.onRuntimeChangedEvent(r => setRuntime(r)));
         d.push(frontend.onWorkerChangedEvent(w => setWorker(w)));
+        d.push(engine.onServerStatusEvent(info => setCode(info)));
         void frontend.service.listSwarms().then(setSwarms).catch(() => { /* */ });
         void frontend.service.getRuntimeStatus().then(setRuntime).catch(() => { /* */ });
+        void engine.service.getServerInfo().then(setCode).catch(() => { /* */ });
         return () => d.dispose();
-    }, [frontend]);
+    }, [frontend, engine]);
 
     // Fermer au clic extérieur.
     React.useEffect(() => {
@@ -103,7 +112,15 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?:
     const connecting = !!active && !!connection && !connection.ready
         && connection.reason !== 'pick-model' && connection.reason !== 'worker-missing-binary';
     const barLabel = active ? (active.model.split('/').pop() ?? active.model) : 'Choisir un modèle';
-    const barStatus = connection?.ready ? 'Prêt' : connecting ? connection?.headline : undefined;
+    const codeError = connection?.ready && code.status === 'error';
+    const generating = connection?.ready && code.activeTurns > 0;
+    const barStatus = generating && code.activity === 'preparing' ? 'Préparation du contexte…'
+        : generating ? 'Génération…'
+        : codeError ? 'Erreur moteur'
+            : connection?.ready && code.status === 'starting' ? 'Démarrage IA…'
+                : connection?.ready ? 'Prêt'
+                    : connecting ? connection?.headline : undefined;
+    const barStatusClass = generating ? ' generating' : codeError ? ' error' : connection?.ready ? ' ready' : '';
 
     const renderList = () => {
         const installed = runtime?.installed ?? false;
@@ -209,7 +226,10 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?:
             <button className="fabi-sel-bar" title="Modèle du swarm Fabi" onClick={toggle}>
                 <span className="fabi-sel-bar-label">{barLabel}</span>
                 {barStatus && (
-                    <span className={`fabi-sel-bar-sub${connection?.ready ? ' ready' : ''}`}>{barStatus}</span>
+                    <span
+                        className={`fabi-sel-bar-sub${barStatusClass}`}
+                        title={codeError ? code.detail : undefined}
+                    >{barStatus}</span>
                 )}
                 <span className={`codicon ${open ? 'codicon-chevron-down' : 'codicon-chevron-up'} fabi-sel-caret`} />
             </button>
