@@ -1,7 +1,7 @@
 # Handoff Fabi Swarm — 17 juillet 2026
 
 > **Mise a jour autoritative :** lire d'abord la section
-> `Qualification du contrat heterogene et reprise produit du 18 juillet 2026` en fin de document. Elle
+> `Integration IDE, contribution ephemere et heartbeats du 19 juillet 2026` en fin de document. Elle
 > contient les derniers commits, les validations effectives et l'etat exact du laboratoire.
 > Les SHA et constats precedents sont conserves comme historique, mais cette derniere section
 > fait foi en cas de contradiction.
@@ -1319,3 +1319,163 @@ Ordre de reprise :
 3. valider le parcours IDE/OpenCode complet sur ce SHA et mettre a jour les pins runtime ;
 4. seulement ensuite tester deux NAT distincts sans Tailscale, avec direct/hole-punch/relay
    observables, puis construire les artefacts signes et checksums de release.
+
+## Integration IDE, contribution ephemere et heartbeats du 19 juillet 2026
+
+Cette section est la source de verite la plus recente. Elle remplace les SHA, l'etat live et
+l'ordre de reprise des sections precedentes en cas de contradiction. Aucun secret, token de
+compte, mot de passe, IP d'administration ni identifiant de pair live n'est consigne ici.
+
+### Revisions poussees et runtime qualifie
+
+- `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` :
+  - `aa856fe5415aaa833ffdf1d1c86d2f73e90139d9` —
+    `feat(fabi): admit only live contributing accounts` ;
+  - `59dc2bb82c956848a320a54079d30747da3bcdc3` —
+    `fix(p2p): isolate heartbeats from network probes` ;
+- `Noagiannone03/fabi-cli`, branche `dev` :
+  - `211457406c242bfedc92896e77c79f6a2fcc5033` —
+    `feat(swarm): bind consumption to live workers` ;
+  - `0dd48bc1a6cb4a6145d7fe444ffd316a30b0f1f6` —
+    `chore(swarm): qualify heartbeat-safe runtime` ;
+- `Noagiannone03/fabi`, branche `main` :
+  - `0b8a164b9c7f29000a6d0a84f83ba2f088570e2b` —
+    `chore(release): pin heartbeat-safe swarm runtime` ;
+  - tag publie : `v2.7.0-rc24` ;
+- `Noagiannone03/fabi-IDE`, branche `main` :
+  - `e7034ba6ad239e745fa15b3f594cb0f01a82536c` —
+    `feat(swarm): gate IDE inference on live contribution`.
+
+Les trois pins du runtime IDE sont maintenant exacts : release `v2.7.0-rc24`, OpenCode/Fabi
+CLI `0dd48bc1...`, moteur `59dc2bb...`. Un manifeste qui annonce une autre combinaison est
+refuse. Un binaire OpenCode arbitraire trouve sur la machine n'est plus accepte comme runtime
+produit ; l'override explicite reste reserve au developpement.
+
+Au moment de cette ecriture, la CI `rc23` est entierement verte. Pour `rc24`, Linux x64 CPU,
+Linux x64 CUDA, Linux ARM64, macOS Apple Silicon MLX et macOS Intel sont verts ; le job
+Windows x64 CUDA est encore en cours. Run :
+https://github.com/Noagiannone03/fabi/actions/runs/29693764501.
+
+### Contrat « contribuer pour consommer » retenu
+
+Il n'existe volontairement ni monnaie, ni solde persistant, ni points a depenser. Le droit
+de consommer est ephemere et decide par le scheduler au moment de l'admission :
+
+1. la credential bearer du client doit correspondre a celle d'au moins un worker du compte ;
+2. ce worker doit avoir un heartbeat frais, etre `READY`, posseder une allocation de couches
+   active et publier sa telemetrie KV mesuree ;
+3. la pipeline complete qui contient ce worker doit etre servable ;
+4. par defaut, chaque worker eligible ouvre une seule requete concurrente au compte ;
+5. le droit est reserve atomiquement au debut puis libere exactement une fois en fin, erreur
+   ou deconnexion ; une requete deja admise n'est jamais coupee par une revalidation UI.
+
+Les credentials brutes ne sont ni loguees ni stockees par le scheduler : l'identite interne
+est un hash. Les endpoints `/v1/contribution/status` et les routes OpenAI utilisent le meme
+Bearer. Reponses produit : HTTP 403 sans contribution reconnue, HTTP 503 si le swarm complet
+n'est pas servable, HTTP 429 si la capacite de contribution du compte est deja occupee.
+
+Cette decision reprend les proprietes utiles des reseaux existants sans importer leur
+economie : reciprocite et slots bornes de BitTorrent, contribution live de Petals, et
+separation identite/capacite observee dans AI Horde et HyperSpace. References primaires :
+
+- [BitTorrent BEP 3](https://www.bittorrent.org/beps/bep_0003.html) ;
+- [Petals](https://github.com/bigscience-workshop/petals) ;
+- [AI Horde](https://github.com/Haidra-Org/AI-Horde) ;
+- [HyperSpace node](https://github.com/hyperspaceai/hyperspace-node).
+
+Limite assumee : la credential est actuellement partagee localement entre CLI et IDE par
+le fichier de compte ou `FABI_ACCOUNT_TOKEN`. La connexion d'un meme compte sur plusieurs
+machines necessite encore un vrai login/device pairing. Ne jamais bricoler cette etape par
+copie visible du token dans l'UI.
+
+### Heartbeat pendant l'inference
+
+Le worker Parallax execute le calcul GPU dans des processus executor distincts du serveur
+P2P. Le thread announcer continue donc d'envoyer `node_update` toutes les dix secondes pendant
+le prefill et le decode. Une generation reelle de 1 024 tokens a dure 29,587 s, soit plus que
+le timeout scheduler de 25 s, sans eviction : les deux workers sont restes `available` et la
+generation s'est terminee normalement.
+
+Une faiblesse restait toutefois possible : `get_node_info()` effectuait des probes directs
+et RTT synchrones avant le heartbeat. Un pair redondant lent pouvait donc retarder la preuve
+de vie sans rapport avec le calcul. `59dc2bb` deplace toute sonde reseau dans le daemon
+`DirectPeerProber` ; le heartbeat ne lit plus qu'un snapshot cache et fail-closed. Le premier
+join conserve ses retries de discovery, mais les updates de vie ne bloquent plus. L'arret
+utilise `stop_event.wait`, rejoint aussi ce daemon et ne laisse pas une boucle en sommeil.
+
+Le meme commit corrige l'ordre du gate : pendant une generation active, le statut du compte
+reste `capacity_reached`, meme si la route est momentanement occupee. L'IDE peut ainsi afficher
+« Contribution deja utilisee » au lieu du faux diagnostic « swarm indisponible ».
+
+Validation moteur ciblee : 146 tests passes, 1 warning de deprecation Starlette ; Ruff format,
+Ruff check et `git diff --check` passent.
+
+### Reprise propre de Fabi IDE et OpenCode
+
+Le chemin chat n'est plus un assemblage de polling et de statuts optimistes :
+
+- `waitUntilReady()` est reveille par les memes evenements worker/registry qui pilotent l'UI ;
+- le prompt reste masque/verrouille tant que transport, pipeline et contribution ne sont pas
+  tous autorises par le scheduler ;
+- l'admission est revalidee toutes les cinq secondes, avec epoch/fencing pour ignorer une
+  reponse tardive apres changement de modele ou de worker ;
+- les etats `contribution-pending`, `contribution-required` et `capacity_reached` sont distincts
+  dans le protocole et dans l'interface ;
+- la credential locale doit etre exactement 32 octets hexadecimaux, est creee exclusivement
+  avec permissions 0600/0700 quand la plateforme le permet, et n'est jamais regeneree en
+  silence si un fichier existant est invalide ;
+- le provider OpenCode annonce la vraie fenetre scheduler qualifiee, 32 768 tokens de contexte
+  et 4 096 tokens de sortie par defaut, jamais l'ancienne valeur fictive 262 144 ;
+- la cle de redemarrage du sidecar contient seulement le hash de la credential, jamais sa
+  valeur ;
+- le flux SSE OpenCode 1.15 est parse par `eventsource-parser`, avec limite d'evenement a
+  16 Mio, reconnexion bornee et accumulation correcte de `message.part.delta` en snapshots
+  cumulatifs attendus par Theia ;
+- `session.status=retry` ne termine plus un tour ; seul `idle`, `session.idle` ou une erreur le
+  clot. Le timeout de tour est borne et configurable, 10 minutes par defaut ;
+- crash, changement de modele, abort et fermeture du sidecar terminent les waiters, nettoient
+  les parties SSE et remontent une erreur explicite au chat ;
+- l'UI expose des activites exactes : preparation, generation, chargement, allocation,
+  contribution en validation ou deja utilisee.
+
+Validation IDE : 15 tests Node passent, notamment manifeste runtime, limites 32k/4k,
+non-divulgation de credential, deltas OpenCode 1.15 et verrou de contribution. Toutes les
+sources TypeScript/TSX modifiees passent `transpileModule` sans diagnostic syntaxique et
+`git diff --check` passe. Le `tsc` cible lance par `yarn test` reste bloque sur ce clone macOS
+iCloud contenant des fichiers dataless ; il a ete interrompu apres 50 s. Refaire le vrai build
+Theia depuis un clone local complet avant de qualifier l'artefact IDE : ne pas enregistrer ce
+blocage d'environnement comme un succes de typecheck.
+
+### Etat du laboratoire apres deploiement
+
+Le scheduler Qwen3-1.7B du laboratoire sur le VPS charge maintenant exactement
+`59dc2bb82c956848a320a54079d30747da3bcdc3` ; le SHA Git interne et le label OCI ont ete
+verifies. `FABI_GATE=on`, sans allowlist statique. Apres recreation du seul conteneur cible,
+le Mac mini M4 et le PC RTX 4080 SUPER ont rejoint automatiquement, le cluster DP est revenu
+`available` avec contexte maximum 32 768 et telemetrie KV intacte. Les autres schedulers du
+VPS n'ont pas ete modifies. `Dockerfile.pre-59dc2bb` permet le rollback du laboratoire.
+
+Le scheduler est donc au dernier SHA ; les workers distants restent compatibles mais ne sont
+pas tous declares au dernier checkout dans ce handoff. Le PC etait au SHA `aa856fe` avant la
+recreation. L'acces SSH direct au Mac mini depuis ce MacBook reste refuse ; ne pas pretendre
+l'avoir mis a niveau. La release `rc24` est la voie produit pour aligner les deux workers.
+
+### Ce qui reste, dans l'ordre
+
+1. attendre la fin du job Windows `rc24`, verifier assets, checksums et attestations, puis
+   installer cette release sur le Mac mini et le PC ; confirmer les SHA runtime sur les deux ;
+2. construire Fabi IDE depuis un clone non-dataless et executer un E2E UI reel : selection du
+   modele, worker local, allocation automatique, champ prompt debloque, outils OpenCode,
+   streaming, abort et revalidation contribution ;
+3. rejouer petit prompt puis entree OpenCode 12 220 + sortie reservee 4 096 avec `rc24`, mesurer
+   TTFT/debit et verifier les reservations KV pendant toute la requete ;
+4. ajouter une troisieme machine qui replique les memes couches. Sans replique compatible, un
+   worker perdu doit produire une erreur explicite et liberer les ressources ; il est impossible
+   de continuer exactement les tokens deja calcules. Avec replique, implementer journal de
+   checkpoints, epoch/fencing, replay KV froid puis chaud, et tests kill prefill/decode ;
+5. tester deux NAT distincts sans Tailscale et rendre visibles direct/hole-punch/relay. Ne pas
+   accepter une pipeline d'activations relay-only si sa latence/debit ne respecte pas le contrat ;
+6. concevoir le login et le device pairing multi-machine, la revocation et la rotation des
+   credentials avant toute ouverture publique ;
+7. qualifier charge concurrente, fairness, abus, observabilite, rollback et reprise scheduler
+   avant de promouvoir une RC en release stable.
