@@ -58,26 +58,40 @@ export function getHardware(): HardwareProfile {
 export function resolveWorkerLimits(hw: HardwareProfile): WorkerLimits {
     if (hw.accelerator === 'apple-silicon' && hw.ramGb < 64) {
         if (hw.ramGb <= 24) {
-            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '4096', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '32768', maxNumTokensPerBatch: '4096', kvBlockSize: '32' };
         }
-        return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+        return { maxBatchSize: '1', maxSequenceLength: '32768', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
     }
     if (hw.accelerator === 'cuda' && hw.vramGb !== undefined) {
         const vram = Math.round(hw.vramGb);
         if (vram <= 8) {
-            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '4096', kvBlockSize: '16' };
+            return { maxBatchSize: '1', maxSequenceLength: '32768', maxNumTokensPerBatch: '4096', kvBlockSize: '16' };
         }
         if (vram <= 12) {
-            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '4096', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '32768', maxNumTokensPerBatch: '4096', kvBlockSize: '32' };
         }
         if (vram <= 16) {
-            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '32768', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
         }
         if (vram < 24) {
-            return { maxBatchSize: '1', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+            return { maxBatchSize: '1', maxSequenceLength: '32768', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
         }
     }
-    return { maxBatchSize: '2', maxSequenceLength: '65536', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+    return { maxBatchSize: '2', maxSequenceLength: '32768', maxNumTokensPerBatch: '8192', kvBlockSize: '32' };
+}
+
+/** Applique les mêmes overrides explicites que le CLI Fabi. */
+export function resolveConfiguredWorkerLimits(
+    hw: HardwareProfile,
+    env: NodeJS.ProcessEnv = process.env
+): WorkerLimits {
+    const limits = resolveWorkerLimits(hw);
+    return {
+        maxBatchSize: env.PARALLAX_MAX_BATCH_SIZE?.trim() || limits.maxBatchSize,
+        maxSequenceLength: env.PARALLAX_MAX_SEQUENCE_LENGTH?.trim() || limits.maxSequenceLength,
+        maxNumTokensPerBatch: env.PARALLAX_MAX_NUM_TOKENS_PER_BATCH?.trim() || limits.maxNumTokensPerBatch,
+        kvBlockSize: env.PARALLAX_KV_BLOCK_SIZE?.trim() || limits.kvBlockSize
+    };
 }
 
 export function prefixCacheEnabled(): boolean {
@@ -120,7 +134,7 @@ export function buildWorkerEnv(): NodeJS.ProcessEnv {
 
 /** Argv complet de `parallax join` (mêmes flags que le CLI). */
 export function buildJoinArgs(schedulerPeer: string): string[] {
-    const limits = resolveWorkerLimits(getHardware());
+    const limits = resolveConfiguredWorkerLimits(getHardware());
     const args = [
         'join',
         '-s', schedulerPeer,

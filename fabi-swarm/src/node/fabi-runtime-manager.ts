@@ -7,7 +7,7 @@
 // Source unique d'install = fabi-runtime-install.ts (réplique de install.sh).
 
 import {
-    detectPlatform, findParallax, installRuntime, InstallProgress
+    configuredRuntimeVersion, detectPlatform, findParallax, installRuntime, InstallProgress
 } from './fabi-runtime-install';
 import { RuntimeStatus } from '../common/fabi-swarm-protocol';
 
@@ -34,7 +34,7 @@ export class FabiRuntimeManager {
             location: found?.location ?? 'none',
             platform: plat.tag,
             accel: plat.accel,
-            version: process.env.FABI_RUNTIME_VERSION || 'latest',
+            version: configuredRuntimeVersion(),
             binary: found?.binary,
             message: this.lastMessage
         };

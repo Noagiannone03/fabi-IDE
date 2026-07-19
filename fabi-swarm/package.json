@@ -33,6 +33,7 @@
     "prepare": "yarn run clean && yarn run build",
     "clean": "rimraf lib",
     "build": "tsc",
+    "test": "tsc --skipLibCheck --strictNullChecks --noImplicitAny --types node --module commonjs --moduleResolution node --target ES2017 --outDir lib/node --rootDir src/node src/node/fabi-runtime-install.ts src/node/fabi-worker-tuning.ts && node --test test/*.test.js",
     "watch": "tsc -w"
   },
   "theiaExtensions": [

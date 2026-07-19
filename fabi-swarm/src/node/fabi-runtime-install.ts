@@ -27,10 +27,25 @@ import { join } from 'path';
 
 export type Accel = 'mlx' | 'cuda' | 'cpu';
 
-/** Repo + version (tag de release) du tarball. Le tag est résolu dynamiquement
- *  (latest) sauf si FABI_RUNTIME_VERSION est défini. */
+/** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc21';
+export const QUALIFIED_OPENCODE_COMMIT = 'd551cc6912d66e8d712f2dbd3554f2fc4573800e';
+export const QUALIFIED_PARALLAX_COMMIT = 'c54e402be2254048e7b750b12ca174534c10a086';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
+
+export interface RuntimeManifest {
+    version: string;
+    values: Readonly<Record<string, string>>;
+}
+
+export interface RuntimeContract {
+    version: string;
+    opencodeRevision: string;
+    parallaxRevision: string;
+    target?: string;
+    accel?: Accel;
+}
 
 export interface PlatformInfo {
     os: 'darwin' | 'linux' | 'windows';
@@ -47,6 +62,75 @@ export interface InstallProgress {
     /** 0-100 pour la phase download, sinon indicatif. */
     percent: number;
     message?: string;
+}
+
+/** Version choisie par le produit. Une surcharge explicite reste disponible en labo. */
+export function configuredRuntimeVersion(): string {
+    return process.env.FABI_RUNTIME_VERSION?.trim() || QUALIFIED_RUNTIME_VERSION;
+}
+
+/**
+ * Contrat attendu. Les révisions ne deviennent configurables que par des env
+ * explicites : changer seulement le tag ne doit jamais accepter silencieusement
+ * un moteur différent de celui qualifié.
+ */
+export function configuredRuntimeContract(version = configuredRuntimeVersion()): RuntimeContract {
+    return {
+        version,
+        opencodeRevision: process.env.FABI_RUNTIME_OPENCODE_COMMIT?.trim() || QUALIFIED_OPENCODE_COMMIT,
+        parallaxRevision: process.env.FABI_RUNTIME_PARALLAX_COMMIT?.trim() || QUALIFIED_PARALLAX_COMMIT
+    };
+}
+
+/** Parse le MANIFEST produit par scripts/release-build.sh, en refusant les doublons. */
+export function parseRuntimeManifest(raw: string): RuntimeManifest {
+    const lines = raw.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const header = /^fabi\s+(\S+)$/.exec(lines.shift() ?? '');
+    if (!header) {
+        throw new Error('MANIFEST runtime invalide : en-tête fabi absent');
+    }
+    const values: Record<string, string> = {};
+    for (const line of lines) {
+        const entry = /^([a-z][a-z0-9_]*)=(.*)$/.exec(line);
+        if (!entry || !entry[2]) {
+            throw new Error(`MANIFEST runtime invalide : entrée ${JSON.stringify(line)}`);
+        }
+        if (Object.prototype.hasOwnProperty.call(values, entry[1])) {
+            throw new Error(`MANIFEST runtime invalide : clé dupliquée ${entry[1]}`);
+        }
+        values[entry[1]] = entry[2];
+    }
+    return { version: header[1], values };
+}
+
+/** Vérifie qu'un manifeste correspond exactement au runtime qualifié attendu. */
+export function validateRuntimeManifest(raw: string, expected: RuntimeContract): RuntimeManifest {
+    const manifest = parseRuntimeManifest(raw);
+    const mismatches: string[] = [];
+    const check = (label: string, actual: string | undefined, wanted: string | undefined) => {
+        if (wanted !== undefined && actual !== wanted) {
+            mismatches.push(`${label}=${actual ?? '<absent>'} (attendu ${wanted})`);
+        }
+    };
+    check('version', manifest.version, expected.version);
+    check('opencode_revision', manifest.values.opencode_revision, expected.opencodeRevision);
+    check('parallax_revision', manifest.values.parallax_revision, expected.parallaxRevision);
+    check('target', manifest.values.target, expected.target);
+    check('accel', manifest.values.accel, expected.accel);
+    if (mismatches.length > 0) {
+        throw new Error(`runtime non qualifié : ${mismatches.join(', ')}`);
+    }
+    return manifest;
+}
+
+function runtimeManifestIsQualified(root: string): boolean {
+    try {
+        const manifest = readFileSync(join(root, 'MANIFEST'), 'utf8');
+        validateRuntimeManifest(manifest, configuredRuntimeContract());
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function hasNvidia(): boolean {
@@ -97,6 +181,8 @@ export function parallaxBinaryIn(root: string): string | undefined {
 
 /** Localise parallax sans rien télécharger : override env > bundlé > install partagé. */
 export function findParallax(): { binary: string; location: 'bundled' | 'cached' } | undefined {
+    // Un chemin explicite est un override développeur : il peut pointer vers un
+    // checkout local sans MANIFEST de release.
     if (process.env.FABI_RUNTIME_DIR) {
         const bin = parallaxBinaryIn(process.env.FABI_RUNTIME_DIR);
         if (bin) {
@@ -105,35 +191,24 @@ export function findParallax(): { binary: string; location: 'bundled' | 'cached'
     }
     const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
     if (resourcesPath) {
-        const bin = parallaxBinaryIn(join(resourcesPath, 'runtime'));
-        if (bin) {
+        const root = join(resourcesPath, 'runtime');
+        const bin = parallaxBinaryIn(root);
+        if (bin && runtimeManifestIsQualified(root)) {
             return { binary: bin, location: 'bundled' };
         }
     }
-    const bin = parallaxBinaryIn(installRoot());
-    return bin ? { binary: bin, location: 'cached' } : undefined;
+    const root = installRoot();
+    const bin = parallaxBinaryIn(root);
+    return bin && runtimeManifestIsQualified(root) ? { binary: bin, location: 'cached' } : undefined;
 }
 
 // ---------------------------------------------------------------------------
 // Résolution de version + téléchargement
 // ---------------------------------------------------------------------------
 
-/** Résout le tag de release : FABI_RUNTIME_VERSION si défini, sinon `latest`. */
+/** Résout le tag immuable du produit (ou sa surcharge labo explicite). */
 export async function resolveVersion(): Promise<string> {
-    if (process.env.FABI_RUNTIME_VERSION) {
-        return process.env.FABI_RUNTIME_VERSION;
-    }
-    const res = await fetch(`https://api.github.com/repos/${FABI_REPO}/releases/latest`, {
-        headers: { Accept: 'application/vnd.github+json' }
-    });
-    if (!res.ok) {
-        throw new Error(`résolution de la dernière version échouée (${res.status})`);
-    }
-    const json = await res.json() as { tag_name?: string };
-    if (!json.tag_name) {
-        throw new Error('aucune release publiée sur ' + FABI_REPO);
-    }
-    return json.tag_name;
+    return configuredRuntimeVersion();
 }
 
 /**
@@ -298,6 +373,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
     const tarballUrl = `${base}/${plat.artifact}`;
 
     const work = join(tmpdir(), `fabi-runtime-${process.pid}-${version}`);
+    const staging = root + '.staging-' + process.pid;
     rmSync(work, { recursive: true, force: true });
     mkdirSync(work, { recursive: true });
     const archive = join(work, plat.artifact);
@@ -330,48 +406,65 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
             });
         }
 
-        // 2. Vérif SHA-256 (best effort — on warn si absent).
+        // 2. Vérif SHA-256 obligatoire : une release sans somme n'est pas installable.
         onProgress({ phase: 'verify', percent: 100, message: 'vérification de l\'intégrité…' });
         const shaRes = await fetch(`${tarballUrl}.sha256`);
-        if (shaRes.ok) {
-            const expected = (await shaRes.text()).trim().split(/\s+/)[0]?.toLowerCase();
-            const actual = (await sha256File(archive)).toLowerCase();
-            if (expected && expected !== actual) {
-                throw new Error(`SHA256 incohérent — fichier corrompu ou altéré (attendu ${expected}, reçu ${actual})`);
-            }
+        if (!shaRes.ok) {
+            throw new Error(`somme SHA256 absente pour ${plat.artifact} (${shaRes.status})`);
+        }
+        const expectedSha = (await shaRes.text()).trim().split(/\s+/)[0]?.toLowerCase();
+        if (!expectedSha || !/^[0-9a-f]{64}$/.test(expectedSha)) {
+            throw new Error(`somme SHA256 invalide pour ${plat.artifact}`);
+        }
+        const actualSha = (await sha256File(archive)).toLowerCase();
+        if (expectedSha !== actualSha) {
+            throw new Error(`SHA256 incohérent — fichier corrompu ou altéré (attendu ${expectedSha}, reçu ${actualSha})`);
         }
 
         // 3. Extraction atomique : staging → rename.
         onProgress({ phase: 'extract', percent: 100, message: 'extraction…' });
-        const staging = root + '.staging-' + process.pid;
         rmSync(staging, { recursive: true, force: true });
         mkdirSync(staging, { recursive: true });
         await extractTarZst(archive, staging);
 
         const binName = osPlatform() === 'win32' ? join('bin', 'fabi.exe') : join('bin', 'fabi');
         if (!existsSync(join(staging, binName))) {
-            rmSync(staging, { recursive: true, force: true });
             throw new Error('binaire fabi absent après extraction — tarball invalide');
         }
+        const manifestPath = join(staging, 'MANIFEST');
+        if (!existsSync(manifestPath)) {
+            throw new Error('MANIFEST absent après extraction — tarball invalide');
+        }
+        validateRuntimeManifest(readFileSync(manifestPath, 'utf8'), {
+            ...configuredRuntimeContract(version),
+            target: `bun-${plat.os}-${plat.arch}`,
+            accel: plat.accel
+        });
         relocate(staging, root);
+        if (!parallaxBinaryIn(staging)) {
+            throw new Error('binaire parallax introuvable après extraction — layout inattendu');
+        }
 
         if (existsSync(root)) {
             const backup = root + '.backup-' + process.pid;
             rmSync(backup, { recursive: true, force: true });
             renameSync(root, backup);
-            renameSync(staging, root);
+            try {
+                renameSync(staging, root);
+            } catch (error) {
+                renameSync(backup, root);
+                throw error;
+            }
             rmSync(backup, { recursive: true, force: true });
         } else {
             renameSync(staging, root);
         }
 
-        const bin = parallaxBinaryIn(root);
-        if (!bin) {
-            throw new Error('binaire parallax introuvable après install — layout inattendu');
-        }
+        const bin = parallaxBinaryIn(root)!;
         onProgress({ phase: 'done', percent: 100, message: 'moteur prêt' });
         return bin;
     } finally {
+        rmSync(staging, { recursive: true, force: true });
         rmSync(work, { recursive: true, force: true });
     }
 }
