@@ -1197,3 +1197,125 @@ References primaires relues pour cette decision :
   n'est pas qualifie ;
 - aucun secret ajoute a Git. Les identifiants exposes en conversation doivent etre revoques
   avant production.
+
+## Qualification des routes directes et annulation HTTP du 19 juillet 2026
+
+Cette section devient la source de verite la plus recente. Le laboratoire Mac mini M4 +
+Windows RTX 4080 SUPER tourne desormais sur le meme commit moteur, avec une route DP
+cyclique explicitement qualifiee comme directe dans les deux sens. Le chemin reste un test
+Tailscale : il ne qualifie pas encore Internet entre deux NAT sans tailnet.
+
+### Etat Git et validation locale
+
+Moteur `Noagiannone03/swarm-engine`, branche `codex/dynamic-dp-product` :
+
+- `49adefb` — `fix(backend): cancel disconnected blocking requests` ;
+- `d84eff7` — `fix(routing): require direct cyclic worker paths` ;
+- SHA complet deploye : `d84eff70142eff1281508a4a96eb42161ef79ab0`.
+
+Le premier commit observe la socket HTTP Starlette pendant une requete non streamee,
+annule le RPC Lattica aval quand le client part et libere la reservation dans le meme chemin
+`finally`. Le second commit ne remplace pas Lattica : il utilise une methode RPC de sante
+enregistree sur le handler Parallax existant. Le client Lattica officiel refuse deja une
+connexion uniquement relayee ; le worker publie donc seulement les pairs atteignables par
+un RPC direct.
+
+Le scheduler renvoie a chaque worker tous les candidats pouvant suivre sa plage allouee.
+Le routeur DP conserve l'identite du head, verifie chaque transition puis le retour du tail
+vers le head, et choisit un autre cycle complet si la redondance le permet. Une liste
+`direct_peer_ids=[]` publiee par un worker courant ferme la route ; `None` conserve seulement
+la compatibilite de protocole avec un worker ancien. Une reallocation invalide la telemetrie
+directe precedente jusqu'au prochain probe. Le meme controle cyclique est applique aux
+pipelines RR/randomises via l'estimation de latence commune.
+
+Validation locale :
+
+```text
+tests scheduler + backend/RPC/P2P concernes : 115 passed, 1 warning
+suite non materielle disponible : 220 passed, 15 skipped, 1 warning
+Ruff cible (E741 historiques ignores), Ruff format et git diff --check : OK
+```
+
+La collecte vraiment complete reste impossible dans le venv du MacBook : quatorze fichiers
+materiels importent `mlx` ou `mlx_lm`, absents de cet environnement. Les executors MLX reels
+ont ete valides sur le Mac mini ; ne pas transformer cette limite de collecte en faux succes.
+
+### Cause du defaut relay-only et solution de laboratoire
+
+La version Lattica officielle disponible reste `1.0.21`. Son garde-fou RPC exige une
+connexion directe. Lorsqu'un pair est deja present seulement par `p2p-circuit`, la logique
+de reconnexion ne compose pas automatiquement les `listen_addresses` identifies et le
+forward echoue avec `Only relayed connection available for peer`.
+
+Le correctif retenu ne supprime pas ce garde-fou et ne transporte pas les activations via
+un relay public. Les launchers de laboratoire donnent aux primitives officielles
+`--initial-peers` les multiadresses TCP/QUIC Tailscale du scheduler et de l'autre worker.
+Windows a alors etabli vers le Mac :
+
+```text
+via /ip4/100.82.190.118/udp/19080/quic-v1/... is_direct: true
+```
+
+Le Mac compose reciproquement le PC. Ces adresses sont propres au laboratoire ; le produit
+final devra obtenir les adresses candidates par discovery/identify et qualifier le hole
+punching public, sans pinner des IP Tailscale.
+
+### Deploiement et preuves E2E
+
+Les trois composants chargent exactement `d84eff70142eff1281508a4a96eb42161ef79ab0` :
+
+- scheduler Qwen3-1.7B dans le conteneur VPS `parallax-scheduler` ; son label image et le
+  `git rev-parse` interne ont ete verifies ; les autres schedulers du VPS n'ont pas ete
+  modifies ;
+- Mac mini, checkout detached sous le runtime Fabi ;
+- PC Windows, checkout detached sous le runtime vLLM natif et tache planifiee
+  `FabiWorkerE2E`.
+
+Windows a volontairement rejoint avant le seul worker capable d'heberger le frontend. Le
+DP a automatiquement reconstruit Mac `[0,2)` puis Windows `[2,28)`, sans arguments de
+couches. `/cluster/status_json` a ensuite expose pour chacun :
+
+```text
+direct_link_telemetry_ready=true
+Mac direct_peer_ids=[Windows]
+Windows direct_peer_ids=[Mac]
+status=available, reserved_context_tokens=0
+```
+
+Resultats :
+
+- baseline reseau sur l'ancien SHA apres composition directe : sentinelle
+  `FABIDIRECT-7319`, HTTP 200 en 0,750 s ;
+- apres deploiement `d84eff7` : sentinelle `FABID84-8467`, HTTP 200 en 5,725 s a froid ;
+- qualification OpenCode : 12 220 tokens calibres en entree, 4 096 tokens de sortie
+  reserves, sentinelle `FABIOPENCODE-62219` correcte apres normalisation ; 8,285 s a froid
+  puis 0,890 s avec prefix cache ; l'usage runtime a compte 12 225 tokens de prompt ;
+- annulation non streamee : requete OpenCode a prefixe inedit, client coupe apres 1,001 s
+  (`curl` 28), log scheduler `Client disconnected before request ... completed`, puis trois
+  secondes plus tard zero token reserve sur les deux shards et cluster encore disponible.
+
+Un premier essai de sentinelle limite a 32 tokens avait termine proprement avec
+`finish_reason=length` pendant le raisonnement Qwen. Ce n'etait pas une panne de pipeline ;
+le test deterministe utilise desormais `/no_think` ou `chat_template_kwargs.enable_thinking=false`
+et compare le contenu apres normalisation des espaces.
+
+### Etat live et prochaine reprise
+
+Au moment de cette mise a jour, le scheduler de laboratoire et les deux workers sont actifs
+sur `d84eff7`. Les launchers distants ont des sauvegardes `pre-direct-20260719`; aucun secret
+n'a ete ajoute aux scripts ou a Git.
+
+Point lifecycle observe : `SIGINT` n'a pas arrete le groupe Mac dans la fenetre de 30 s,
+alors que `SIGTERM` a arrete le groupe entier sans processus restant. Reproduire avec logs
+avant de modifier le code ; ne pas ajouter un autre kill ad hoc.
+
+Ordre de reprise :
+
+1. tuer un shard pendant un prefill puis un decode, verifier erreur explicite, fencing,
+   liberation et reconstruction de la capacite ; aucune continuation exacte ne doit etre
+   pretendue sans replique et replay KV ;
+2. ajouter une troisieme machine/replique couvrant les memes couches et qualifier le DP
+   elastique, fairness puis le replay froid decrit dans `SWARM-FAILOVER-DESIGN.md` ;
+3. valider le parcours IDE/OpenCode complet sur ce SHA et mettre a jour les pins runtime ;
+4. seulement ensuite tester deux NAT distincts sans Tailscale, avec direct/hole-punch/relay
+   observables, puis construire les artefacts signes et checksums de release.
