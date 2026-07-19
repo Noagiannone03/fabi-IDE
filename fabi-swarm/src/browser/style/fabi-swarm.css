@@ -96,6 +96,7 @@
 
 .fabi-sel-bar-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fabi-sel-bar-sub { opacity: 0.5; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-sel-bar-sub.ready { color: var(--theia-testing-iconPassed, #3fb950); opacity: 0.9; }
 .fabi-sel-caret { font-size: 12px !important; opacity: 0.45; margin-left: auto; flex: 0 0 auto; }
 
 /* ============================================================
@@ -138,6 +139,7 @@
 .fabi-sel-bar-track { height: 6px; border-radius: 9999px; background: rgba(127, 127, 127, 0.18); overflow: hidden; }
 .fabi-sel-bar-fill { height: 100%; background: var(--theia-descriptionForeground, #888); border-radius: 9999px; transition: width 0.3s ease; }
 .fabi-sel-hint { font-size: 11px; opacity: 0.55; line-height: 1.4; }
+.fabi-sel-hint.error { color: var(--theia-errorForeground, #f85149); opacity: 0.95; }
 
 .fabi-sel-list { display: flex; flex-direction: column; gap: 3px; }
 .fabi-sel-row {

@@ -60,14 +60,15 @@ export class FabiRuntimeManager {
                 this.lastMessage = p.message;
                 onStatus?.(this.status());
             });
-            return this.status();
         } catch (e) {
             this.lastMessage = e instanceof Error ? e.message : String(e);
-            const s = this.status();
-            onStatus?.(s);
-            return s;
         } finally {
             this.downloading = false;
         }
+        // Snapshot terminal APRES `downloading=false`. Sans ce push, l'UI
+        // restait bloquée sur « Installation… » après succès comme après erreur.
+        const status = this.status();
+        onStatus?.(status);
+        return status;
     }
 }

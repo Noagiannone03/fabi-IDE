@@ -103,6 +103,7 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?:
     const connecting = !!active && !!connection && !connection.ready
         && connection.reason !== 'pick-model' && connection.reason !== 'worker-missing-binary';
     const barLabel = active ? (active.model.split('/').pop() ?? active.model) : 'Choisir un modèle';
+    const barStatus = connection?.ready ? 'Prêt' : connecting ? connection?.headline : undefined;
 
     const renderList = () => {
         const installed = runtime?.installed ?? false;
@@ -121,6 +122,9 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?:
                         </button>
                         {runtime.downloading && (
                             <div className="fabi-sel-bar-track"><div className="fabi-sel-bar-fill" style={{ width: `${runtime.progress ?? 0}%` }} /></div>
+                        )}
+                        {runtime.message && !runtime.downloading && (
+                            <span className="fabi-sel-hint error" role="alert">{runtime.message}</span>
                         )}
                         <span className="fabi-sel-hint">{runtime.platform} · une fois, téléchargé par l’app</span>
                     </div>
@@ -204,7 +208,9 @@ export const FabiSwarmSelector: React.FC<{ frontend: FabiSwarmFrontend; locked?:
 
             <button className="fabi-sel-bar" title="Modèle du swarm Fabi" onClick={toggle}>
                 <span className="fabi-sel-bar-label">{barLabel}</span>
-                {connecting && connection && <span className="fabi-sel-bar-sub">{connection.headline}</span>}
+                {barStatus && (
+                    <span className={`fabi-sel-bar-sub${connection?.ready ? ' ready' : ''}`}>{barStatus}</span>
+                )}
                 <span className={`codicon ${open ? 'codicon-chevron-down' : 'codicon-chevron-up'} fabi-sel-caret`} />
             </button>
         </div>
