@@ -94,6 +94,30 @@ export function resolveConfiguredWorkerLimits(
     };
 }
 
+/** RAM hôte conservée pour l'OS et les applications, avant mesure live par le moteur. */
+export function resolveHostSystemReserveGb(ramGb: number): number {
+    return Math.min(12, Math.max(6, Math.ceil(Math.max(0, ramGb) * 0.25)));
+}
+
+/** VRAM dédiée conservée pour l'affichage, le driver et les autres applications GPU. */
+export function resolveCudaSystemReserveGb(vramGb: number): number {
+    return Math.round(Math.max(0, vramGb)) <= 12 ? 2 : 1.5;
+}
+
+/** Politique pure et commune à l'IDE et au CLI ; les overrides restent prioritaires. */
+export function resolveMemoryReserveEnv(hw: HardwareProfile): Record<string, string> {
+    const result = {
+        PARALLAX_SYSTEM_RESERVE_GB: String(resolveHostSystemReserveGb(hw.ramGb))
+    };
+    if (hw.accelerator === 'cuda' && hw.vramGb !== undefined) {
+        return {
+            ...result,
+            PARALLAX_CUDA_SYSTEM_RESERVE_GB: String(resolveCudaSystemReserveGb(hw.vramGb))
+        };
+    }
+    return result;
+}
+
 export function prefixCacheEnabled(): boolean {
     const raw = process.env.FABI_PREFIX_CACHE?.trim().toLowerCase();
     if (raw === undefined || raw === '') {
@@ -122,12 +146,8 @@ export function buildWorkerEnv(): NodeJS.ProcessEnv {
     );
     // Stable peer identity restores the shard; this epoch fences an old process.
     env.FABI_WORKER_SESSION_ID = randomUUID();
-    if (hw.accelerator === 'apple-silicon' && hw.ramGb < 64) {
-        setIfUnset('PARALLAX_SYSTEM_RESERVE_GB', hw.ramGb <= 24 ? '4' : '6');
-        return env;
-    }
-    if (hw.accelerator === 'cuda' && hw.vramGb !== undefined && Math.round(hw.vramGb) < 24) {
-        setIfUnset('PARALLAX_CUDA_SYSTEM_RESERVE_GB', Math.round(hw.vramGb) <= 12 ? '2' : '1.5');
+    for (const [key, value] of Object.entries(resolveMemoryReserveEnv(hw))) {
+        setIfUnset(key, value);
     }
     return env;
 }

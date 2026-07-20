@@ -41,6 +41,24 @@ export interface ServerOpts {
 }
 
 /**
+ * Arguments du sidecar OpenCode possédé par l'IDE.
+ *
+ * Le backend Theia possède déjà l'unique worker Parallax de cette machine.
+ * Sans `--no-parallax`, le middleware global du binaire Fabi démarre un second
+ * worker pour la commande `serve` et son nettoyage d'orphelins termine celui
+ * de l'IDE. Le sidecar est uniquement le serveur HTTP OpenCode : il consomme le
+ * provider swarm configuré par l'IDE et ne possède aucun worker GPU.
+ */
+export function buildFabiCodeServerArgs(hostname: string, port: number): string[] {
+    return [
+        'serve',
+        '--no-parallax',
+        `--hostname=${hostname}`,
+        `--port=${port}`
+    ];
+}
+
+/**
  * Spawn `opencode serve`. Re-spawn auto après un crash inattendu (3 s). `stop()`
  * annule le restart et tue proprement le groupe de process.
  */
@@ -52,11 +70,7 @@ export function startServer(opts: ServerOpts): ServerHandle {
     let restartTimer: ReturnType<typeof setTimeout> | undefined;
 
     const startChild = (): void => {
-        const args = [
-            'serve',
-            `--hostname=${opts.hostname}`,
-            `--port=${opts.port}`
-        ];
+        const args = buildFabiCodeServerArgs(opts.hostname, opts.port);
         const env: NodeJS.ProcessEnv = {
             ...process.env,
             OPENCODE_CONFIG_CONTENT: JSON.stringify(opts.config),

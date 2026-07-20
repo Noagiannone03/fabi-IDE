@@ -1479,3 +1479,352 @@ l'avoir mis a niveau. La release `rc24` est la voie produit pour aligner les deu
    credentials avant toute ouverture publique ;
 7. qualifier charge concurrente, fairness, abus, observabilite, rollback et reprise scheduler
    avant de promouvoir une RC en release stable.
+
+## Runtime portable, E2E IDE et pression memoire du 20 juillet 2026
+
+Cette section est la source de verite la plus recente. Elle complete et remplace les SHA,
+l'etat release et l'ordre de reprise de la section du 19 juillet en cas de contradiction.
+La release candidate `rc28` n'est pas encore taguee : ne pas installer ni annoncer comme
+qualifie un artefact local tant que les validations Mac/Windows de cette section ne sont pas
+terminees.
+
+### Revisions poussees et etat release
+
+- `swarm-engine`, `codex/dynamic-dp-product` :
+  - `7ef8311f70cf28a0ed5f9749af631dd1c503130c` — frontend Rust macOS portable,
+    PCRE2 statique et audit de relocalisation ;
+  - `918f9f65f01e6b91103835de5a051177a989a5b9` — budget MLX derive de la RAM
+    disponible, capacite scheduler bornee et garde de pression a hysteresis ;
+- `fabi-cli`, `dev` :
+  - `cb81775c63fb1eb5194b90624d2a889b5b37f293` — pin du frontend portable ;
+  - `af924cb5d1cf0a772dc87aef62a2e7653ac231eb` — reserve Apple Silicon produit
+    et pin du moteur `918f9f6` ;
+- `fabi` runtime/registry, `main` :
+  - `5138266` — lock `rc28` sur les deux revisions ci-dessus ;
+- `fabi-IDE`, `main` : travail local encore non commite. Il contient le manifeste strict et
+  relocalisable `rc27`, ainsi que la correction qui lance le sidecar OpenCode avec
+  `serve --no-parallax`. Les pins IDE doivent passer a `rc28` seulement apres publication du
+  vrai tag et validation des assets.
+
+`rc27` n'est pas qualifiable sur Mac malgre sa CI : le binaire Rust embarque reference un
+chemin Homebrew absolu vers PCRE2. Le correctif `7ef8311` lie PCRE2 statiquement et un build
+macOS local complet ne depend plus que des frameworks systeme et de `/usr/lib`. Un premier
+archive local `rc28` construit avant le correctif memoire ne doit pas etre reutilise ; il faut
+reconstruire depuis `5138266`.
+
+### E2E IDE deja prouve avant la correction memoire
+
+Depuis une application Theia packagee et un runtime local complet, les parcours suivants ont
+ete observes reellement contre le scheduler de laboratoire :
+
+- gate de contribution verrouille puis champ prompt debloque apres reconnaissance du worker ;
+- reponse OpenCode reelle en streaming : premier delta DOM a 1,332 s, fin a 3,167 s et douze
+  mises a jour visibles ;
+- abort utilisateur autour de 1,5 s ;
+- outil `pwd`, demande de permission, autorisation puis resultat ;
+- worker reste vivant apres ces operations.
+
+Cause d'un conflit lifecycle corrigee dans l'IDE : le sidecar `fabi serve` demarrait son propre
+worker Parallax, puis son nettoyage d'orphelins terminait le worker possede par Theia. Le
+sidecar est maintenant HTTP/OpenCode uniquement avec `--no-parallax`. Les 18 tests IDE cibles,
+le build de l'extension et le packaging ont passe sur le clone local complet.
+
+### Cause racine des gels du Mac et contrat memoire retenu
+
+Le gel signale n'etait pas subjectif. Le Mac local possede 16 Gio de memoire unifiee. Le log
+worker a charge environ 3,017 Gio de poids, puis l'ancien calcul a prealloue environ 7,06 Gio de
+KV pour 26 couches et 71 136 tokens. Les unified logs macOS montrent ensuite purge des caches,
+pression memoire `critical` et notifications critiques a Zoom, Fusion et WebKit. L'ancienne
+variable `PARALLAX_SYSTEM_RESERVE_GB=4` du CLI etait morte : aucun code moteur ne la lisait.
+
+Le nouveau contrat ne pretend pas predire la RAM d'une application future : cette quantite
+n'existe pas. Il combine des mesures et limites maintenues :
+
+1. avant `node_join`, `psutil.virtual_memory().available` mesure la RAM que l'OS peut fournir
+   sans swap ; le worker retranche une marge utilisateur, borne par le working set recommande
+   par MLX, et publie le resultat distinctement dans `usable_memory_bytes` ;
+2. le scheduler conserve `memory_gb` pour le diagnostic mais calcule poids et KV depuis ce
+   plafond utilisable ; il ne repartit donc plus les 16 Gio physiques ;
+3. l'executor applique les API MLX officielles `set_memory_limit`, `set_wired_limit` et
+   `set_cache_limit` ; le KV fixe est calcule depuis le solde encore allouable, pas depuis le
+   working set complet ; le plafond d'une generation ne peut jamais grandir en cours de route ;
+4. la pression est echantillonnee chaque seconde mais les actions sont lentes : trois mesures
+   basses mettent uniquement l'admission en pause, quinze mesures saines reprennent le meme
+   contrat sans reallocation ; deux mesures critiques rendent la generation a sens unique,
+   drainent les requetes pendant au plus 30 s puis quittent proprement. Le superviseur CLI
+   redemarre apres 30 s et le prochain join recalcule une enveloppe plus petite ;
+5. aucun agrandissement automatique ni changement de couches n'a lieu sur un heartbeat. Une
+   croissance future exigera une longue fenetre stable ou un changement explicite de modele.
+
+Sur le Mac local au moment du preflight, la mesure etait : 16,0 Gio physiques, 7,954 Gio
+disponibles sans swap, working set MLX 11,840 Gio, reserve produit 6,0 Gio, donc seulement
+1,954 Gio annonces au scheduler. Cette valeur est un snapshot et doit etre remesuree a chaque
+join ; elle prouve que le worker n'annonce plus arbitrairement 16 Gio.
+
+Le choix reprend les implementations primaires existantes :
+
+- [psutil `virtual_memory`](https://psutil.readthedocs.io/latest/api.html#psutil.virtual_memory)
+  definit `available` comme la memoire attribuable sans swap et recommande ce champ ;
+- [Exo profile la RAM disponible avec psutil](https://github.com/exo-explore/exo/blob/main/src/exo/shared/types/profiling.py)
+  puis [valide le placement contre cette RAM](https://github.com/exo-explore/exo/blob/main/src/exo/master/placement_utils.py) ;
+- [Apple `os_proc_available_memory`](https://developer.apple.com/documentation/os/os_proc_available_memory)
+  est seulement consultatif, propre au processus, peut retourner zero hors app et Apple dit de
+  ne pas l'utiliser pour maximiser la consommation ; ce n'est donc pas un remplacement de la
+  mesure systeme du pool unifie ;
+- [Apple expose les evenements natifs de pression](https://developer.apple.com/documentation/dispatch/dispatch_source_type_memorypressure),
+  mais aucun binding Python maintenu et deja present dans le runtime n'a ete trouve ; ajouter
+  PyObjC ou un daemon macOS fragile uniquement pour cette source n'est pas retenu ;
+- [MLX-LM borne ses caches en octets](https://github.com/ml-explore/mlx-lm/pull/906) apres
+  [un cas de kernel panic par croissance non bornee](https://github.com/ml-explore/mlx-lm/issues/883),
+  et propose aussi un KV tournant `max_kv_size` ; Parallax garde son cache page pour le routing
+  contexte mais le borne maintenant par la meme enveloppe physique.
+
+Validation moteur : Ruff format/check, `git diff --check` et suite complete : 352 passes,
+6 skips, un warning deprecation Starlette. Validation CLI : 31 tests worker/installer, typecheck
+du package puis typecheck Turbo des quatre packages, tous verts.
+
+### Ordre de reprise actualise
+
+1. reconstruire le runtime macOS `rc28` depuis le lock `5138266`, verifier manifeste,
+   dependances natives et preflight memoire, puis faire un join controle sans pression critique ;
+2. finir/verifier le job Windows CUDA, publier `rc28` seulement si tous les assets, checksums et
+   attestations sont coherents, puis installer sur le Mac mini et le PC RTX ;
+3. confirmer les SHA runtime des deux workers et refaire le DP automatique, l'E2E IDE complet
+   et le gros contexte 12 220 + 4 096 avec TTFT, debit, RAM/swap, KV et refus trop grand ;
+4. reprendre ensuite la tolerance aux pannes, les NAT reels et le device pairing selon l'ordre
+   de la section precedente.
+
+### Generalisation Windows/Linux et reconstruction rc28
+
+Le contrat memoire n'est plus limite a MLX/macOS. Les revisions poussees les plus recentes
+remplacent les pins ci-dessus :
+
+- `swarm-engine` `15c3444538c8bf09ac465a57f3281282e4fa9dc0` —
+  `feat(runtime): enforce cross-platform memory envelopes` ;
+- `fabi-cli` `ea98e6ff8049c8a3191b5f009d808397fa1255eb` —
+  `feat(swarm): apply memory safety on every platform` ;
+- `fabi` `cbd1571` — lock release sur ces deux revisions.
+
+Le design commun surveille maintenant deux ressources distinctes :
+
+- RAM hote sur macOS, Windows et Linux avec `psutil.virtual_memory().available` ;
+- memoire unifiee MLX sur Apple Silicon, avec plafonds MLX appliques au processus ;
+- VRAM globale libre de chaque GPU CUDA visible avec `torch.cuda.mem_get_info`, sur Windows
+  natif comme Linux. La capacite CUDA annoncee au scheduler est la somme des enveloppes
+  `free - reserve` des GPU visibles, jamais la VRAM totale nominale ; vLLM retranche la meme
+  reserve avant ses caches et workspace ; chaque GPU a aussi son propre garde runtime.
+
+L'etat le plus severe entre RAM hote et tous les GPU decide l'admission. Une erreur ponctuelle
+de capteur conserve le dernier etat stable au lieu de tuer le superviseur. Le mecanisme
+d'hysteresis reste identique sur toutes les plateformes et ne provoque aucune reallocation de
+couches. Le CLI injecte desormais la reserve RAM hote sur tous les OS et la reserve VRAM sur
+tous les profils CUDA, en preservant les overrides operateur. Le scope produit qualifie reste
+Apple Silicon MLX et NVIDIA CUDA Windows/Linux ; un nœud CPU peut consommer mais n'est pas
+presente comme worker d'inference qualifie.
+
+Ce choix suit les compteurs globaux du runtime plutot que l'allocateur PyTorch seul :
+
+- [PyTorch documente `mem_get_info` comme le compteur global libre/total du device](https://docs.pytorch.org/docs/stable/generated/torch.cuda.mem_get_info.html) ;
+- [les snapshots PyTorch ne voient pas les allocations CUDA externes comme NCCL](https://docs.pytorch.org/docs/stable/torch_cuda_memory.html) ;
+- [SGLang calcule son allocation statique depuis la memoire encore disponible](https://github.com/sgl-project/sglang/issues/3265)
+  et recommande de garder de la place pour activations et graphes CUDA ; Parallax conserve
+  donc son `mem_fraction_static` au lieu d'empiler un second allocateur maison.
+
+Validation moteur apres generalisation : 358 tests passes, 6 skips, un warning Starlette ;
+63 tests memoire/lancement/scheduler/vLLM cibles passent ; Ruff sur tous les fichiers touches,
+compileall et `git diff --check` passent. Validation CLI : 66 tests du module swarm, typecheck
+du package et typecheck Turbo des quatre packages passent.
+
+Une archive macOS `v2.7.0-rc28` a ete reconstruite localement depuis exactement ces revisions :
+
+- binaire Fabi/OpenCode `1.15.0` ;
+- manifeste `opencode_revision=ea98e6ff...`, `parallax_revision=15c3444...` ;
+- checksum zstd valide, archive 134 Mio environ ;
+- frontend `vllm-rs` sans dependance Homebrew : seulement frameworks macOS et `/usr/lib` dans
+  `otool -L` ;
+- apres application du manifeste de relocalisation comme le fait `install.sh`, le Python
+  embarque importe Parallax et MLX depuis un dossier temporaire deplace, et `parallax --help`
+  fonctionne ; preflight observe durant ce test : environ 7,066 Gio disponibles, 6 Gio de
+  reserve, donc seulement 1,066 Gio de limite processus avant chargement.
+
+L'appel direct au Python d'une archive brute avant relocalisation echoue volontairement car
+les chemins contiennent encore `__FABI_INSTALL_ROOT__`; ce n'est pas un runtime installe.
+La validation correcte doit toujours appliquer `relocation-manifest.txt`, comme les installateurs
+POSIX et PowerShell. `rc28` n'est toujours pas qualifie a cet instant : il reste a pousser le
+tag, attendre les six builds CI — surtout Windows CUDA — puis installer les assets publies sur
+le Mac mini et le PC RTX. Ne pas reutiliser l'archive locale comme preuve Windows.
+
+### Publication rc28 et validation Mac mini
+
+Cette sous-section est plus recente que le statut provisoire ci-dessus. Le tag
+`v2.7.0-rc28` pointe exactement sur `cbd15719f75f0e3d1a4d2f977992d4542e82f592` et a ete
+pousse. Le workflow GitHub Actions `29734627565` est termine avec succes sur les six cibles :
+Windows x64 CUDA, Linux x64 CUDA, Linux x64 CPU, Linux arm64 CPU, macOS arm64 MLX et macOS
+x64 CPU. Les assets, fichiers SHA256 et attestations ont ete publies. L'archive Windows CUDA
+est scindee en deux parties, d'environ 1,76 Gio et 190 Mio. L'archive CI macOS arm64 a passe
+localement son SHA256 et `gh attestation verify` contre le depot de release.
+
+Le Mac mini a installe l'asset public rc28 par `install.sh`, pas l'archive locale. Le backup
+automatique est `~/.local/share/fabi.backup-1784543769`. Le manifeste installe est exact :
+
+- `fabi v2.7.0-rc28`, cible `bun-darwin-arm64`, acceleration `mlx` ;
+- OpenCode `ea98e6ff8049c8a3191b5f009d808397fa1255eb` ;
+- Parallax `15c3444538c8bf09ac465a57f3281282e4fa9dc0` ;
+- les 51 fichiers declares par `runtime/relocation-manifest.txt` existent et aucun ne contient
+  encore `__FABI_INSTALL_ROOT__` ; le Python embarque importe Parallax, MLX et psutil depuis
+  l'installation deplacee, et `parallax --help` fonctionne.
+
+Au join controle, le Mac a mesure environ 10,28 Gio disponibles, reserve 6 Gio au systeme et
+a annonce `usable_memory_bytes=4599873536` au scheduler. Le scheduler a bien recu aussi
+`system_available_memory_bytes` et `system_reserve_bytes`. `memory_pressure -Q` indiquait 87 %
+de memoire libre : aucune pression ni gel n'a ete observe. Ce join n'est pas une preuve E2E :
+le scheduler est reste bloque au bootstrap DP avec le worker Windows encore sur l'ancien
+runtime, puis le Mac a quitte au timeout d'allocation de cinq minutes. Il faut refaire le join
+apres migration Windows et recreation du scheduler pour effacer ce melange de versions et le
+noeud Mac stale.
+
+Fabi IDE pointe maintenant localement sur rc28 et les deux SHA exacts. Les 18 tests de
+l'extension passent, son build TypeScript passe, le bundle Electron complet passe avec zero
+erreur et `electron-builder --dir` produit l'application macOS arm64. Cette application de labo
+n'est pas signee, faute de certificat Developer ID ; ne pas la presenter comme un paquet de
+distribution notarise.
+
+La migration Windows rc28 est en cours depuis l'asset public. Avant installation, la tache
+`FabiWorkerE2E` a ete arretee et seuls ses quatre processus Python identifies ont ete termines ;
+la VRAM est passee de 2 890 Mio libres / 13 158 Mio utilises a 15 989 Mio libres / 59 Mio
+utilises. Ne pas declarer le PC qualifie avant la fin de l'installation, la verification du
+manifeste, le preflight CUDA et un nouveau join homogene.
+
+## Qualification inference Windows et gros contexte du 20 juillet 2026
+
+Cette section est la source de verite la plus recente. `rc29` est publiee comme tag mais reste
+une candidate en cours de build tant que la matrice CI et l'installation des assets publics sur
+les deux workers ne sont pas terminees. Le laboratoire decrit ci-dessous prouve le correctif
+source applique au runtime Windows `rc28`; il ne doit pas etre presente comme une installation
+publique homogene de `rc29`.
+
+### Causes racines trouvees apres l'installation rc28
+
+Le blocage DP initial n'etait pas un calcul lent. Avec `param_mem_ratio=0.05`, le Mac pouvait
+annoncer deux couches brutes mais une capacite negative pour la tete apres poids d'embedding.
+L'allocateur entrait dans le water-fill puis levait une exception que le join synchrone rendait
+semblable a un gel. Le moteur valide maintenant la capacite endpoint avant bootstrap, rollback
+les mutations d'une allocation refusee et laisse les workers reessayables. Avec le ratio produit
+`0.65` et la meme enveloppe memoire live, le DP construit Mac `[0,4)` puis RTX `[4,28)` sans
+redonner acces aux 16 Gio physiques ni contourner la reserve OS.
+
+Un redemarrage scheduler a revele un second defaut : le premier heartbeat recreait un worker
+avec des capacites partielles, puis le vrai `node_join` etait traite comme idempotent et ignorait
+notamment `supports_frontend`. La re-inscription rafraichit desormais uniquement les champs
+possedes par le worker tout en preservant couches, reservations, telemetrie KV et etat runtime
+possedes par le scheduler.
+
+Le premier prompt `rc28` atteignait bien le Mac, transferait les activations au RTX puis
+retournait HTTP 500. Le log par processus Windows a donne la trace exacte :
+
+```text
+TypeError: Request.__init__() got an unexpected keyword argument 'eos_token_id'
+```
+
+Le couple historiquement valide dans le labo etait Parallax avec le bundle natif Windows
+`aivrar/vllm-windows-build` 0.14.2, installe dans `runtime-v014`. La release publique native
+utilise le wheel SystemPanic 0.16 pour CPython 3.12. Ce fork a deja adopte le contrat vLLM
+suivant : `Request` ne prend plus `eos_token_id` et le stocke dans `SamplingParams`. vLLM
+officiel 0.16 exige encore l'argument sur `Request`. Les tests Linux officiels ne pouvaient donc
+pas detecter cette divergence Windows.
+
+L'adaptateur inspecte maintenant explicitement la signature : ancien contrat, EOS transmis au
+constructeur `Request`; nouveau contrat, EOS applique a `SamplingParams` par son API de
+generation. Aucun `TypeError` large n'est intercepte, afin de ne pas masquer une exception levee
+dans vLLM. Les deux contrats et le cas inconnu sont testes. Le build Windows construit desormais
+une vraie `Request` en smoke hardware-free, importe toute la chaine executor, installe
+explicitement `llguidance>=1.3,<1.4` et `xgrammar==0.1.29` que les marqueurs `x86_64` de vLLM
+omettent sous `AMD64`, puis execute `pip check`.
+
+Sources primaires relues :
+
+- [vLLM officiel 0.16, contrat Request](https://github.com/vllm-project/vllm/blob/v0.16.0/vllm/v1/request.py) ;
+- [fork SystemPanic 0.16, contrat Request](https://github.com/SystemPanic/vllm-windows/blob/v0.16.0/vllm/v1/request.py) ;
+- [fork SystemPanic 0.16, SamplingParams](https://github.com/SystemPanic/vllm-windows/blob/v0.16.0/vllm/sampling_params.py) ;
+- [logging vLLM configurable](https://docs.vllm.ai/en/v0.13.0/examples/others/logging_configuration/) ;
+- [Python, logs multi-process](https://docs.python.org/3/howto/logging-cookbook.html#logging-to-a-single-file-from-multiple-processes).
+
+### Revisions et validations source
+
+Moteur `codex/dynamic-dp-product`, tous pousses :
+
+- `451a05d1449f1b13b669f2ae0d15bc8e404b9ec7` — validation de la memoire endpoint DP ;
+- `057e15e2e76b30729ce2d963492d3ee86b43064d` — contrat protobuf compatible vLLM 0.16 ;
+- `84cda9c4c8e2ea50e368ba1158f42b6628f044dd` — rejoin complet apres restart scheduler,
+  logs rotatifs opt-in par session/PID et conservation du logging Parallax dans les enfants ;
+- `c14c99759cc5b3b6e6cd6e11d74213309e7b7456` — compatibilite des deux API `Request` vLLM.
+
+Suite moteur finale : 370 tests passes, 6 skips, un warning Starlette preexistant ; Ruff check,
+Ruff format et `git diff --check` passent. Le scheduler de labo charge l'image construite depuis
+`84cda9c` avec label OCI et checkout interne verifies. Le PC `rc28` charge temporairement les
+deux fichiers adaptateur de `c14c997` pour la preuve materielle ; le Mac reste sur l'asset public
+`rc28`. Cette heterogeneite source est volontairement documentee et sera supprimee par
+l'installation publique `rc29`.
+
+Runtime/registry `main` :
+
+- `27a66b3fb0ebd3539a0225adda0f4566b537c06d` — pin moteur `c14c997`, dependances Windows et
+  smoke de construction `Request` ;
+- tag annote `v2.7.0-rc29` pousse sur ce commit ;
+- workflow `29746962176` : termine `success` en 41 min 49 s, six jobs verts plus la mise a jour
+  `install.sh`. Le job critique `Build windows-x64-cuda` (`88367243626`) a conclu `success` a
+  14:17:53 UTC. Les assets sont publies ; noter que le tarball Windows est livre en deux parties
+  `fabi-windows-x64-cuda.tar.zst.partaa` / `.partab`, ce que l'installeur doit recoller.
+
+Ne pas annoncer `rc29` qualifiee pour autant. La CI verte ne couvre que le premier critere. Il
+reste : installation publique sur Windows, verification des manifestes relocalises cote Windows,
+et rejeu prompt + SSE sur un couple 100 % public. Cote macOS ces preuves sont faites — asset
+public installe, SHA256 verifie, 51 fichiers relocalises, non-stream 200 en 1,666 s, SSE TTFT
+0,845 s / fin 2,458 s / 18 chunks / sentinelle exacte. Le PC reste sur le hotpatch `rc28` tant que
+l'installation publique Windows n'est pas faite, donc l'heterogeneite source documentee plus haut
+n'est pas encore levee.
+
+### Preuves E2E du laboratoire
+
+Apres arret des deux workers, redemarrage du seul scheduler cible, puis demarrage Mac et Windows,
+le DP a reconstruit automatiquement Mac `[0,4)` vers RTX `[4,28)`. Les liens directs Tailscale
+sont reciproques, les deux workers sont `available`, contexte 32 768 et reservations nulles.
+
+- a froid apres correction Windows : HTTP 200 en 6,570 s ; la limite 32 tokens a termine dans
+  le raisonnement Qwen, comportement attendu et non une panne ;
+- non-stream `/no_think` : sentinelle `FABI-C14C997-WARM-OK` exacte en 1,246 s ;
+- SSE : TTFT 0,643 s, fin 2,359 s, 17 chunks, sentinelle exacte et `[DONE]` ;
+- redemarrage isole du worker RTX, rejoin et probes directs : sentinelle exacte en 1,552 s sans
+  redemarrer le Mac ni le scheduler ;
+- contexte OpenCode reel calibre par le tokenizer local : 12 220 tokens avant frontend,
+  12 223 observes par le runtime, sortie maximale reservee 4 096, sentinelle exacte en 10,044 s ;
+- mesure longue : 12 207 tokens de prompt, 532 tokens de sortie en 30,721 s ; reservations
+  simultanees de 16 304 tokens sur chaque shard pendant 13,985 s, puis retour exact a zero ;
+- budget impossible : 32 784 demandes contre 32 768 supportes, HTTP 400
+  `context_length_exceeded` en 0,190 s et aucune reservation.
+
+Apres charge, le Mac gardait 78 % de memoire systeme libre et l'executor environ 1,06 Gio RSS.
+Le RTX utilisait 13 659 Mio de VRAM, en gardait 2 389 Mio libres, et le PC gardait environ
+27 Gio de RAM hote disponible sur 32 Gio. Le GPU revenait a 0 % d'utilisation apres requete.
+Le pool vLLM reste volontairement prealloue : poids, KV et workspace utilisent le GPU pour Fabi
+tout en conservant la reserve CUDA ; il ne faut pas confondre cette allocation stable avec une
+fuite par prompt.
+
+Une requete lancee juste apres l'ancienne exception EOS a ensuite attendu jusqu'au timeout. Un
+restart complet a nettoye cet etat, et le restart isole RTX n'a pas reproduit le probleme sur un
+etat sain. L'hypothese la plus forte est un etat frontend/executor Mac incomplet apres erreur
+aval pendant une requete distribuee. Le correctif EOS empeche ce chemin nominal, mais la reprise
+apres erreur worker doit encore obtenir un test injectant une faute aval puis prouvant eviction,
+fencing et capacite du prompt suivant. Ne pas presenter cette hypothese comme une cause prouvee.
+
+### Ordre de reprise mis a jour
+
+1. terminer la CI `rc29`, installer les assets publics sur Mac et Windows, verifier SHA,
+   manifests, imports, smoke `Request`, puis rejouer petit prompt et SSE ;
+2. mettre a jour les pins IDE vers `rc29`, reconstruire l'application complete et refaire le
+   parcours UI/OpenCode ;
+3. priorite utilisateur suivante : enlever toutes les adresses Tailscale du trafic produit et
+   qualifier deux vrais reseaux/NAT. Mesurer discovery, AutoNAT, hole punching, connexion directe
+   et fallback relay ; une pipeline d'activations relay-only ne compte pas comme P2P direct ;
+4. seulement ensuite reprendre replique, kill prefill/decode, epoch/fencing et replay KV ;
+5. concevoir enfin login/device pairing, rotation et revocation multi-machine.

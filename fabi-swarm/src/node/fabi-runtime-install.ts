@@ -19,19 +19,19 @@
 import { spawn } from 'child_process';
 import {
     createReadStream, createWriteStream, existsSync, mkdirSync,
-    readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync
+    readFileSync, renameSync, rmSync, statSync, writeFileSync
 } from 'fs';
 import { createHash } from 'crypto';
 import { homedir, platform as osPlatform, arch as osArch, tmpdir } from 'os';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 
 export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
-export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc24';
-export const QUALIFIED_OPENCODE_COMMIT = '0dd48bc1a6cb4a6145d7fe444ffd316a30b0f1f6';
-export const QUALIFIED_PARALLAX_COMMIT = '59dc2bb82c956848a320a54079d30747da3bcdc3';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc29';
+export const QUALIFIED_OPENCODE_COMMIT = 'ea98e6ff8049c8a3191b5f009d808397fa1255eb';
+export const QUALIFIED_PARALLAX_COMMIT = 'c14c99759cc5b3b6e6cd6e11d74213309e7b7456';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
 
 export interface RuntimeManifest {
@@ -323,42 +323,41 @@ function extractTarZst(archive: string, destDir: string): Promise<void> {
     });
 }
 
-/** Remplace les chemins de build/staging par le vrai chemin final. */
-function relocate(extractedRoot: string, finalRoot: string): void {
-    if (!existsSync(extractedRoot)) {
-        return;
+/** Relocalise uniquement les fichiers texte déclarés par le build qualifié. */
+export function relocateBundledRuntime(extractedRoot: string, finalRoot: string): number {
+    const manifestPath = join(extractedRoot, 'runtime', 'relocation-manifest.txt');
+    if (!existsSync(manifestPath) || !statSync(manifestPath).isFile()) {
+        throw new Error('manifeste de relocalisation runtime absent');
     }
-    const replacements: Array<[string, string]> = [
-        [RELOCATE_PLACEHOLDER, finalRoot],
-        [extractedRoot, finalRoot]
-    ];
-    const walk = (dir: string): void => {
-        for (const name of readdirSync(dir, { withFileTypes: true })) {
-            const full = join(dir, name.name);
-            if (name.isDirectory()) {
-                walk(full);
-            } else if (name.isFile()) {
-                try {
-                    if (statSync(full).size > 2_000_000) {
-                        continue; // gros binaire → pas du texte
-                    }
-                    let next = readFileSync(full, 'utf-8');
-                    const original = next;
-                    for (const [from, to] of replacements) {
-                        if (from && from !== to && next.includes(from)) {
-                            next = next.split(from).join(to);
-                        }
-                    }
-                    if (next !== original) {
-                        writeFileSync(full, next);
-                    }
-                } catch {
-                    /* binaire / illisible → on saute */
-                }
-            }
+
+    const entries = readFileSync(manifestPath, 'utf8')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+    if (entries.length === 0) {
+        throw new Error('manifeste de relocalisation runtime vide');
+    }
+
+    for (const relative of entries) {
+        const segments = relative.split(/[\\/]/);
+        if (
+            isAbsolute(relative)
+            || segments[0] !== 'runtime'
+            || segments.some(segment => !segment || segment === '.' || segment === '..')
+        ) {
+            throw new Error(`chemin de relocalisation runtime invalide : ${relative}`);
         }
-    };
-    walk(extractedRoot);
+        const file = join(extractedRoot, ...segments);
+        if (!existsSync(file) || !statSync(file).isFile()) {
+            throw new Error(`fichier de relocalisation runtime absent : ${relative}`);
+        }
+        const content = readFileSync(file, 'utf8');
+        if (!content.includes(RELOCATE_PLACEHOLDER)) {
+            throw new Error(`placeholder de relocalisation runtime absent : ${relative}`);
+        }
+        writeFileSync(file, content.split(RELOCATE_PLACEHOLDER).join(finalRoot), 'utf8');
+    }
+    return entries.length;
 }
 
 /**
@@ -447,7 +446,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
             target: `bun-${plat.os}-${plat.arch}`,
             accel: plat.accel
         });
-        relocate(staging, root);
+        relocateBundledRuntime(staging, root);
         if (!parallaxBinaryIn(staging)) {
             throw new Error('binaire parallax introuvable après extraction — layout inattendu');
         }

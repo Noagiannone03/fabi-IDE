@@ -6,6 +6,7 @@ const {
     buildFabiCodeConfig,
     FABI_CODE_DEFAULT_CONTEXT_TOKENS
 } = require('../lib/node/fabi-code-config');
+const { buildFabiCodeServerArgs } = require('../lib/node/fabi-code-server');
 
 function modelLimit(result, model = 'Qwen/Qwen3-1.7B') {
     return result.config.provider['fabi-swarm'].models[model].limit;
@@ -44,4 +45,13 @@ test('caps output to the real context window', () => {
         maxOutputTokens: 4096
     });
     assert.deepEqual(modelLimit(built, 'tiny'), { context: 2048, output: 2048 });
+});
+
+test('starts the IDE OpenCode sidecar without a competing Parallax worker', () => {
+    assert.deepEqual(buildFabiCodeServerArgs('127.0.0.1', 42123), [
+        'serve',
+        '--no-parallax',
+        '--hostname=127.0.0.1',
+        '--port=42123'
+    ]);
 });
