@@ -1828,3 +1828,49 @@ fencing et capacite du prompt suivant. Ne pas presenter cette hypothese comme un
    et fallback relay ; une pipeline d'activations relay-only ne compte pas comme P2P direct ;
 4. seulement ensuite reprendre replique, kill prefill/decode, epoch/fencing et replay KV ;
 5. concevoir enfin login/device pairing, rotation et revocation multi-machine.
+
+### Mise a jour push / installateur Windows rc29, 20 juillet 2026 16:45 Europe/Paris
+
+Le repo IDE `main` est pousse jusqu'a `f9e2061` avec les pins runtime `v2.7.0-rc29`,
+OpenCode `ea98e6ff8049c8a3191b5f009d808397fa1255eb` et Parallax
+`c14c99759cc5b3b6e6cd6e11d74213309e7b7456`. Les validations locales associees a ce commit
+restent celles documentees plus haut : tests extension, build TypeScript, bundle Theia/Electron
+et packaging `electron-builder --dir` OK, application macOS non signee.
+
+Apres la CI verte de `v2.7.0-rc29`, l'installation publique Windows depuis l'asset release a
+revele un probleme d'installateur : `Invoke-WebRequest` telechargeait bien le manifeste `.parts`
+de 74 octets, puis restait bloque sur le gros asset split `partaa` sans ecrire de fichier utile.
+Ce n'etait pas une panne vLLM ni Parallax, mais le transport PowerShell du gros artefact GitHub.
+
+Correctif runtime pousse sur `fabi/main` :
+
+- `d129f19` — `fix: use curl for Windows split asset downloads`.
+
+`install.ps1` utilise maintenant `curl.exe --fail --location --show-error --output` quand
+disponible pour les assets et les checksums, avec fallback `Invoke-WebRequest`. L'asset
+`install.ps1` attache a la release `v2.7.0-rc29` a ete remplace avec ce fichier corrige
+(`sha256:d16ec0b38fdf18cbeb882bb374dcb4a1dfb0dd25cff0deee32c5926f6ed03695`, taille 13 537
+octets, `updatedAt=2026-07-20T14:39:30Z` cote GitHub).
+
+Un test d'installation Windows est en cours sur le PC RTX depuis ce script corrige copie en local
+dans `%TEMP%`. Le chemin corrige progresse reellement : `curl.exe` a commence a telecharger
+`fabi-windows-x64-cuda.tar.zst.partaa` (1,75 Gio) et affichait environ 57 Mio telecharges apres
+1 min 20 s lors du dernier relevé. A cet instant, ne pas declarer Windows `rc29` qualifie :
+il manque encore fin du download, assemblage, SHA256, extraction, manifeste relocalise, `pip
+check`, smoke hardware-free `create_vllm_request`, redemarrage du worker et prompt/SSE homogene
+Mac public rc29 + Windows public rc29.
+
+Le scheduler de labo n'a pas encore ete bascule sur l'image `local/parallax-scheduler:c14c997`
+construite sur le VPS ; il tournait encore sur l'image precedente pendant cette installation.
+Cette bascule doit venir apres l'installation Windows publique pour eviter de melanger les causes.
+
+TODO immediate apres ce push :
+
+1. laisser finir l'installation Windows rc29 corrigee et consigner le resultat exact ;
+2. si l'installation passe, restaurer/demarrer `FabiWorkerE2E`, deployer le scheduler `c14c997`,
+   attendre le cluster DP 32k homogene et rejouer non-stream + SSE ;
+3. si l'installation echoue, recuperer l'erreur precise du script corrige avant toute nouvelle
+   modification ;
+4. ensuite seulement attaquer le chantier demande par l'utilisateur : qualification hors
+   Tailscale, avec preuve d'absence de trafic `100.x` et en distinguant bien meme-LAN/same-NAT
+   d'un vrai test deux NAT.
