@@ -94,9 +94,10 @@ export function resolveConfiguredWorkerLimits(
     };
 }
 
-/** RAM hôte conservée pour l'OS et les applications, avant mesure live par le moteur. */
+/** Réserve indicative legacy ; le runtime qualifié calcule maintenant la réserve via psutil.available. */
 export function resolveHostSystemReserveGb(ramGb: number): number {
-    return Math.min(12, Math.max(6, Math.ceil(Math.max(0, ramGb) * 0.25)));
+    const total = Math.max(0, ramGb);
+    return Math.min(12, Math.max(2, Number((total * 0.20).toFixed(1))));
 }
 
 /** VRAM dédiée conservée pour l'affichage, le driver et les autres applications GPU. */
@@ -104,18 +105,14 @@ export function resolveCudaSystemReserveGb(vramGb: number): number {
     return Math.round(Math.max(0, vramGb)) <= 12 ? 2 : 1.5;
 }
 
-/** Politique pure et commune à l'IDE et au CLI ; les overrides restent prioritaires. */
+/** Env mémoire worker : le host RAM budget est calculé par le runtime depuis psutil.available. */
 export function resolveMemoryReserveEnv(hw: HardwareProfile): Record<string, string> {
-    const result = {
-        PARALLAX_SYSTEM_RESERVE_GB: String(resolveHostSystemReserveGb(hw.ramGb))
-    };
     if (hw.accelerator === 'cuda' && hw.vramGb !== undefined) {
         return {
-            ...result,
             PARALLAX_CUDA_SYSTEM_RESERVE_GB: String(resolveCudaSystemReserveGb(hw.vramGb))
         };
     }
-    return result;
+    return {};
 }
 
 export function prefixCacheEnabled(): boolean {

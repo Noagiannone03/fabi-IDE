@@ -2270,3 +2270,83 @@ TODO immediate actualisee :
    relay/DCUtR, avec instrumentation direct/relay et exclusion des routes Tailscale ;
 4. ensuite failover/replique : troisieme worker, kill prefill/decode, erreur propre sans
    replique, reroute avec replique, epoch/fencing et replay KV.
+
+### Reserve RAM adaptative cross-platform, 21 juillet 2026
+
+Le refus du Mac courant a revele que l'ancien plancher `PARALLAX_SYSTEM_RESERVE_GB=6` etait trop
+conservateur pour les machines 16 Gio : il protegeait bien le desktop, mais transformait une
+pression moderee en `usable_memory_bytes=0` trop souvent.
+
+Recherche avant implementation :
+
+- `psutil.virtual_memory().available` est le signal maintenu cross-platform deja present dans le
+  runtime ; il mappe vers les compteurs OS pertinents : `MemAvailable` Linux, disponibilite
+  physique Windows, compteurs VM macOS ;
+- Apple documente la pression memoire comme une combinaison de memoire libre, swap, wired memory
+  et file cache ; donc le bon principe n'est pas "RAM libre brute", mais "memoire disponible sous
+  pression" ;
+- Windows expose aussi le principe d'adapter l'usage memoire quand la ressource memoire devient
+  basse via `CreateMemoryResourceNotification`/`QueryMemoryResourceNotification` ;
+- vLLM/SGLang utilisent le meme principe produit cote VRAM : fraction utilisable par defaut puis
+  baisse explicite en cas de pression/OOM, pas allocation de 100% de la memoire.
+
+Correctif runtime pousse sur `swarm-engine/codex/dynamic-dp-product` :
+
+- `a7ad1828ac5cdd28c08be59c7c12f20d0d7e651e` —
+  `feat: adapt host memory reserve to pressure`
+  - nouvelle fonction `adaptive_system_reserve_bytes(total, available)` ;
+  - override utilisateur/lab `PARALLAX_SYSTEM_RESERVE_GB` toujours prioritaire ;
+  - par defaut, reserve host calculee avec `psutil.available / total` :
+    - pression normale : environ `20 %` RAM, borne `2-12 Gio` ;
+    - pression elevee : environ `25 %` RAM ;
+    - pression critique : environ `30 %` RAM ;
+  - sur 16 Gio, l'ancien plancher fixe `6 Gio` devient :
+    - `3.2 Gio` si la machine est verte ;
+    - `4 Gio` si elle est sous pression elevee ;
+    - `4.8 Gio` si elle est critique ;
+  - le controleur de pression runtime utilise la meme reserve samplee au startup ;
+  - le contrat de couche reste immutable pendant une generation : pas de resize vers le haut en
+    live, pas de reallocations en boucle ; en pression critique soutenue, drain/restart propre.
+
+Correctif wrappers Fabi :
+
+- `fabi-cli/dev` pousse :
+  `245acc710b27eca99c63c42898672e71df00bd73` —
+  `fix: defer host memory reserve to runtime`
+  - le CLI n'injecte plus `PARALLAX_SYSTEM_RESERVE_GB` par defaut ;
+  - la reserve VRAM dediee CUDA `PARALLAX_CUDA_SYSTEM_RESERVE_GB` reste posee ;
+  - un override explicite herite du shell reste respecte.
+- `fabi-IDE/main` en cours dans ce bloc :
+  - meme contrat cote `fabi-swarm/src/node/fabi-worker-tuning.ts` ;
+  - `fabi-swarm/ARCHITECTURE.md` mis a jour : la reserve RAM host appartient au runtime
+    adaptatif, pas au wrapper IDE.
+
+Validation :
+
+- engine :
+  - `pytest tests/test_memory_budget.py tests/test_server_info_memory.py -q` → `14 passed` ;
+  - `pytest tests/scheduler_tests/test_layer_allocation.py tests/scheduler_tests/test_scheduler.py tests/test_rpc_connection_handler.py tests/test_memory_budget.py -q`
+    → `78 passed` ;
+- IDE :
+  - `yarn --cwd fabi-swarm test` → `19 passed` ;
+- CLI :
+  - `bun test src/swarm/worker.test.ts` depuis `packages/opencode` → `30 passed` ;
+  - hook de push `bun turbo typecheck` → `4 successful`.
+
+Effet attendu :
+
+- Fabi utilise davantage la RAM disponible sur Mac 16 Gio quand le systeme est vert ;
+- si le poste est vraiment sous pression, il reste standby au lieu de tuer le desktop ;
+- Windows/Linux suivent le meme chemin runtime via `psutil.available` ;
+- CUDA continue d'etre gere par `cudaMemGetInfo` + reserve VRAM dediee, independamment de la RAM
+  host.
+
+TODO immediate actualisee :
+
+1. publier/rebuilder une release runtime qualifiee contenant `a7ad182`, puis installer sur Mac
+   mini et PC RTX ;
+2. relancer le test Mac courant/IDE pour comparer l'annonce memoire avec l'ancien cas
+   `3.86 Gio available / 6.44 Gio reserve` ;
+3. finir le vrai E2E UI visuel ;
+4. reprendre NAT hors Tailscale ;
+5. ensuite failover/replique.
