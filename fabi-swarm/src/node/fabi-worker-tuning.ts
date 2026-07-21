@@ -149,6 +149,10 @@ export function buildWorkerEnv(): NodeJS.ProcessEnv {
     );
     // Stable peer identity restores the shard; this epoch fences an old process.
     env.FABI_WORKER_SESSION_ID = randomUUID();
+    // Official vLLM setting. Cold multi-GB model downloads can legitimately
+    // exceed its 600 s default; the engine still exits immediately on an
+    // executor failure and users/admins can override this policy explicitly.
+    setIfUnset('VLLM_ENGINE_READY_TIMEOUT_S', '3600');
     for (const [key, value] of Object.entries(resolveMemoryReserveEnv(hw))) {
         setIfUnset(key, value);
     }
