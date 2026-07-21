@@ -2133,3 +2133,140 @@ TODO immediate actualisee :
    peers publics sont fournis, verifier relay/DCUtR/hole punching et prouver les routes sans
    adresses `100.x` ;
 5. puis reprendre failover/replique.
+
+### Lifecycle lab, standby cleanup et pression RAM IDE, 21 juillet 2026
+
+Suite du bloc precedent. Objectif : stabiliser le lab pour que les tests d'ordre de join, l'E2E
+IDE et le chantier NAT ne soient plus pollues par des workers fantomes ou des nodes `waiting`
+morts.
+
+Correctif pousse sur `swarm-engine/codex/dynamic-dp-product` :
+
+- `ade9fbf304b2fd887bf37498284d85f42aec9500` —
+  `fix scheduler stale standby cleanup`
+  - `Scheduler.checking_node_heartbeat()` inspecte maintenant `self.node_manager.nodes`, pas
+    uniquement les active nodes ;
+  - un node en standby/waiting qui n'envoie plus de heartbeat est retire apres timeout ;
+  - cela garde l'UI/status propre apres un worker local IDE refuse ou tue ;
+  - tests ajoutes : retrait d'un standby stale sans casser la pipeline active.
+
+Validation engine :
+
+- `pytest tests/scheduler_tests/test_layer_allocation.py tests/scheduler_tests/test_scheduler.py tests/test_rpc_connection_handler.py -q`
+  apres `062d449` : `64 passed` ;
+- `pytest tests/scheduler_tests/test_scheduler.py tests/scheduler_tests/test_layer_allocation.py -q`
+  apres `ade9fbf` : `60 passed`.
+
+Deploiement scheduler lab :
+
+- image VPS reconstruite avec
+  `PARALLAX_COMMIT=ade9fbf304b2fd887bf37498284d85f42aec9500` ;
+- conteneur principal force-recree avec `docker compose up -d --force-recreate
+  parallax-scheduler` ;
+- label OCI courant verifie :
+  `org.opencontainers.image.revision=ade9fbf304b2fd887bf37498284d85f42aec9500`.
+
+Correctifs IDE/lab dans `fabi-IDE/main` :
+
+- `602774e8cf7a67d49af2dd4a9bddf201fefd2b63` —
+  `tools: add robust lab worker lifecycle control`
+  - `fabi-swarm/src/node/fabi-worker-tuning.ts` ne tue plus les process Parallax de facon
+    large ; il cible uniquement les commandes sous le runtime Fabi
+    `~/.local/share/fabi/runtime` ou `%LOCALAPPDATA%\fabi\runtime` ;
+  - nouveau script `tools/lab-worker-control.sh` :
+    `status|start|stop|restart mac|windows|all`, via `ssh vps`, puis Mac mini
+    `gmbh@100.82.190.118` et PC Windows `gmbhl@100.105.234.82` ;
+  - Mac : stop cible uniquement `/Users/gmbh/.local/share/fabi/runtime`, controle port `19080`,
+    relance `/Users/gmbh/.local/share/fabi/mac-worker-e2e.sh` ;
+  - Windows : controle la tache planifiee `FabiWorkerE2E` et tue uniquement les process dont la
+    ligne de commande contient le runtime Fabi ;
+  - validation : `bash -n tools/lab-worker-control.sh`, `tools/lab-worker-control.sh status mac`.
+- correctif ajoute ensuite dans ce bloc de reprise :
+  - `fabi-swarm/src/node/fabi-swarm-worker.ts` renforce le handler synchrone `process.on('exit')`
+    du worker IDE : SIGINT du process group puis purge best-effort des enfants runtime Fabi ;
+  - raison : une fermeture par `osascript quit` a laisse deux enfants Python
+    `multiprocessing.resource_tracker`/`spawn_main` rattaches au runtime local, ce qui peut
+    augmenter la pression RAM et fausser le prochain calcul de capacite.
+
+Validation IDE locale :
+
+- `yarn --cwd fabi-swarm test` : `19 passed` ;
+- `yarn run build:fabi-ext` : OK ;
+- `yarn run build:electron` : OK ;
+- `yarn --cwd electron-app package:dir` : OK, app packgee dans
+  `electron-app/dist/mac-arm64/Fabi.app` (non signee, attendu).
+
+Tests d'ordre de join avec lifecycle propre :
+
+1. Stop Mac + Windows via `tools/lab-worker-control.sh stop all`, puis recreate scheduler.
+2. Start Windows seul :
+   - le PC RTX rejoint en premier ;
+   - le scheduler reste `waiting`, `need_more_nodes=true`, `max_supported_context_tokens=0`,
+     car `frontend_nodes=0` ;
+   - c'est le comportement attendu : un decoder RTX seul ne doit pas annoncer une pipeline
+     consommable sans frontend.
+3. Start Mac mini ensuite :
+   - le scheduler alloue automatiquement RTX `[4,28)` puis Mac `[0,4)` ;
+   - cluster final `available`, `need_more_nodes=false`, contexte `32768` ;
+   - direct peers reciproques, reservations KV a zero.
+
+Validation generation apres deploiement `ade9fbf` :
+
+- depuis le Mac mini avec le vrai token du compte contributeur ;
+- SSE HTTP 200, TTFT `5.451 s`, fin `31.398 s`, `257` chunks ;
+- sentinelle `FABI-ADE9FBF-LIFECYCLE-OK` presente ;
+- apres generation : cluster `available`, 2 nodes, `max_supported_context_tokens=32768`,
+  reservations KV a zero.
+
+E2E IDE minimal :
+
+- Fabi app locale lancee depuis le clone complet :
+  `electron-app/dist/mac-arm64/Fabi.app --args /tmp/fabi-ide-e2e-workspace-20260721` ;
+- l'app a spawn un worker local via
+  `~/.local/share/fabi/runtime/parallax-venv/bin/parallax join ...` ;
+- ce Mac courant a annonce :
+  `system_available_memory_bytes=3856809984`,
+  `system_reserve_bytes=6442450944`,
+  donc `usable_memory_bytes=0` ;
+- le scheduler a refuse proprement le join dynamique :
+  `Rejecting dynamic join ... invalid candidate [4, 4), usable_memory_bytes=0`,
+  puis `remains standby after dynamic join rejection` ;
+- la pipeline Mac mini + RTX est restee disponible et routable ;
+- apres fermeture de l'app et timeout heartbeat, le node local standby a disparu du status ;
+- cleanup local manuel effectue ensuite : plus aucun process
+  `Fabi.app|parallax join|parallax-src/src/parallax/launch.py|runtime/parallax-venv` vivant.
+
+Interpretation pression RAM :
+
+- le refus du Mac courant n'est pas une regression scheduler : c'est la garde memoire produit ;
+- avec 3.86 GB disponibles et 6.44 GB reserves pour macOS/apps, la capacite utile doit etre
+  `0`, sinon Fabi risque de faire laguer la machine hote ;
+- quand la memoire disponible remonte au-dessus de la reserve, le meme type de Mac peut annoncer
+  une capacite utile positive (exemple observe plus tot : `usable_memory_bytes=2807496704`) ;
+- le produit doit donc utiliser beaucoup de memoire quand elle est vraiment disponible, mais
+  refuser ou rester standby quand la pression live passe sous la reserve OS.
+
+Recherche NAT/Parallax a reprendre :
+
+- sources primaires consultees : repo officiel `GradientHQ/parallax`, papier Parallax
+  `arXiv:2509.26182`, docs/spec libp2p hole punching/DCUtR, papier Lattica `arXiv:2510.00183` ;
+- conclusion technique : ne pas inventer un tunnel NAT maison. Parallax/Lattica est deja pense
+  autour de libp2p, relay et DCUtR/hole punching ;
+- chantier produit Fabi : exposer/configurer proprement initial peers/relays/announce addrs,
+  empecher les adresses Tailscale `100.x` de servir de preuve produit, instrumenter direct vs
+  relay, et definir un seuil ou relay-only est refuse si debit/latence ne respecte pas le
+  contrat d'inference distribuee ;
+- les erreurs mDNS observees sur macOS/Tailscale restent a traiter : elles ne cassent pas le
+  lab actuel, mais le mode produit hors Tailscale doit etre teste en deux NAT reels avec preuves
+  de routes et multiaddrs.
+
+TODO immediate actualisee :
+
+1. relancer Fabi IDE apres cleanup pour verifier qu'un quit normal ne laisse plus d'enfants
+   runtime ;
+2. finir le vrai E2E UI visuel : selection modele, connexion swarm, gate contribution, prompt
+   OpenCode, streaming, tools/permissions, abort et changement de modele ;
+3. commencer le chantier NAT hors Tailscale en s'appuyant sur Parallax/Lattica/libp2p
+   relay/DCUtR, avec instrumentation direct/relay et exclusion des routes Tailscale ;
+4. ensuite failover/replique : troisieme worker, kill prefill/decode, erreur propre sans
+   replique, reroute avec replique, epoch/fencing et replay KV.

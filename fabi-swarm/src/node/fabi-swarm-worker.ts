@@ -109,11 +109,12 @@ export function spawnWorker(
     startChild();
 
     // Filet anti-orphelin : si le backend (IDE) se termine sans qu'on ait appelé
-    // stop() (fermeture de l'app → Theia fait process.exit), on envoie SIGINT au
-    // worker. Comme il est `detached`, il survit au backend le temps d'exécuter
-    // sa déconnexion propre (node_leave → le scheduler le retire tout de suite,
-    // pas de nœud fantôme). Handler `exit` SYNCHRONE → aucune interférence avec
-    // l'arrêt de Theia (qui passe par process.exit).
+    // stop() (fermeture de l'app → Theia fait process.exit), l'event `exit` ne
+    // permet pas d'attendre les timers de grâce de stop(). On fait donc une
+    // séquence synchrone best-effort : SIGINT pour laisser Parallax quitter
+    // proprement, puis purge des enfants encore rattachés au runtime Fabi. Sans
+    // cette purge, Python multiprocessing peut laisser resource_tracker/spawn
+    // vivants et fausser la pression mémoire au prochain lancement.
     const parentExitKill = () => {
         if (stopped) {
             return;
@@ -126,6 +127,11 @@ export function spawnWorker(
             }
         } catch {
             /* déjà mort */
+        }
+        try {
+            killOrphanedWorkers(currentPid ?? -1);
+        } catch {
+            /* best-effort */
         }
     };
     process.on('exit', parentExitKill);
