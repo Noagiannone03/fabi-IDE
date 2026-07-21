@@ -1956,7 +1956,7 @@ test actuel reste une qualification Tailscale de labo, pas une preuve deux NAT r
 
 TODO immediate actualisee :
 
-1. rejouer le gros contexte OpenCode sur le couple public `rc29` homogene
+1. **fait ci-dessous** — rejouer le gros contexte OpenCode sur le couple public `rc29` homogene
    (`~12 220` tokens entree + `4 096` tokens sortie reserves), mesurer TTFT, debit, RAM, VRAM,
    reservations KV et refus contexte trop grand ;
 2. reconstruire/relancer Fabi IDE depuis le clone local complet et refaire le parcours UI complet :
@@ -1967,3 +1967,39 @@ TODO immediate actualisee :
    distinction explicite same-LAN/same-NAT vs deux NAT reels ;
 4. ensuite seulement reprendre replique/failover : troisieme worker, kill prefill/decode,
    erreur propre sans replique, reroute avec replique, epoch/fencing et replay KV.
+
+### Gros contexte OpenCode rc29 homogene, 21 juillet 2026
+
+Le TODO 1 ci-dessus est maintenant qualifie sur le couple public `v2.7.0-rc29` homogene,
+scheduler `c14c997`, workers Mac mini MLX + PC RTX CUDA. Le prompt a ete calibre avec le
+tokenizer local Qwen du runtime Mac, pas avec une estimation de caracteres.
+
+Resultats :
+
+- gros contexte sentinelle : `12 266` tokens prompt, `max_tokens=4096`, HTTP 200, TTFT
+  `9.791 s`, fin `11.527 s`, `18` chunks, sentinelle exacte
+  `FABI-RC29-BIGCTX-SSE-OK` ;
+- reservation observee pendant cette requete : `16 368` tokens sur Apple M4 et RTX 4080 SUPER,
+  soit l'arrondi physique de `12 266 + 4 096 = 16 362` ;
+- gros contexte long : `12 220` tokens prompt exacts, `max_tokens=4096`, HTTP 200, TTFT
+  `9.559 s`, fin `58.002 s`, `470` chunks, `466` tokens de sortie mesures par le tokenizer,
+  debit decode environ `9.62 tok/s`, sentinelle `FABI-RC29-BIGCTX-LONG-OK` presente ;
+- reservation observee pendant la generation longue : `16 320` tokens sur chaque shard, soit
+  l'arrondi de `12 220 + 4 096 = 16 316` ;
+- refus trop grand : `28 755` tokens prompt + `4 096` sortie = `32 851` requis, HTTP 400 en
+  `0.723 s`, code `context_length_exceeded`, message indiquant le maximum disponible `32 768` ;
+  reservations avant et apres : zero sur les deux shards.
+
+Etat apres charge :
+
+- `/cluster/status_json` revient a `status=available`, `reserved_context_tokens=0` et
+  `max_running_request=0` ;
+- RTX 4080 SUPER : `13 659 MiB` utilises, `2 389 MiB` libres, `0 %` GPU apres requete ;
+- Mac mini : `7 984 955 392` octets disponibles, executor principal autour de `1.09 Gio` RSS ;
+- capacites KV publiees : RTX `81 712` tokens, Apple M4 `40 704` tokens, block size `16`.
+
+Interpretation : le gros prefill explique le TTFT autour de 9,5-9,8 s. La VRAM RTX reste
+preallouee de maniere stable pour les poids, KV et workspace vLLM ; le signal important est le
+retour exact des reservations scheduler a zero et l'absence d'activite GPU residuelle apres
+generation. Le prochain item produit est donc l'E2E IDE complet, puis le chantier NAT hors
+Tailscale.
