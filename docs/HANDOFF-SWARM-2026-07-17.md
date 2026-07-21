@@ -2350,3 +2350,51 @@ TODO immediate actualisee :
 3. finir le vrai E2E UI visuel ;
 4. reprendre NAT hors Tailscale ;
 5. ensuite failover/replique.
+
+#### Ajustement seuil de securite RAM, 21 juillet 2026
+
+Apres relecture des patterns OS/orchestrateurs, le premier patch `a7ad182` restait trop base sur
+un pourcentage de machine (`20/25/30 %`). Pour des Macs 8/16 Gio, ce modele garde encore trop de
+memoire hors allocation et peut empecher toute contribution utile.
+
+Sources/references du raisonnement :
+
+- Apple : la pression memoire depend de la memoire libre, du swap, de la wired memory et du file
+  cache ; il faut raisonner en pression/disponibilite, pas en RAM physique brute ;
+- Linux : `MemAvailable` est l'estimation de ce qu'une nouvelle application peut prendre sans
+  swapper ;
+- Windows : les notifications de ressource memoire servent a reduire le working set quand la
+  disponibilite baisse ;
+- Kubernetes : les decisions sous pression utilisent des seuils `memory.available`, par exemple
+  `memory.available<10%` ou une valeur absolue, pas une reserve proportionnelle agressive.
+
+Decision produit :
+
+- renommer mentalement `system_reserve_bytes` en seuil de securite disponible :
+  "laisser au moins X Gio au systeme apres allocation" ;
+- ne pas grossir fortement ce seuil avec la pression ; si le seuil est franchi, on drain/standby
+  via le controleur de pression ;
+- paliers par taille machine :
+  - 8-10 Gio : normal `1.25 Gio`, eleve `1.5 Gio`, critique `2 Gio` ;
+  - 16-20 Gio : normal `2 Gio`, eleve `2.5 Gio`, critique `3 Gio` ;
+  - >20 Gio : normal `max(3 Gio, 10%)` cap `8 Gio`, eleve `max(4 Gio, 12.5%)` cap `10 Gio`,
+    critique `max(5 Gio, 15%)` cap `12 Gio`.
+
+Effet mesure sur les machines actuelles avec cette version :
+
+- Mac actuel 16 Gio :
+  - disponible `3.97 Gio`, pression elevee `24.8 %` ;
+  - ancien fixe : reserve `6.00 Gio`, usable `0.00 Gio` ;
+  - nouveau seuil : floor `2.50 Gio`, usable `1.47 Gio`.
+- PC Windows 31.94 Gio :
+  - disponible `18.10 Gio`, pression normale `56.7 %` ;
+  - ancien fixe : reserve `8.00 Gio`, usable `10.00 Gio` ;
+  - nouveau seuil : floor `3.19 Gio`, usable `15.00 Gio`.
+
+Validation locale apres ajustement :
+
+- engine :
+  `pytest tests/test_memory_budget.py tests/test_server_info_memory.py tests/scheduler_tests/test_layer_allocation.py tests/scheduler_tests/test_scheduler.py tests/test_rpc_connection_handler.py -q`
+  -> `79 passed` ;
+- IDE : `yarn --cwd fabi-swarm test` -> `19 passed` ;
+- CLI : `bun test src/swarm/worker.test.ts` depuis `packages/opencode` -> `30 passed`.

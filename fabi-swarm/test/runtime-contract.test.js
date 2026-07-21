@@ -124,10 +124,11 @@ test('uses the qualified 32k window and keeps explicit lab overrides', () => {
 });
 
 test('applies the same live-memory reserve policy on macOS, Windows and Linux', () => {
-    assert.equal(resolveHostSystemReserveGb(16), 3.2);
-    assert.equal(resolveHostSystemReserveGb(32), 6.4);
-    assert.equal(resolveHostSystemReserveGb(48), 9.6);
-    assert.equal(resolveHostSystemReserveGb(128), 12);
+    assert.equal(resolveHostSystemReserveGb(8), 1.25);
+    assert.equal(resolveHostSystemReserveGb(16), 2);
+    assert.equal(resolveHostSystemReserveGb(32), 3.2);
+    assert.equal(resolveHostSystemReserveGb(48), 4.8);
+    assert.equal(resolveHostSystemReserveGb(128), 8);
     assert.equal(resolveCudaSystemReserveGb(8), 2);
     assert.equal(resolveCudaSystemReserveGb(16), 1.5);
 
