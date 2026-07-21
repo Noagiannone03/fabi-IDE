@@ -2003,3 +2003,133 @@ preallouee de maniere stable pour les poids, KV et workspace vLLM ; le signal im
 retour exact des reservations scheduler a zero et l'absence d'activite GPU residuelle apres
 generation. Le prochain item produit est donc l'E2E IDE complet, puis le chantier NAT hors
 Tailscale.
+
+### Correctifs scheduler pression memoire et restart worker, 21 juillet 2026
+
+Deux regressions produit ont ete trouvees pendant la reprise de l'E2E IDE et des tests
+d'ordre de join. Elles viennent de cas Fabi reels qui ne sont pas couverts par Parallax
+upstream : workers qui annoncent une enveloppe memoire utile live, et workers qui reviennent
+par heartbeat avant leur `node_join` complet apres restart scheduler.
+
+Recherche/verification avant correction :
+
+- Parallax officiel garde le modele a deux phases : allocation de couches sous contraintes
+  memoire/reseau, puis routing de requetes sur les pipelines disponibles ;
+- le code upstream `GradientHQ/parallax` a le meme pattern structurel dans `dynamic_join` :
+  calcul de `end_layer` depuis la capacite du node puis appel a `allocate()` sans garde
+  explicite si la capacite devient nulle ou negative ;
+- ce cas devient normal dans Fabi parce que les workers publient maintenant la memoire utile
+  mesuree, pas la RAM physique. Un laptop/local IDE sous pression peut donc annoncer
+  `usable_memory_bytes=0` et doit rester en standby au lieu de casser le scheduler.
+
+Correctifs pousses sur `swarm-engine/codex/dynamic-dp-product` :
+
+- `340d7829965b2bc7119bb8ebc67512f5de5a88b5` —
+  `fix scheduler dynamic join for zero-capacity workers`
+  - `BaseLayerAllocator.dynamic_join()` refuse maintenant les candidats invalides
+    `[start,end)` au lieu d'appeler `allocate()` ;
+  - `_adjust_end_layer_for_tail()` retourne un range vide ferme quand la capacite calculee
+    est `<= 0` ;
+  - `Scheduler.join()` garde le node en standby si le join dynamique est rejete, et protege
+    la boucle d'evenements contre une `ValueError` ;
+  - tests ajoutes : worker zero-capacity apres bootstrap, pipeline existante conservee.
+- `062d4498af364893e6f580da71c72f5bd241740b` —
+  `fix scheduler bootstrap retry after heartbeat registration`
+  - si un `node_update` arrive pour un node deja auto-enregistre mais que le cluster n'a pas
+    de full pipeline, le handler repasse par `enqueue_join(node)` ;
+  - cela reutilise le chemin existant `refresh_registration()` pour rafraichir hardware,
+    `supports_frontend`, token de compte et capacites, puis relance le bootstrap ;
+  - tests ajoutes : rejoin d'un node waiting avec capacites completes, et chemin RPC
+    `node_update` avant bootstrap.
+
+Validation locale engine :
+
+- venv local `.venv` cree dans `/Users/noagiannone/Documents/swarm-engine-dynamic` avec
+  `python3.12 -m venv .venv` puis `pip install -e '.[mac, dev]'` ;
+- `pytest tests/scheduler_tests/test_layer_allocation.py tests/scheduler_tests/test_scheduler.py tests/test_rpc_connection_handler.py -q`
+  retourne `64 passed in 5.22s` ;
+- `ruff check` cible signale encore des `E741` preexistants dans `layer_allocation.py`
+  autour de variables nommees `l`; ces lignes ne viennent pas du correctif et restent a
+  nettoyer separement si on veut rendre le lint strict sur tout le fichier.
+
+Deploiement lab :
+
+- image scheduler reconstruite sur le VPS avec
+  `PARALLAX_COMMIT=062d4498af364893e6f580da71c72f5bd241740b` ;
+- le conteneur principal a ete force-recree avec `docker compose up -d --force-recreate
+  parallax-scheduler` ;
+- label OCI courant verifie :
+  `org.opencontainers.image.revision=062d4498af364893e6f580da71c72f5bd241740b`.
+
+Cas reels rejoues :
+
+1. **Worker IDE/local avec memoire utile nulle**
+   - Fabi app packge `electron-app/dist/mac-arm64/Fabi.app` a ete lance depuis le clone local ;
+   - l'app a spawn le worker local `parallax join` depuis
+     `~/.local/share/fabi/runtime/parallax-venv/bin/parallax` ;
+   - le scheduler a recu le node local Apple M4 avec `usable_memory_bytes=0` ;
+   - avant correction cela produisait `Invalid allocation: start_layer 0 >= end_layer -7` et
+     tuait `SchedulerEventLoop` ;
+   - apres `340d782`, log attendu :
+     `Rejecting dynamic join ... invalid candidate [0, 0), usable_memory_bytes=0,
+     decoder_capacity=0, decoder_capacity_with_input=-7, decoder_capacity_with_input_and_head=-13`,
+     puis `remains standby after dynamic join rejection` ;
+   - le cluster Mac mini + RTX reste `available`, le node local reste `waiting`, aucune
+     exception `Invalid allocation`/`Exception in thread`.
+
+2. **Restart scheduler + heartbeats avant node_join complet**
+   - apres un restart reel, les workers peuvent reapparaitre via `node_update` avant le
+     `node_join` complet ;
+   - avant `062d449`, le scheduler restait en `waiting`, `max_supported_context_tokens=0`,
+     malgre les deux nodes visibles ;
+   - apres `062d449`, le handler logge `update arrived before bootstrap completed;
+     refreshing registration via join`, puis le bootstrap finit quand le vrai worker est propre.
+
+3. **Doublons worker Mac mini**
+   - pendant les relances, plusieurs anciens processus Parallax etaient encore presents sur le
+     Mac mini et occupaient le port P2P `19080`, avec erreur Lattica `AddrInUse`;
+   - tous les processus sous `/Users/gmbh/.local/share/fabi/runtime` ont ete arretes, puis un
+     seul worker Mac a ete relance via `mac-worker-e2e.sh`.
+
+Etat final lab apres nettoyage/relaunch :
+
+- scheduler principal VPS : `062d449`, gate actif, port HTTP `3001`, P2P `18080` ;
+- workers actifs :
+  - Mac mini Apple M4 : `available`, `supports_frontend=true`, `remaining_context_tokens=63968`,
+    direct peer RTX ;
+  - PC Windows RTX 4080 SUPER : `available`, `supports_frontend=false`,
+    `remaining_context_tokens=50272`, direct peer Mac ;
+- allocation finale : Mac `[0,4)` puis RTX `[4,28)` ;
+- `max_supported_context_tokens=32768`, `need_more_nodes=false`, reservations a zero.
+
+Validation generation finale depuis le Mac mini avec le vrai token `~/.config/fabi/account-token` :
+
+- `/v1/contribution/status` : `allowed=true`, `eligible_workers=2` ;
+- SSE `/v1/chat/completions` : HTTP 200, TTFT `6.172 s`, fin `32.146 s`, `257` chunks,
+  sentinelle `FABI-062D449-E2E-OK` presente ;
+- apres generation : cluster toujours `available`, Mac et RTX `reserved_context_tokens=0`.
+
+Limites notees :
+
+- le test PC-seul strict a ete pollue par un worker Mac deja vivant/auto-reconnecte ; le cas
+  PC-first reste valide cote logs quand le PC arrive avant le Mac, mais si on veut une preuve
+  totalement isolee il faut d'abord ajouter un script de controle de lifecycle worker plus dur
+  cote Mac/Windows ;
+- le cleanup des nodes `waiting` morts n'est pas encore parfait : le heartbeat timeout actuel
+  cible surtout les active nodes. Ce n'est pas bloquant pour le routing mais devra etre traite
+  pour une UI propre ;
+- l'E2E UI complet reste a finir : selection modele, prompt OpenCode depuis l'interface,
+  tools/permissions, abort et changement de modele. La capture ecran automatique est bloquee
+  par les permissions macOS Screen Recording.
+
+TODO immediate actualisee :
+
+1. finir l'E2E UI complet sur Fabi IDE packge local, maintenant que le scheduler ne casse plus
+   sur worker local zero-capacity ;
+2. ajouter un controle lifecycle worker propre pour les tests lab (`stop/start/status` Mac et
+   Windows) afin d'eviter doublons, ports occupes et tests d'ordre pollues ;
+3. nettoyer les nodes standby/waiting morts dans le scheduler ;
+4. reprendre ensuite le chantier NAT hors Tailscale : desactiver/maitriser mDNS quand initial
+   peers publics sont fournis, verifier relay/DCUtR/hole punching et prouver les routes sans
+   adresses `100.x` ;
+5. puis reprendre failover/replique.
