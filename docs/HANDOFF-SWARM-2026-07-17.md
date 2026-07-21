@@ -2398,3 +2398,174 @@ Validation locale apres ajustement :
   -> `79 passed` ;
 - IDE : `yarn --cwd fabi-swarm test` -> `19 passed` ;
 - CLI : `bun test src/swarm/worker.test.ts` depuis `packages/opencode` -> `30 passed`.
+
+#### Decision d'architecture pour des milliers de workers, 21 juillet 2026
+
+La comparaison de Parallax et Petals est maintenant formalisee dans
+[`SWARM-SCALE-PETALS-DESIGN.md`](./SWARM-SCALE-PETALS-DESIGN.md). Ce document est une cible de
+conception, pas une validation d'implementation.
+
+Decision : conserver Parallax comme plan de donnees moderne (MLX, vLLM/SGLang, KV pagine,
+continuous batching et activations P2P), mais construire un control plane Fabi inspire des
+mecanismes prouves de Petals pour supporter beaucoup de workers et de model swarms : catalogue
+de spans par leases, pipelines stables, builders/standby/replicas, preservation permanente de
+la couverture, hysteresis, routes par requete, epochs/fencing et failover par replay.
+
+Le document precise aussi l'evolution structurante a etudier : separer les couches dont les
+poids sont charges (`hosted_span`) de la sous-plage executee pour une route
+(`effective_span`). Cette capacite permettrait a terme d'utiliser les recouvrements sans
+recharger les poids, mais exige des changements qualifies dans MLX, vLLM/SGLang, le KV et le
+protocole. Elle ne doit pas etre simulee uniquement dans le routeur actuel.
+
+## Repartition tardive, mode reseau public et correction du forwarding, 21 juillet 2026
+
+Cette section est la source de verite la plus recente pour le laboratoire. Le scheduler et les
+deux workers tournent sur le candidat moteur :
+
+- `fb2b0219d14710b4ded98c0f09e364cbb7462715` —
+  `fix: forward after standby layer assignment` ;
+- scheduler VPS reconstruit depuis ce SHA exact ; label OCI
+  `org.opencontainers.image.revision` verifie ;
+- candidat installe sous `runtime-candidates/fb2b021/parallax-src` sur le Mac mini et Windows ;
+- SHA-256 de `src/parallax/p2p/server.py` identique sur les deux machines et au checkout local :
+  `0faf2f824764c40f1438d25bc07afdc0302ee5f07f775ba7e189c62dbe91ee55`.
+
+### Repartition d'un worker arrive apres bootstrap
+
+L'allocateur DP upstream minimise d'abord le nombre de stages. Quand le Mac, capable d'heberger
+le frontend et tout le modele, est disponible au bootstrap, il peut donc produire seul une
+pipeline valide. Le RTX plus rapide mais incapable d'heberger le frontend etait alors laisse en
+standby sans nouvelle reconsideration.
+
+Deux correctifs moteur precedents ont rendu ce chemin explicite et borne :
+
+- `1814fd65b98d6005eb53888128db9fa378a38553` —
+  `fix: drain late worker repartitioning` : reconfiguration globale seulement apres drain,
+  frontiere exacte, fencing admission/inflight, rollback et plan RTT/roofline ;
+- `e78daf6b9bfbb6e1127666ea3dbe35381299ba86` —
+  `fix: reconsider workers skipped at bootstrap` : un worker valide ignore au bootstrap est
+  place une seule fois dans la file du rebalance draine ; les variations de telemetrie ou de
+  memoire ne declenchent pas de reallocations permanentes.
+
+Validation locale avant laboratoire :
+
+- apres `e78daf6` : `400 passed, 6 skipped` ;
+- apres `fb2b021` : `403 passed, 6 skipped` ;
+- Ruff sur les fichiers modifies : vert ; `git diff --check` : vert.
+
+### Cause exacte de la generation suspendue Windows-first
+
+Le test Windows-first a revele un bug Parallax upstream qui n'apparaissait pas dans l'ancien
+couple stable `[0,4) -> [4,28)` :
+
+1. Windows rejoignait seul, correctement en standby, avec une allocation `[None,None)` ;
+2. a l'arrivee du Mac, le scheduler calculait automatiquement Mac `[0,1)` puis RTX `[1,28)` ;
+3. `GradientServer` mettait a jour ses propres bornes, mais le
+   `TransformerConnectionHandler` long-lived gardait la copie initiale `[None,None)` ;
+4. lors du premier `rpc_pp_forward`, la telemetrie optionnelle `send_notify()` evaluait
+   `block_end_index - block_start_index`, donc `None - None` ;
+5. l'exception etait avalee et le RPC renvoyait quand meme un faux succes. Le Mac avait donc
+   termine son RPC P2P, mais le multipart n'avait jamais ete place dans la socket locale du
+   vLLM Windows.
+
+Preuve du log par processus Windows avant correction :
+
+```text
+Error in rpc_pp_forward: unsupported operand type(s) for -: 'NoneType' and 'NoneType'
+  File ".../p2p/server.py", line 107, in send_notify
+    "total_blocks": block_end_index - block_start_index
+```
+
+Cela explique pourquoi les anciennes generations reussissaient : Windows recevait auparavant
+`[4,28)` des son join initial, donc le handler RPC etait construit avec des bornes valides. Ce
+n'etait ni une limite vLLM a une couche, ni un probleme RAM, ni une panne du lien Mac/RTX.
+
+Correction `fb2b021` :
+
+- une notification absente retourne avant tout calcul de span ;
+- une notification configuree mais sans span est ignoree proprement ;
+- l'enqueue locale des activations est le chemin donnees prioritaire et se fait avant la
+  telemetrie ;
+- une erreur d'enqueue n'est plus transformee en faux succes RPC ;
+- le handler long-lived recoit atomiquement les nouvelles bornes a chaque changement de contrat ;
+- trois tests de regression couvrent le standby sans span, la mise a jour dynamique puis
+  forwarding, et la propagation d'une erreur d'enqueue.
+
+Les sources primaires relues avant correction sont le code `GradientHQ/parallax` courant, ses
+issues/PR, la documentation PyZMQ (contexts thread-safe, sockets non thread-safe) et la spec
+ZeroMQ PUSH/PULL. L'upstream possede le meme ordre `send_notify` puis enqueue et ne contient pas
+de correction pour le handler cree avant allocation. Le choix retenu conserve son plan de
+donnees, mais rend la telemetrie strictement non bloquante.
+
+### Matrice d'ordre de join qualifiee sur `fb2b021`
+
+**Windows puis Mac** :
+
+- Windows seul : cluster `waiting`, `frontend_nodes=0`, contexte routable `0` ;
+- arrivee Mac : allocation automatique Mac `[0,1)` -> RTX `[1,28)` ;
+- premiere generation post-correctif : HTTP 200, premier octet `4.801 s`, total `7.724 s` ;
+- generation SSE structuree chaude : sentinelle exacte `FABI-FB2B021-SSE-OK`, TTFT contenu
+  `0.853 s`, total `2.480 s` ;
+- prefill CUDA observe sur le RTX : `191.378 ms` pour le second prompt.
+
+**Mac puis Windows** :
+
+- Mac seul : pipeline `[0,28)`, contexte mesure `37888`, chunked prefill `1024` ;
+- arrivee RTX : rebalance draine automatique vers Mac `[0,1)` -> RTX `[1,28)` ;
+- sentinelle exacte `FABI-FB2B021-MAC-FIRST-OK` ; HTTP 200 ; TTFT contenu `5.888 s`,
+  total `7.608 s` ;
+- aucune plage manuelle n'a ete fournie dans les deux scenarios.
+
+Etat apres generations :
+
+- cluster `available`, contexte routable `40960` ;
+- RTX : capacite KV mesuree `63680` tokens, blocs `16` ;
+- Mac : capacite KV mesuree environ `1.59 M` tokens, blocs `32` pour son shard d'une couche ;
+- reservations KV `0` sur les deux, `max_running_request=0` ;
+- direct peers reciproques.
+
+### Portee exacte du test reseau public
+
+Les nouveaux launchers de laboratoire `mac-worker-public-nat.sh` et
+`windows-worker-public-nat.ps1` n'injectent aucune adresse Tailscale ni aucun pair prive. Ils
+utilisent les relays/bootstrap officiels Lattica et DCUtR. Les observations sont :
+
+- chaque worker rejoint le scheduler par l'IPv4 publique du VPS
+  `37.59.98.16/udp/18080/quic-v1`, lien qualifie direct ;
+- le trafic Mac/RTX a ete etabli directement sur le LAN local
+  `192.168.10.82 <-> 192.168.10.29` ;
+- aucune adresse `100.x` n'a servi de pair explicite au produit ;
+- Tailscale reste cependant installe comme interface sur les machines, et mDNS journalise des
+  erreurs sans impact sur cette interface ;
+- ce test prouve donc le mode sans pair Tailscale explicite et le discovery meme-LAN. Il ne
+  prouve pas encore le hole punching entre deux NAT independants.
+
+Le helper `tools/lab-worker-control.sh` gere desormais `tailscale|public`, un candidat moteur
+explicite, `screen` persistant sur macOS et une tache planifiee Windows sans limite d'execution.
+Les launchers activent aussi `PARALLAX_PROCESS_LOG_DIR` avec un identifiant de session unique :
+c'est ce qui a permis d'extraire la vraie trace Windows au lieu de se fier au stdout agrege.
+
+### Etat Git pousse apres qualification
+
+- `swarm-engine/codex/dynamic-dp-product` :
+  `fb2b0219d14710b4ded98c0f09e364cbb7462715` ;
+- `fabi-cli/dev` : `7b33cb048` — `fix: allow long vLLM cold starts` ; test cible
+  `worker.test.ts` : `30 passed` ; hook de push TypeScript : `4 successful` ;
+- `fabi-IDE/main` : `1f5bc97` — `tools: qualify public swarm lab workflows` ; tests
+  `fabi-swarm` : `19 passed` ; syntaxe shell et `git diff --check` : verts.
+
+Le launcher PowerShell a ete valide fonctionnellement par son deploiement puis par les deux
+ordres de join sur le PC Windows. Aucun parseur PowerShell local n'etait disponible sur le Mac ;
+ne pas presenter cette validation d'execution comme un lint statique separe.
+
+TODO immediate actualisee :
+
+1. executer le gros contexte OpenCode cible, environ `12 220` tokens d'entree + `4 096` reserves,
+   et consigner TTFT, debit, RAM/VRAM, KV et rejet au-dessus de la limite ;
+2. finir le vrai E2E UI visuel : modele, connexion, gate contribution, OpenCode/SSE, outils,
+   permissions, abort et changement de modele ;
+3. faire le vrai test entre deux reseaux/NAT independants, sans route `100.x`, avec preuve
+   direct/relay et mesure du lien ;
+4. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
+   reroute, epoch/fencing et replay KV ;
+5. seulement ensuite concevoir login/device pairing multi-machine.
