@@ -2569,3 +2569,66 @@ TODO immediate actualisee :
 4. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
    reroute, epoch/fencing et replay KV ;
 5. seulement ensuite concevoir login/device pairing multi-machine.
+
+## Gros contexte sur repartition tardive `fb2b021`, 21 juillet 2026
+
+Le gros contexte a ete rejoue sur le cluster public de laboratoire apres qualification des deux
+ordres de join. Topologie active : Mac mini M4 `[0,1)` puis RTX 4080 SUPER `[1,28)`, scheduler et
+workers sur `fb2b0219d14710b4ded98c0f09e364cbb7462715`, contexte routable `40960`.
+
+Le prompt de type OpenCode contient du contexte TypeScript repetitif et une instruction finale.
+Il a ete calibre avec le vrai tokenizer local `Qwen/Qwen3-1.7B` et son chat template : exactement
+`12 220` tokens avant envoi. Il ne s'agit pas d'une conversion caracteres/tokens estimee.
+
+Resultats SSE avec `max_tokens=4096` :
+
+- premiere passe froide : HTTP 200, premier octet `7.239 s`, premier contenu `7.440 s`, fin
+  `10.683 s`, `34` chunks et `31` tokens de contenu. La sentinelle attendue est presente, mais ce
+  premier generateur avait place ses tokens de calibration apres l'instruction ; le modele a donc
+  aussi reproduit des `x`. Ce n'est pas une panne du swarm et ce resultat n'est pas presente comme
+  une sentinelle exacte ;
+- passe longue chaude, avec padding deplace avant l'instruction : HTTP 200, premier octet
+  `1.327 s`, TTFT contenu `1.536 s`, fin `28.975 s`, `273` chunks, `270` tokens de contenu,
+  aucun token de raisonnement et sentinelle finale `FABI-FB2B021-BIGCTX-LONG-OK` presente ;
+- debit decode utile de la passe longue : environ `9.84 tok/s`, mesure sur la fenetre entre le
+  premier contenu et la fin ;
+- le TTFT long est chaud parce que la premiere requete venait de remplir le cache de prefixe avec
+  le meme gros contexte. Conserver `7.440 s` comme mesure froide et `1.536 s` comme mesure chaude,
+  sans les comparer comme deux topologies differentes.
+
+Reservations et admission :
+
+- demande logique : `12 220 + 4 096 = 16 316` tokens ;
+- reservation observee pendant `63` echantillons sur les deux shards : `16 320` tokens chacun,
+  soit l'arrondi exact au bloc KV de `16` impose par la route ;
+- avec `max-batch-size=1`, l'unique slot est occupe pendant le flux. Le champ historique
+  `max_running_request` de `/cluster/status_json` vaut alors `0` car il expose en realite la
+  capacite de requetes **restante**, pas le nombre de requetes actives ; le statut `waiting`
+  pendant l'occupation est donc attendu ;
+- trois secondes apres la fin : cluster `available`, reservations `[0,0]`, capacites restantes
+  Mac `1 595 136`, RTX `63 680` tokens.
+
+Mesures de pression pendant la passe longue :
+
+- Mac mini : minimum `3 705 339 904` octets disponibles, pression psutil maximale `78.4 %`,
+  RSS cumule des processus runtime maximal `3 401 105 408` octets, swap utilise `0` ;
+- PC Windows : minimum `26 066 522 112` octets de RAM hote disponibles, pression maximale
+  `24.0 %`, RSS runtime visible maximal `312 635 392` octets ;
+- RTX 4080 SUPER : `14 403 MiB` VRAM utilises au maximum, `1 645 MiB` libres au minimum, pic GPU
+  echantillonne `28 %`, puis `0 %` a la fin. Le pool GPU reste prealloue entre les requetes ; cette
+  stabilite n'est pas une fuite KV.
+
+Test de frontiere : un prompt calibre a `36 865` tokens avec `4 096` de sortie demande `40 961`,
+soit exactement un token au-dessus du contrat. Reponse HTTP 400 en `0.752 s`, code
+`context_length_exceeded`, message annoncant correctement le maximum `40 960`, puis reservations
+toujours `[0,0]`.
+
+TODO immediate actualisee :
+
+1. finir le vrai E2E UI visuel depuis le clone local complet : selection modele, connexion,
+   gate contribution, OpenCode/SSE, outils, permissions, abort et changement de modele ;
+2. faire le vrai test entre deux reseaux/NAT independants, sans route `100.x`, avec preuve
+   direct/relay et mesure du lien ;
+3. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
+   reroute, epoch/fencing et replay KV ;
+4. concevoir ensuite login/device pairing multi-machine.
