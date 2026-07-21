@@ -178,9 +178,16 @@ export function buildJoinArgs(schedulerPeer: string): string[] {
 /** Tue les workers parallax orphelins (évite la double-allocation). Unix only. */
 export function killOrphanedWorkers(currentPid: number): void {
     if (process.platform === 'win32') {
+        killWindowsRuntimeOrphans(currentPid);
         return;
     }
-    const r = spawnSync('pgrep', ['-f', 'parallax/launch.py'], { encoding: 'utf8' });
+    const runtimeRoot = join(
+        process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'),
+        'fabi',
+        'runtime'
+    );
+    const escapedRuntime = runtimeRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const r = spawnSync('pgrep', ['-f', escapedRuntime], { encoding: 'utf8' });
     if (r.status !== 0 || !r.stdout) {
         return;
     }
@@ -199,5 +206,27 @@ export function killOrphanedWorkers(currentPid: number): void {
     spawnSync('sh', ['-c', 'sleep 2']);
     for (const orphan of pids) {
         try { process.kill(-orphan, 'SIGKILL'); } catch { /* déjà mort */ }
+        try { process.kill(orphan, 'SIGKILL'); } catch { /* déjà mort */ }
     }
+}
+
+function killWindowsRuntimeOrphans(currentPid: number): void {
+    const localAppData = process.env.LOCALAPPDATA;
+    if (!localAppData) {
+        return;
+    }
+    const runtimeRoot = join(localAppData, 'fabi', 'runtime');
+    const script = `
+$runtime = ${JSON.stringify(runtimeRoot)}
+$current = ${currentPid}
+Get-CimInstance Win32_Process |
+  Where-Object { $_.ProcessId -ne $current -and $_.CommandLine -and $_.CommandLine.Contains($runtime) } |
+  ForEach-Object {
+    try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+  }
+`;
+    spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
+        stdio: 'ignore',
+        windowsHide: true
+    });
 }
