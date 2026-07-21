@@ -1874,3 +1874,96 @@ TODO immediate apres ce push :
 4. ensuite seulement attaquer le chantier demande par l'utilisateur : qualification hors
    Tailscale, avec preuve d'absence de trafic `100.x` et en distinguant bien meme-LAN/same-NAT
    d'un vrai test deux NAT.
+
+### Qualification rc29 publique homogene et ordre de join, 21 juillet 2026
+
+Cette sous-section remplace le statut provisoire ci-dessus. Les quatre repos etaient a jour par
+`git pull --ff-only` au debut de reprise. Les etats pousses connus sont :
+
+- `swarm-engine` `c14c99759cc5b3b6e6cd6e11d74213309e7b7456` sur
+  `codex/dynamic-dp-product` ;
+- `fabi-cli` `ea98e6ff8049c8a3191b5f009d808397fa1255eb` sur `dev` ;
+- `fabi` runtime `e1c1d12` sur `main` apres les correctifs installateur Windows ;
+- `fabi-IDE` `471de41b921fc392c0ba14389ea7005eddda873a` avant cette mise a jour de handoff.
+
+L'installation Windows publique `v2.7.0-rc29` est terminee sur le PC RTX. L'archive assemblee
+depuis les deux assets split avait la taille `2090104601` octets et le SHA256 attendu
+`12d562a43b3e7669589e5cffd4c463c34e70fc721ccb903b5f6261abaf6ae365`. Le manifeste installe est :
+
+- `fabi v2.7.0-rc29`, target `bun-windows-x64`, accel `cuda`, Python `3.12.7` ;
+- OpenCode `ea98e6ff8049c8a3191b5f009d808397fa1255eb` ;
+- Parallax `c14c99759cc5b3b6e6cd6e11d74213309e7b7456` ;
+- `built_at=2026-07-20T13:45:54Z`.
+
+`pip check` retourne `No broken requirements found`. Le smoke hardware-free
+`create_vllm_request` avec `llguidance` et `xgrammar` passe. Le smoke d'import executor passe
+avec le Python runtime correct `runtime/parallax-venv/Scripts/python.exe` :
+`from parallax.server.executor.vllm_executor import VLLMExecutor` puis `ok-executor`. Les echecs
+intermediaires precedents etaient des erreurs de quoting PowerShell/double SSH ou un chemin
+Python suppose faux (`runtime-python/python.exe`) ; ne pas les interpreter comme une panne vLLM.
+
+Les correctifs installateur Windows pousses sur `fabi/main` apres le tag release sont :
+
+- `d129f19` — utiliser `curl.exe` pour les gros assets split ;
+- `e7ea08d` — reprendre les downloads Windows bloques/stalles avec `--continue-at -`,
+  `--speed-limit 1024`, `--speed-time 60`, six tentatives et timeout de connexion ;
+- `e1c1d12` — refuser une installation si des processus executent encore depuis le root Fabi et
+  accepter `FABI_TARBALL_PATH` pour valider une archive locale deja assemblee.
+
+L'asset `install.ps1` attache a `v2.7.0-rc29` a ete remplace par cette version corrigee. Le tag
+`v2.7.0-rc29` pointe toujours sur le commit release `27a66b3...`; `main` contient les correctifs
+installateur post-release. Ne pas decrire ces commits comme faisant partie du tag sans recreer une
+nouvelle release.
+
+Le scheduler principal du VPS a ete bascule uniquement pour le swarm `qwen3-1_7b` en retaguant
+`local/parallax-scheduler:c14c997` vers `local/parallax-scheduler:latest` puis
+`docker compose up -d parallax-scheduler`. Le conteneur porte le label OCI
+`org.opencontainers.image.revision=c14c99759cc5b3b6e6cd6e11d74213309e7b7456` et tourne sur
+`0.0.0.0:3001`, TCP/UDP P2P `18080`. Les autres schedulers de modeles n'ont pas ete redemarres.
+
+Deux sequences de join ont ete qualifiees :
+
+1. Mac puis PC : le scheduler refuse d'abord le Mac seul (`frontend_nodes=1`, capacite totale
+   insuffisante), puis alloue automatiquement Mac `[0,4)` et RTX `[4,28)` quand le PC rejoint.
+   Les deux workers deviennent `available`, contexte supporte `32768`, direct peers reciproques
+   et reservations KV a zero.
+2. PC puis Mac : le PC seul reste `waiting`, `need_more_nodes=true`, sans fausse disponibilite
+   malgre `total_cap=91`, parce que `frontend_nodes=0`. Quand le Mac frontend rejoint, le
+   scheduler recalcule et alloue RTX `[4,28)` puis Mac `[0,4)`. Le cluster devient `available`,
+   `prefill_contract_ready=true`, `max_supported_context_tokens=32768`, direct peers reciproques.
+
+Sur la sequence inverse, les prompts avec le token du compte contributeur depuis le Mac donnent :
+
+- non-stream `/no_think` : HTTP 200 en `7.051 s`, sentinelle exacte
+  `FABI-RC29-REVERSE-ORDER-OK` ;
+- SSE `/no_think` : HTTP 200, TTFT `0.840 s`, fin `2.761 s`, `20` chunks, `[DONE]`, sentinelle
+  exacte `FABI-RC29-REVERSE-ORDER-SSE-OK`.
+
+Un appel identique depuis le VPS sans token de compte contributeur retourne correctement HTTP 403
+`contribution_required`; cela prouve que le gate reste actif et que consommer depuis une machine
+non liee au compte ne contourne pas la contribution. Apres les prompts, le scheduler montre
+`reserved_context_tokens=0` sur les deux shards, RTX `12675 MiB` utilises / `3373 MiB` libres /
+`0 %` GPU, Mac `7224590336` octets disponibles et executor principal autour de `821 MiB` RSS.
+La VRAM RTX reste preallouee pour poids/KV/workspace ; c'est attendu et ce n'est pas une fuite par
+prompt.
+
+Limite encore observee et importante pour le chantier NAT : les logs Lattica montrent toujours du
+mDNS actif sur les interfaces Tailscale/LAN et des erreurs macOS `No route to host` sur mDNS. Le
+chantier suivant doit donc reprendre l'audit deja fait sur libp2p/Lattica/Parallax officiel :
+desactiver mDNS quand des initial peers publics sont fournis, enlever les multiaddrs `100.x` du
+trafic produit, tester relay/DCUtR/hole punching, et prouver l'absence de trafic Tailscale. Le
+test actuel reste une qualification Tailscale de labo, pas une preuve deux NAT reels.
+
+TODO immediate actualisee :
+
+1. rejouer le gros contexte OpenCode sur le couple public `rc29` homogene
+   (`~12 220` tokens entree + `4 096` tokens sortie reserves), mesurer TTFT, debit, RAM, VRAM,
+   reservations KV et refus contexte trop grand ;
+2. reconstruire/relancer Fabi IDE depuis le clone local complet et refaire le parcours UI complet :
+   selection modele, connexion swarm, gate contribution, prompt OpenCode, streaming, outils,
+   permissions, abort et changement de modele ;
+3. commencer ensuite le chantier NAT hors Tailscale : patch mDNS/initial-peers inspire de
+   Parallax officiel PR #141, configuration scheduler public, capture de routes/adresses et
+   distinction explicite same-LAN/same-NAT vs deux NAT reels ;
+4. ensuite seulement reprendre replique/failover : troisieme worker, kill prefill/decode,
+   erreur propre sans replique, reroute avec replique, epoch/fencing et replay KV.
