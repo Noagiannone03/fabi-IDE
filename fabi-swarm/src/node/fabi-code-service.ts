@@ -506,11 +506,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
     }
 
-    async abort(sessionId: string): Promise<void> {
+    async abort(sessionId: string, directory?: string): Promise<void> {
         this.inflight.get(sessionId)?.abort();
         this.inflight.delete(sessionId);
         try {
-            await this.http('POST', `/session/${encodeURIComponent(sessionId)}/abort`, {});
+            await this.http('POST', `/session/${encodeURIComponent(sessionId)}/abort`, {}, directory);
         } catch {
             /* best-effort */
         }

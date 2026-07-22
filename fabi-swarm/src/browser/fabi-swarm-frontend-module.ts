@@ -29,10 +29,11 @@ import { FabiChatInstanceWidget } from './fabi-chat-instance-widget';
 import { Agent } from '@theia/ai-core/lib/common/agent';
 import { ChatAgent } from '@theia/ai-chat/lib/common/chat-agents';
 import { DefaultChatAgentId } from '@theia/ai-chat/lib/common/chat-agent-service';
+import { ChatSessionNamingService } from '@theia/ai-chat/lib/common/chat-session-naming-service';
 import { DefaultChatNodeToolbarActionContribution } from '@theia/ai-chat-ui/lib/browser/chat-node-toolbar-action-contribution';
 import { FabiCodeFrontend } from './fabi-code-frontend';
-import { FabiCodeState } from './fabi-code-state';
 import { FabiCodeAgent, FABI_CODE_AGENT_ID } from './fabi-code-agent';
+import { FabiChatSessionNamingService } from './fabi-chat-session-naming-service';
 import { FabiCodeEditorBridge } from './fabi-code-editor-bridge';
 import { FabiCodeRevertToolbarContribution, FabiCodeCheckpointCommands } from './fabi-code-checkpoint';
 import { ChatResponsePartRenderer } from '@theia/ai-chat-ui/lib/browser/chat-response-part-renderer';
@@ -62,10 +63,13 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // (texte/raisonnement/cartes d'outils) dans le chat Theia existant. Tout le
     // cerveau (agents, prompts, modèle, contexte, outils) vit dans OpenCode.
     bind(FabiCodeFrontend).toSelf().inSingletonScope();
-    bind(FabiCodeState).toSelf().inSingletonScope();
     bind(FabiCodeAgent).toSelf().inSingletonScope();
     bind(Agent).toService(FabiCodeAgent);
     bind(ChatAgent).toService(FabiCodeAgent);
+    // Theia's stock naming agent requires a Theia LanguageModel. Fabi does not
+    // register one by design, so preserve the request-derived title without a
+    // doomed background inference and its misleading error log.
+    rebind(ChatSessionNamingService).to(FabiChatSessionNamingService).inSingletonScope();
     // Agent par défaut du chat = fabi-code (FabiSwarmModelContribution le met
     // aussi en tête de PREFERRED_DEFAULT_AGENTS).
     if (isBound(DefaultChatAgentId)) {

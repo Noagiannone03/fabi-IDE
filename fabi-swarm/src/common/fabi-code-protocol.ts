@@ -140,8 +140,8 @@ export interface FabiCodeService {
      */
     prompt(sessionId: string, text: string, directory?: string, agent?: string): Promise<void>;
 
-    /** Interrompt le tour en cours pour la session. */
-    abort(sessionId: string): Promise<void>;
+    /** Interrompt le tour en cours dans le même scope workspace que le prompt. */
+    abort(sessionId: string, directory?: string): Promise<void>;
 
     /**
      * Historique complet d'une session (JSON brut d'OpenCode : `[{info, parts}]`)

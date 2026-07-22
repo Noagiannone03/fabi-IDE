@@ -34,7 +34,7 @@
     "prepare": "yarn run clean && yarn run build",
     "clean": "rimraf lib",
     "build": "tsc",
-    "test": "tsc --skipLibCheck --strictNullChecks --noImplicitAny --types node --module commonjs --moduleResolution node --target ES2017 --outDir lib --rootDir src src/node/fabi-runtime-install.ts src/node/fabi-runtime-manager.ts src/node/fabi-worker-tuning.ts src/node/fabi-connection.ts src/node/fabi-code-config.ts src/node/fabi-code-part-stream.ts src/node/fabi-code-server.ts && node --test test/*.test.js",
+    "test": "tsc --skipLibCheck --strictNullChecks --noImplicitAny --types node --module commonjs --moduleResolution node --target ES2017 --outDir lib --rootDir src src/common/fabi-chat-input-visibility.ts src/common/fabi-code-mode.ts src/node/fabi-runtime-install.ts src/node/fabi-runtime-manager.ts src/node/fabi-worker-tuning.ts src/node/fabi-connection.ts src/node/fabi-code-config.ts src/node/fabi-code-part-stream.ts src/node/fabi-code-server.ts && node --test test/*.test.js",
     "watch": "tsc -w"
   },
   "theiaExtensions": [

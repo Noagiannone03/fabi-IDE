@@ -917,60 +917,17 @@
 }
 .fabi-code-input:disabled { opacity: 0.5; }
 
-/* === On ne fait QUE OpenCode : on dégage l'agent Theia (@) + le toggle      */
-/* capabilities (outils) de l'input ; le mode = Ask/Agent (pills fabi-code).  */
+/* === On ne fait QUE OpenCode : on dégage l'agent Theia (@) + le toggle     */
+/* capabilities. Agent/Ask utilise le sélecteur de mode natif de Theia.      */
 .theia-ChatInputOptions-left .option:has(.codicon-mention),
 .theia-ChatInputOptions-left .option:has(.codicon-tools) {
     display: none !important;
 }
 
 /* ===================================================================== */
-/* Sélecteur de mode Ask/Agent dans l'input (façon Cursor) + thinking +  */
-/* cartes d'outils compactes.                                            */
+/* Thinking + cartes d'outils compactes.                                 */
 /* ===================================================================== */
 .chat-input-widget { position: relative; }
-
-/* Le chip de mode est DÉPLACÉ (cf. onUpdateRequest) dans la barre d'options
-   gauche de l'input → il s'aligne comme un vrai item à côté du 📎. */
-.fabi-mode-dd { position: relative; display: inline-flex; align-items: center; margin-right: 2px; }
-.fabi-mode-chip {
-    display: inline-flex; align-items: center; gap: 5px;
-    font: inherit; font-size: 11px; line-height: 1;
-    padding: 4px 8px; border-radius: 8px;
-    border: 1px solid var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.12));
-    background: transparent; color: var(--theia-descriptionForeground);
-    cursor: pointer; transition: background 0.12s ease, color 0.12s ease;
-}
-.fabi-mode-chip:hover { background: rgba(255, 255, 255, 0.07); color: var(--theia-foreground); }
-.fabi-mode-chip .codicon { font-size: 13px; }
-.fabi-mode-chip-label { font-weight: 600; }
-.fabi-mode-chip-caret { font-size: 10px !important; opacity: 0.55; }
-
-.fabi-mode-menu {
-    /* Portalé sur document.body → position FIXE (left/bottom en inline style),
-       z-index très élevé pour passer AU-DESSUS de l'input (plus de clipping). */
-    position: fixed; z-index: 99999;
-    min-width: 252px; padding: 5px; box-sizing: border-box;
-    background: var(--fabi-ai-island, #23262c);
-    border: 1px solid var(--fabi-ai-island-edge, rgba(255, 255, 255, 0.12));
-    border-radius: 12px;
-    box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
-    display: flex; flex-direction: column; gap: 2px;
-    animation: fabi-expand 0.14s ease-out;
-}
-.fabi-mode-item {
-    display: flex; align-items: flex-start; gap: 9px;
-    padding: 8px 10px; border-radius: 9px; border: none; background: transparent;
-    color: var(--theia-foreground); cursor: pointer; text-align: left; width: 100%;
-}
-.fabi-mode-item:hover { background: rgba(255, 255, 255, 0.06); }
-.fabi-mode-item.active { background: rgba(236, 91, 43, 0.10); }
-.fabi-mode-item-icon { font-size: 15px !important; margin-top: 1px; color: var(--theia-descriptionForeground); }
-.fabi-mode-item.active .fabi-mode-item-icon { color: #EC5B2B; }
-.fabi-mode-item-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto; min-width: 0; }
-.fabi-mode-item-name { font-size: 12.5px; font-weight: 600; }
-.fabi-mode-item-desc { font-size: 11px; opacity: 0.55; line-height: 1.35; }
-.fabi-mode-item-check { font-size: 13px !important; color: #EC5B2B; margin-top: 2px; }
 
 /* --- Bloc « Réflexion » (thinking) : atténué, barre latérale, distinct --- */
 [class*="theia-think"] {

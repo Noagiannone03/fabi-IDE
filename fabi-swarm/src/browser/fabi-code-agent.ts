@@ -31,8 +31,8 @@ import {
 import { LanguageModelRequirement } from '@theia/ai-core';
 import { AgentSpecificVariables, PromptVariantSet } from '@theia/ai-core/lib/common/agent';
 import { FabiCodeFrontend } from './fabi-code-frontend';
-import { FabiCodeState } from './fabi-code-state';
 import { FabiCodePart } from '../common/fabi-code-protocol';
+import { FABI_CODE_MODES, normalizeFabiCodeMode } from '../common/fabi-code-mode';
 
 /** Id stable du provider/agent Fabi (référencé par DefaultChatAgentId). */
 export const FABI_CODE_AGENT_ID = 'fabi-code';
@@ -48,7 +48,6 @@ export const FABI_CODE_CHECKPOINT_KEY = 'fabiCodeCheckpoint';
 export class FabiCodeAgent implements ChatAgent {
 
     @inject(FabiCodeFrontend) protected readonly engine: FabiCodeFrontend;
-    @inject(FabiCodeState) protected readonly state: FabiCodeState;
     @inject(WorkspaceService) protected readonly workspace: WorkspaceService;
     @inject(CommandService) protected readonly commands: CommandService;
     @inject(ILogger) protected readonly logger: ILogger;
@@ -67,6 +66,7 @@ export class FabiCodeAgent implements ChatAgent {
     // ---- ChatAgent ----
     locations: ChatAgentLocation[] = ChatAgentLocation.ALL;
     iconClass = 'codicon codicon-copilot';
+    readonly modes = FABI_CODE_MODES;
 
     /** Map session de chat Theia → session OpenCode (`ses_…`). */
     protected readonly sessions = new Map<string, string>();
@@ -277,7 +277,10 @@ export class FabiCodeAgent implements ChatAgent {
             });
 
             const cancelSub = token.onCancellationRequested(() => {
-                void this.engine.service.abort(ocSession).catch(() => undefined);
+                // OpenCode instances are scoped by workspace. Omitting `dir`
+                // targets the server's default instance and leaves the real
+                // provider request running even though Theia looks canceled.
+                void this.engine.service.abort(ocSession, dir).catch(() => undefined);
                 finish();
             });
 
@@ -325,8 +328,10 @@ export class FabiCodeAgent implements ChatAgent {
                 }
             });
 
-            // Lance le tour avec le mode courant ('build' = Agent / 'plan' = Ask).
-            this.engine.service.prompt(ocSession, userText, dir, this.state.mode).catch(err => {
+            // Theia records the selected native mode on each request. Normalize
+            // it before forwarding so only real OpenCode primary agents pass.
+            const mode = normalizeFabiCodeMode(request.request.modeId);
+            this.engine.service.prompt(ocSession, userText, dir, mode).catch(err => {
                 finish(err instanceof Error ? err.message : String(err));
             });
         });

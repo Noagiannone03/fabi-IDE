@@ -113,7 +113,10 @@ export const FabiSwarmSelector: React.FC<{
         && connection.reason !== 'pick-model' && connection.reason !== 'worker-missing-binary';
     const barLabel = active ? (active.model.split('/').pop() ?? active.model) : 'Choisir un modèle';
     const codeError = connection?.ready && code.status === 'error';
-    const generating = connection?.ready && code.activeTurns > 0;
+    // A one-slot scheduler has no spare admission capacity during our own turn,
+    // so `connection.ready` may transiently be false. OpenCode activity is the
+    // authoritative local signal for the compact bar while that turn is alive.
+    const generating = code.activeTurns > 0;
     const barStatus = generating && code.activity === 'preparing' ? 'Préparation du contexte…'
         : generating ? 'Génération…'
         : codeError ? 'Erreur moteur'
