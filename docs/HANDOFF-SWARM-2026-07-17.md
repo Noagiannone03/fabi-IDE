@@ -2632,3 +2632,107 @@ TODO immediate actualisee :
 3. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
    reroute, epoch/fencing et replay KV ;
 4. concevoir ensuite login/device pairing multi-machine.
+
+## E2E IDE package, modes natifs et abort workspace, 22 juillet 2026
+
+Le clone local complet `/Users/noagiannone/Documents/fabi-ide` a ete compile puis package avec
+Node 22. Le changement code est `1603261` (`fix: preserve native chat lifecycle`). L'application
+testee est `electron-app/dist/mac-arm64/Fabi.app`; elle n'est pas signee, ce qui est attendu pour
+ce build de developpement.
+
+### Cause des regressions UI et correction
+
+Deux integrations locales contournaient le cycle de vie natif de Theia :
+
+- le selecteur Agent/Ask etait rendu par React, puis deplace physiquement dans un autre parent
+  DOM avec `insertBefore`. Au prochain rendu, React tentait de retirer le noeud de son ancien
+  parent et levait `NotFoundError: Failed to execute 'removeChild' on 'Node'` ;
+- quand le scheduler mono-slot passait temporairement de `ready` a `waiting` pendant notre
+  propre requete, Fabi remplacait l'input entier par l'ecran de connexion. Cela detruisait
+  l'editeur Monaco, le bouton natif `Cancel (Esc)` et l'etat `receivingAgent`; au remontage,
+  Agent/Ask revenait donc au mode par defaut.
+
+La correction suit les contrats de Theia 1.72.2 relus dans les sources installees :
+
+- `ChatAgent.modes` expose maintenant directement `build = Agent` et `plan = Ask` ; Theia place
+  le choix dans `request.modeId`, puis Fabi ne transmet a OpenCode que ces deux valeurs connues ;
+- aucun noeud React n'est deplace manuellement ; le selecteur natif gere focus, clavier, portal
+  et cycle de vie ;
+- avant la premiere admission scheduler, l'input reste entierement absent ; apres cette premiere
+  admission, son montage devient stable pour la vie du chat. Une perte de disponibilite le rend
+  toujours read-only et bloque l'envoi, mais ne detruit plus brouillon, mode ou annulation ;
+- le statut `Generation...` depend du tour OpenCode local, pas de la capacite restante du
+  scheduler mono-slot ;
+- l'abort OpenCode recoit maintenant le meme `directory` que le prompt. Sans ce scope, l'endpoint
+  visait l'instance OpenCode par defaut et pouvait laisser la vraie generation workspace active ;
+- le service de nommage Theia est neutralise pour Fabi : aucun `LanguageModel` Theia n'est
+  volontairement enregistre, donc le nom derive de la requete est conserve sans lancer une
+  inference de fond impossible ni journaliser `No language model found for chat session naming`.
+
+Avant implementation, les sources primaires consultees ont ete le code officiel Theia du widget
+de chat/selecteur et le code/documentation OpenCode 1.15 pour les primary agents, permissions,
+scope workspace et endpoint d'abort. Aucun timeout arbitraire n'a ete ajoute.
+
+### Validation du package reel
+
+Gate et connexion :
+
+- avec un credential local ne correspondant pas aux workers du labo, l'UI affiche
+  `Contribution non reconnue` et ne monte aucun editeur ;
+- avec le compte du Mac mini/RTX, `Qwen3-1.7B - Pret` apparait et l'input natif est monte ;
+- le scheduler reste sur `fb2b021`, pipeline Mac mini `[0,1)` puis RTX `[1,28)`, contexte
+  routable `40960`. Le worker du MacBook apparait en troisieme node `waiting`, sans couche ni
+  reservation ; il ne fait pas partie de la route active.
+
+Modes et streaming :
+
+- requete UI en `Ask`, sentinelle assistant exacte `FABI-ASK-PERSIST-FINAL-OK` ;
+- l'API OpenCode confirme `agent: plan` sur le message utilisateur et le message assistant ;
+- apres la transition `waiting -> ready`, le selecteur affiche toujours `Ask`, un seul editeur
+  est visible et aucune erreur page/console n'est remontee.
+
+Permissions/outils :
+
+- requete UI `Agent` demandant obligatoirement `bash pwd` ;
+- carte `Autoriser/Refuser` visible et tour toujours annulable avant decision ;
+- apres `Autoriser`, OpenCode expose un part `tool=bash`, `state=completed`, sortie exacte
+  `/Users/noagiannone/Documents/NebuleAir_WiFi_V4`, puis la sentinelle
+  `FABI-PERMISSION-PACKAGED-OK` ;
+- l'UI revient a `Pret`, reste en `Agent`, conserve un seul editeur et ne produit aucune erreur
+  page/console.
+
+Abort :
+
+- une generation longue a affiche l'action Theia native `Cancel (Esc)` en `11 ms` lors d'une
+  premiere passe courte ;
+- passe avec reservation effectivement observee : scheduler `waiting`, reservations KV
+  `[17696,17680,0]` sur Mac mini, RTX et node local waiting ;
+- clic UI sur Cancel, disparition de l'action et retour des reservations a `[0,0,0]` en environ
+  `100 ms`, scheduler `available`, barre `Pret`, mode `Ask` et editeur toujours monte ;
+- aucune erreur page/console.
+
+Selection de modele :
+
+- la liste reelle s'ouvre depuis l'UI et affiche Qwen3-1.7B (`3 nodes` annonces, dont un waiting)
+  puis Qwen3-8B, Qwen3-Coder-30B, Qwen3-Coder-480B et GLM-4.5 a `0 node` ;
+- la selection/connexion du modele actif est qualifiee. Un changement effectif vers un second
+  modele ne l'est pas, car aucun second swarm n'est en ligne ; ne pas presenter l'ouverture de
+  la liste comme un test de changement de modele reussi.
+
+Validation locale finale :
+
+- `yarn --cwd fabi-swarm test` : `25 passed` ;
+- `yarn --cwd fabi-swarm build` : OK ;
+- `yarn build:electron` : OK ;
+- package Node 22 `electron-app package:dir` : OK ;
+- `git diff --check` : OK.
+
+TODO immediate actualisee :
+
+1. mettre temporairement un second swarm leger en ligne et qualifier un vrai changement de
+   modele aller/retour dans l'IDE ;
+2. priorite produit suivante : vrai test entre deux reseaux/NAT independants, sans route
+   `100.x`, avec preuve direct/relay et mesure du lien ;
+3. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
+   reroute, epoch/fencing et replay KV ;
+4. concevoir ensuite login/device pairing multi-machine.
