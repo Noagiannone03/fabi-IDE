@@ -2729,10 +2729,10 @@ Validation locale finale :
 
 TODO immediate actualisee :
 
-1. mettre temporairement un second swarm leger en ligne et qualifier un vrai changement de
-   modele aller/retour dans l'IDE ;
-2. priorite produit suivante : vrai test entre deux reseaux/NAT independants, sans route
+1. priorite produit suivante : vrai test entre deux reseaux/NAT independants, sans route
    `100.x`, avec preuve direct/relay et mesure du lien ;
+2. mettre temporairement un second swarm leger en ligne et qualifier un vrai changement de
+   modele aller/retour dans l'IDE ;
 3. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
    reroute, epoch/fencing et replay KV ;
 4. concevoir ensuite login/device pairing multi-machine.
