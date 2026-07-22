@@ -2873,3 +2873,140 @@ TODO immediate actualisee :
 4. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique, reroute,
    epoch/fencing et replay KV ;
 5. concevoir ensuite login/device pairing multi-machine.
+
+## Transport universel Iroh, RPC produit et fallback relay, 22 juillet 2026
+
+Le chantier ouvert par le resultat negatif DCUtR/Lattica entre les deux NAT a ete traite comme
+un remplacement de transport borne, pas comme un contournement de `ensure_direct_connection()`.
+Le commit moteur exact est
+`961f64ad81fdb8db72e0f54c82955666ee801647` (`feat: add relay-capable Iroh runtime transport`),
+pousse sur `codex/dynamic-dp-product`.
+
+Le labo modele reste volontairement sur le rollback qualifie `e7537bf` : scheduler VPS, Mac mini
+`[0,1)` et RTX `[1,28)` sont toujours disponibles sur Lattica. Iroh est opt-in via
+`FABI_NETWORK_TRANSPORT=iroh` tant que les wheels natives des deux workers et une generation
+modele complete ne sont pas qualifiees. Aucun succes du harness reseau ci-dessous ne doit etre
+presente comme une generation Qwen deja passee sur Iroh.
+
+### Recherche primaire et decision
+
+Les sources relues avant implementation sont le code/documentation officiels Iroh `v1.0.3`,
+`iroh-relay`, PyO3 `0.27.2`, Maturin, Petals/Hivemind et la documentation NAT/DERP de Tailscale.
+Les principes retenus sont :
+
+- Iroh fournit des endpoints Ed25519 authentifies, QUIC, hole punching, fallback relay chiffre et
+  upgrade relay vers direct sans changer l'identite applicative ;
+- Tailscale valide le modele operationnel « relay disponible immediatement, direct prefere des
+  qu'il gagne » ;
+- Petals/Hivemind conserve un pair joignable par relay et penalise son cout/debit au lieu de le
+  declarer hors ligne ;
+- le relay circuit Lattica/libp2p actuel reste adapte au rendez-vous/DCUtR, pas au fallback de
+  grosses activations. Supprimer son refus relay-only aurait conserve le mauvais data plane.
+
+Architecture detaillee et limites : `swarm-engine/docs/fabi-network-architecture.md`.
+
+### Relay Iroh officiel qualifie sur le VPS
+
+Le binaire officiel `iroh-relay v1.0.3` tourne sur le VPS avec TLS existant, authentification
+Bearer, limites par client, QUIC address discovery et metriques locales :
+
+- relay HTTPS TCP `4443` ;
+- captive portal HTTP TCP `4442` ;
+- address discovery QUIC UDP `7842` ;
+- metriques liees a `127.0.0.1:9091` ;
+- secret dans un fichier systemd root `0600`, jamais commite ni place sur la ligne de commande.
+
+Le template systemd/config et la documentation sont dans `deploy/iroh-relay`. Le source officiel
+`iroh-relay 1.0.3` confirme que `IROH_RELAY_ACCESS_TOKEN` remplace en memoire la liste
+`access.shared_token` du TOML. Le template commite ne contient donc aucun credential.
+
+### Qualification entre NAT et chemins observes
+
+Le harness natif Rust a ete compile sur le Mac actuel, le Mac mini et Windows RTX. Resultats reels
+avec payload BLAKE3 verifie :
+
+- Mac actuel -> Mac mini, NAT independants, relay force : trois transferts de `64 MiB`, environ
+  `1.10` a `1.67 MiB/s` ;
+- le meme couple en mode automatique, Tailscale coupe sur le Mac actuel, est reste relay-only :
+  le fallback reste donc utilisable lorsque le hole punching ne gagne pas sur cette paire ;
+- Mac actuel -> Windows RTX, relay force : trois transferts de `16 MiB`, environ `1.16` a
+  `1.58 MiB/s` ;
+- Windows, `100 x 4 KiB` representatifs du decode : RTT moyen environ `130.7 ms`, p95
+  `172.3 ms` ;
+- annulation d'un stream `64 MiB` autour de `101 ms`, puis second `64 MiB` reussi sur la meme
+  connexion QUIC ;
+- deux endpoints locaux en mode automatique, connus uniquement par endpoint ID + URL relay, ont
+  echange leurs candidats puis promu un chemin direct selectionne `10.0.1.54:51020`, RTT environ
+  `0.217 ms`, tout en conservant le relay comme fallback. Aucune IP brute n'a ete publiee par le
+  scheduler.
+
+Un cas de backpressure non couvert par le premier harness a ensuite ete trouve pendant la revue :
+si la file Python de chunks etait saturee, le client pouvait envoyer STOP_SENDING mais le serveur
+restait bloque dans un write QUIC avant de liberer son generateur. Le correctif suit l'API QUIC
+officielle `SendStream::stopped()` et la poll en concurrence avec chaque ecriture. Qualification
+live finale sur relay force : generateur distant ferme en environ `22 ms`, chemin selectionne
+`relay`, puis RPC unary reussi sur la meme connexion. Le scenario est conserve comme test
+d'integration opt-in `tests/test_fabi_network_live.py` ; il ne lit le secret que depuis un env ou
+un fichier explicite et est skippe dans la suite normale.
+
+### Runtime RPC livre
+
+Le nouveau crate `native/fabi-network` fournit :
+
+- identite persistante creee atomiquement avec permissions owner-only sur Unix ; une cle corrompue
+  echoue sans regeneration silencieuse ;
+- protocole `FABINET1` versionne, tailles bornees a verifier avant allocation et digest BLAKE3 ;
+- cache de connexions, unary RPC, stream RPC, deadline, reset d'un seul stream, backpressure et
+  telemetrie des chemins direct/relay/RTT ;
+- extension PyO3 ABI stable Python 3.10+, packagee par Maturin ;
+- codecs applicatifs explicites MessagePack, protobuf, bytes et null. `pickle` est interdit sur le
+  wire, contrairement au chemin historique Lattica ;
+- dispatch serveur borne et pools inbound/outbound separes : une generation longue ne monopolise
+  pas les heartbeats ;
+- secret relay lu soit depuis `FABI_RELAY_TOKEN`, soit depuis `FABI_RELAY_TOKEN_FILE`. Sur Unix,
+  un fichier lisible par groupe/autres est refuse.
+
+L'integration scheduler/worker/chat est stagee derriere le flag Iroh. Le scheduler central reste
+la source de verite pour membership, compte, contribution, allocation et route ; aucun DHT n'est
+invente. Le refit de poids/Bitswap est refuse explicitement en mode Iroh jusqu'a qualification
+d'un content plane separe.
+
+Le modele de connectivite distingue maintenant :
+
+- `reachable_peer_ids` : RPC qualifie par direct ou relay ;
+- `direct_peer_ids` : chemin Iroh selectionne direct, ou RPC direct Lattica historique ;
+- `relayed_peer_ids` : RPC qualifie dont le chemin Iroh selectionne est relay.
+
+Une route relay-only Iroh est donc eligible ; une arete inconnue/non qualifiee reste fail-closed.
+Le vrai handler scheduler `node_update` a ete passe a travers le relay avec propagation
+reachable/relayed. La mesure continue de debit par pair et la penalite de cout type Petals ne sont
+pas encore implementees : seul le type de chemin et son RTT sont publies, et le scheduler ne doit
+pas pretendre que le RTT mesure le bandwidth.
+
+### Validations exactes du commit `961f64a`
+
+- suite Python complete : `417 passed, 7 skipped`, un warning de depreciation Starlette/httpx
+  externe ;
+- test live relay opt-in : `1 passed` ;
+- tests Rust : `6 passed` ;
+- `cargo clippy --all-targets --features python -- -D warnings` : OK ;
+- `cargo check --features python-extension` : OK ;
+- wheel locale macOS arm64 ABI3 construite/installee par Maturin : OK ;
+- Ruff, Black et `git diff --check` : OK ;
+- RPC Python live force relay : MessagePack, protobuf, erreur distante, deadline, stream SSE,
+  erreur en milieu de stream, annulation et reutilisation de connexion : OK.
+
+### TODO immediate actualisee
+
+1. construire les wheels Maturin **nativement** sur Mac mini et Windows RTX, les installer dans
+   leurs candidats et valider import, identite, unary/stream/cancel sans changer le labo qualifie
+   avant succes ;
+2. basculer un candidat complet scheduler + Mac mini + RTX sur `961f64a`, charger Qwen et qualifier
+   prefill, decode, SSE, abort, heartbeats, gate contribution et reservations KV sur Iroh ;
+3. ajouter mesure continue throughput/loss par arete et scoring direct/relay inspire de Petals,
+   avec hysteresis pour eviter les reallocations permanentes ;
+4. qualifier restart worker/relay, credentials invalides, relay regional secondaire et failover ;
+5. mettre temporairement un second swarm leger en ligne et qualifier le changement de modele IDE ;
+6. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique, reroute,
+   epoch/fencing et replay KV ;
+7. concevoir ensuite le login/device pairing multi-machine et le bootstrap de credentials relay.
