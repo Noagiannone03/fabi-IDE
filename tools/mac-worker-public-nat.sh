@@ -14,6 +14,7 @@ export FABI_WORKER_SESSION_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
 export PARALLAX_PROCESS_LOG_DIR="$HOME/.local/share/fabi/process-logs"
 mkdir -p "$PARALLAX_PROCESS_LOG_DIR"
 export PYTHONUNBUFFERED=1
+export RUST_LOG="${RUST_LOG:-info}"
 # Official vLLM cold-start window. The engine wrapper forwards this value into
 # Rust --args-json; 600 seconds was too short for a first multi-GB model fetch
 # over the lab connection.

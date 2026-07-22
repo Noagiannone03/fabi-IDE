@@ -2736,3 +2736,140 @@ TODO immediate actualisee :
 3. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique,
    reroute, epoch/fencing et replay KV ;
 4. concevoir ensuite login/device pairing multi-machine.
+
+## Qualification entre deux NAT independants, 22 juillet 2026
+
+Cette qualification separe volontairement deux questions qui ne doivent pas etre confondues :
+
+1. un client Fabi situe sur un autre reseau peut-il appeler le scheduler public puis recevoir une
+   generation executee par une pipeline Parallax P2P normale ?
+2. deux **workers** places derriere ces deux NAT precis arrivent-ils a faire passer leurs
+   activations directement apres rendez-vous relay et DCUtR ?
+
+Le premier cas est valide. Le second a echoue proprement sur cette paire de reseaux et constitue
+une limite produit reelle a traiter, pas une generation reussie a sur-vendre.
+
+### Sources relues et contrat exact de Lattica
+
+Avant de modifier ou tester, les sources primaires suivantes ont ete relues :
+
+- `GradientHQ/parallax` courant et sa construction Lattica
+  `with_relay_servers(...).with_dcutr(True)` ;
+- `GradientHQ/lattica` `v1.0.21`, y compris `network/core.rs`, `behaviour.rs`, le detecteur NAT
+  STUN et les PR `#6` (direct connection check) / `#10` (NAT type check) ;
+- la specification officielle libp2p DCUtR et la documentation hole punching libp2p.
+
+Le contrat important de Lattica `1.0.21` est confirme dans le code : le circuit relay sert au
+rendez-vous et au declenchement DCUtR, mais `ensure_direct_connection()` refuse un RPC lorsque
+seule une adresse `/p2p-circuit` reste disponible avec l'erreur exacte
+`Only relayed connection available for peer ...`. Le relay public n'est donc pas un fallback de
+transport pour les activations Parallax dans cette version.
+
+Le test STUN `is_symmetric_nat()` compare des mappings **UDP**. Il ne peut pas, a lui seul,
+prouver que toute tentative TCP/QUIC echouera. Le commit moteur
+`e7537bff449a4cd3ae3e282dd78bb842722e59bf` (`fix: qualify connectivity after NAT preflight`)
+remplace donc les trois `exit(1)` anticipes par un avertissement. La securite n'est pas affaiblie :
+seul un vrai RPC direct reussi peuple `direct_peer_ids`, et le scheduler continue de refuser une
+pipeline dont le lien n'est pas qualifie. Le statut expose aussi `rtt_to_nodes_ms`, telemetrie deja
+mesuree mais jusque-la invisible, sans publier les adresses IP des contributeurs.
+
+Validation moteur avant deploiement : Ruff vert, `git diff --check` vert,
+`405 passed, 6 skipped` sur la suite complete.
+
+### Topologie effectivement testee
+
+- MacBook actuel : LAN `10.0.1.54`, IPv4 publique `193.252.54.10`, sortie via `en1` et gateway
+  `10.0.1.1` ; client Tailscale installe mais `Self.Online=false` pendant tout le test ;
+- Mac mini et PC RTX : LAN `192.168.10.82` et `192.168.10.29`, IPv4 publique commune
+  `2.54.142.226` ;
+- scheduler VPS : IPv4 publique `37.59.98.16`, conteneur reconstruit et label OCI verifie sur
+  `e7537bf` ;
+- Mac mini et Windows charges depuis les candidats exacts
+  `runtime-candidates/e7537bf/parallax-src` ;
+- aucune adresse initiale ou annoncee `100.x` n'a ete fournie a Parallax.
+
+Le routage du MacBook vers le VPS et vers l'IPv4 publique du LAN distant passait par `en1`, pas
+par Tailscale. Les clefs SSH via le VPS ont uniquement servi au pilotage et a la collecte du labo ;
+elles ne font pas partie du chemin produit.
+
+### Test worker inter-NAT strict : relay etabli, direct DCUtR non obtenu
+
+Pour retirer toute ambiguite same-LAN, mDNS a ete force a `0` sur les workers pendant cette phase.
+Windows a rejoint en premier, puis le MacBook actuel :
+
+- Windows seul a rejoint directement le scheduler public en QUIC et est reste standby, comme
+  attendu sans frontend ; RTT worker -> scheduler environ `87 ms` ;
+- l'arrivee du MacBook a produit automatiquement MacBook `[0,4)` puis RTX `[4,28)` ;
+- les deux workers ont bien obtenu des connexions `/p2p-circuit` par les relays Lattica ;
+- pendant plus de deux minutes, chaque probe a retourne
+  `Only relayed connection available for peer ...` ;
+- `direct_peer_ids=[]` des deux cotes, cluster `waiting`, aucune requete envoyee sur cette route.
+
+L'ajout du Mac mini, toujours en mode strict, a confirme le meme comportement entre le MacBook et
+le LAN distant. Le scheduler pouvait poser une allocation avant reception de la telemetrie directe,
+mais le statut global restait `waiting` une fois le lien refuse. Il n'a pas automatiquement cherche
+un autre sous-graphe connecte apres ce verdict. C'est un second chantier identifie : la selection
+d'allocation doit devenir consciente du graphe de connectivite qualifie et se recalculer de facon
+bornee lorsqu'un lien reste relay-only.
+
+Ce resultat ne prouve pas que DCUtR echoue sur tous les NAT. Il prouve exactement que, sur cette
+paire de reseaux au 22 juillet, le rendez-vous relay fonctionne mais que le direct requis par
+Lattica `1.0.21` n'est pas obtenu. Le fail-closed Fabi evite correctement une generation suspendue
+ou corrompue.
+
+### E2E Parallax normal depuis le second reseau : valide
+
+Les launchers ont ensuite ete remis au comportement produit hybride upstream : mDNS same-LAN et
+relay/DCUtR coexistent. Apres un reset propre, Windows a rejoint en premier puis le Mac mini :
+
+- allocation DP automatique Mac mini `[0,1)` -> RTX `[1,28)` ;
+- `direct_peer_ids` reciproques ;
+- socket directe observee
+  `192.168.10.82:19080 -> 192.168.10.29:19080`, sans chemin `100.x` ;
+- RTT P2P mesure apres stabilisation : RTX -> Mac `2.1084 ms`, Mac -> RTX `1.658792 ms` ;
+- RTT workers -> scheduler public : environ `82-85 ms` ;
+- cluster `available`, contexte routable `40960`, reservations finales `[0,0]`.
+
+Depuis le MacBook actuel sur l'autre IPv4 publique, un appel SSE authentifie a ete envoye a
+`https://server.undefinedstudio.fr/fabi-scheduler/v1/chat/completions`. Resultat :
+
+- HTTP `200` ;
+- contenu exact `FABI-CROSS-NETWORK-E2E-OK` ;
+- premier evenement SSE `6.593 s`, TTFT contenu `6.651 s`, total `7.970 s` ;
+- `14` chunks SSE ;
+- `79` echantillons de statut, reservations maximales observees `112` puis `128` tokens sur les
+  deux shards, et retour a zero ;
+- appel de statut public depuis ce Mac : connexion TCP `39.9 ms`, TLS `80.6 ms`, TTFB
+  `120.4 ms`.
+
+Interpretation precise : le prompt client traverse HTTPS vers le scheduler public ; il n'a pas
+besoin d'etre P2P. Les activations de la pipeline, elles, passent bien sur le lien P2P direct
+Mac mini/RTX qualifie ci-dessus. Ce test valide donc la base Parallax/Fabi utilisee normalement
+depuis un autre reseau, tout en conservant le resultat negatif du worker inter-NAT.
+
+### Outillage et etat laisse au labo
+
+Les launchers public enregistrent maintenant `RUST_LOG=info` par defaut afin que les preuves
+Lattica `is_direct` soient disponibles. `tools/lab-worker-control.sh` rend aussi le demarrage Mac
+idempotent : une seconde commande `start` ne cree plus un deuxieme `screen` qui echoue ensuite sur
+`Address already in use`.
+
+Etat final laisse en fonctionnement :
+
+- scheduler `parallax-scheduler` sur `e7537bf` ;
+- un worker Mac mini et un worker Windows sur le meme candidat ;
+- pipeline `[0,1) -> [1,28)` disponible, direct peers reciproques, aucune reservation ;
+- aucun worker de test actif sur le MacBook actuel.
+
+TODO immediate actualisee :
+
+1. concevoir le chemin reseau universel : qualifier d'autres types de NAT puis etudier un fallback
+   relay explicite et borne (probablement relays Fabi regionaux, quotas, authentification, mesure du
+   cout/debit) au lieu de simplement supprimer la verification directe de Lattica ;
+2. rendre l'allocation/reallocation consciente du graphe de liens directs qualifies afin qu'un
+   worker relay-only ne bloque pas une pipeline alternative valide ;
+3. mettre temporairement un second swarm leger en ligne et qualifier un vrai changement de modele
+   aller/retour dans l'IDE ;
+4. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique, reroute,
+   epoch/fencing et replay KV ;
+5. concevoir ensuite login/device pairing multi-machine.

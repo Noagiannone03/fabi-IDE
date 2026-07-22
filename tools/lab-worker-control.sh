@@ -89,6 +89,14 @@ start_worker() {
     echo "missing_or_not_executable $launcher"
     exit 1
   fi
+  if screen -ls 2>/dev/null | grep -Fq ".$screen_name"; then
+    echo "already_running mac screen=$screen_name"
+    return 0
+  fi
+  if [ -n "$(runtime_pids | head -1)" ]; then
+    echo "already_running mac runtime_processes_present"
+    return 0
+  fi
   if [ -n "$engine_sha" ]; then
     source_dir="$HOME/.local/share/fabi/runtime-candidates/$engine_sha/parallax-src"
     if [ ! -d "$source_dir/src/parallax" ]; then

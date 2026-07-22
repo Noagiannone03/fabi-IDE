@@ -24,6 +24,9 @@ $env:PARALLAX_PROCESS_LOG_DIR = Join-Path $env:LOCALAPPDATA "fabi\process-logs"
 New-Item -ItemType Directory -Path $env:PARALLAX_PROCESS_LOG_DIR -Force | Out-Null
 $env:PARALLAX_CUDA_SYSTEM_RESERVE_GB = "1.5"
 $env:PYTHONUNBUFFERED = "1"
+if (-not $env:RUST_LOG) {
+  $env:RUST_LOG = "info"
+}
 if (-not $env:VLLM_ENGINE_READY_TIMEOUT_S) {
   $env:VLLM_ENGINE_READY_TIMEOUT_S = "3600"
 }
