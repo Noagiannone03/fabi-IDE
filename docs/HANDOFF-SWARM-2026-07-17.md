@@ -3010,3 +3010,73 @@ pas pretendre que le RTT mesure le bandwidth.
 6. ajouter une troisieme replique puis tester kill prefill/decode, erreur sans replique, reroute,
    epoch/fencing et replay KV ;
 7. concevoir ensuite le login/device pairing multi-machine et le bootstrap de credentials relay.
+
+## Décision Fabi Swarm Protocol v3, 23 juillet 2026
+
+La cible à grande échelle a été réévaluée depuis les sources, sans considérer le prototype
+actuel comme une contrainte de compatibilité produit. La spécification normative est maintenant
+[`FABI-SWARM-PROTOCOL-V3.md`](./FABI-SWARM-PROTOCOL-V3.md). Elle remplace la cible centralisée de
+`SWARM-SCALE-PETALS-DESIGN.md`, conservée comme historique.
+
+### Sources et code relus
+
+- Petals `22afba6` : sélection autonome des blocs, annonces DHT avec TTL, construction du graphe
+  de route, admission du cache mémoire et reconstruction de session après disparition d'un
+  serveur ;
+- Hivemind : DHT/libp2p prévu pour des collaborations de volontaires et utilisé par Petals ;
+- Parallax upstream `162354a` et son papier : allocation DP/water-filling, routes par requête,
+  DHT de télémétrie et adaptation au membership ;
+- Iroh `1.0.3`, iroh-blobs, IPFS Bitswap et le protocole BitTorrent pour NAT/relay, contenu
+  adressé, découverte de fournisseurs et réciprocité.
+
+La conclusion corrige la décision précédente : Petals est la meilleure référence pour la
+**sémantique du control plane communautaire**, tandis que Parallax/Fabi reste la meilleure base
+pour le **plan de données et l'exécution moderne**. Il ne s'agit pas de faire fonctionner deux
+frameworks concurrents. Fabi doit exposer un seul protocole avec des interfaces nettes et
+réutiliser les algorithmes éprouvés derrière ces interfaces.
+
+### Architecture décidée
+
+- un swarm et un manifeste immuable par contrat exact de modèle/quantification ;
+- placement de spans autonome et stable inspiré de Petals, guidé par des cartes de déficit mais
+  sans scheduler propriétaire permanent ;
+- leases signées et temporaires dans un catalogue distribué ; Hivemind est le premier candidat
+  à prototyper, la DHT n'étant jamais autoritaire pour les réservations ;
+- route complète calculée pour chaque génération avec le DAG/DP Parallax ;
+- contexte et KV dérivés de `prompt + sortie réservée` pour cette route, sans tiers global 16k ou
+  32k ;
+- admission locale atomique par `PREPARE/COMMIT/RELEASE` avec TTL sur chaque worker ;
+- distinction `hosted_span` / `effective_span` pour utiliser une sous-plage sans reload lorsque
+  le backend sait réellement le faire ;
+- Iroh comme transport RPC/activations et iroh-blobs comme content plane vérifié des poids ;
+- plusieurs rôles créditables : exécution, réplica, poids, relay et audit. Une machine trop petite
+  pour une couche d'un modèle peut contribuer autrement ou à une variante plus légère ;
+- reprise Petals enrichie par journal de tokens, epochs, fencing et commit-before-SSE Fabi.
+
+Le scheduler monolithique actuel est destiné à être décomposé en catalogue, placement local,
+route planners interchangeables, admission locale et ledger. Les services Fabi restent requis
+pour identité, contribution et API OpenCode, mais les activations et l'allocation permanente ne
+dépendent plus d'une instance centrale unique.
+
+### État réel et limites
+
+Ce changement est une décision d'architecture, pas une validation runtime. Aucun DHT v3, route
+planner distribué, admission prepare/commit, effective span ou iroh-blobs n'est encore livré.
+Le transport Iroh n'a toujours pas passé une génération modèle complète Mac mini + RTX ; le labo
+qualifié reste sur Lattica `e7537bf`.
+
+Le worktree moteur contient aussi un patch local non commité de recherche de contexte continu
+par pipeline. Il ne doit ni être perdu ni être présenté comme la cible v3 : la cible finale est
+un contexte par route. Ce patch doit être testé/isolé avant le premier chantier protocolaire.
+
+### Prochain ordre d'implémentation
+
+1. préserver le rollback labo et qualifier une génération complète sur Iroh ;
+2. introduire les schémas versionnés `ModelManifest`, `WorkerOffer`, `SpanLease`, `RoutePlan` et
+   `ReservationLease` derrière un flag ;
+3. implémenter route exacte + admission `PREPARE/COMMIT` sur le registre actuel afin de valider
+   les invariants avant d'ajouter la DHT ;
+4. brancher Hivemind en shadow mode, comparer les snapshots puis tester expiration/partition à
+   1 000 workers simulés ;
+5. activer placement autonome, effective spans backend par backend et planners répliqués ;
+6. ajouter iroh-blobs, multi-modèles, replay/failover et reçus de contribution.

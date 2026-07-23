@@ -1,8 +1,10 @@
 # Fabi Swarm — passage a grande echelle inspire de Petals
 
-Etat : decision d'architecture du 21 juillet 2026. Ce document decrit la cible pour des
-milliers de workers repartis entre plusieurs modeles. Il ne declare pas ces mecanismes
-implementes ni qualifies.
+Etat : conception intermediaire du 21 juillet 2026, conservee pour l'historique. La cible de
+control plane a ete remplacee le 23 juillet 2026 par
+[`FABI-SWARM-PROTOCOL-V3.md`](./FABI-SWARM-PROTOCOL-V3.md), qui retire l'autorite permanente du
+scheduler monolithique et specifie le catalogue, l'admission et le placement distribues. Ce
+document ne declare aucun de ces mecanismes implementes ni qualifies.
 
 Documents lies :
 
@@ -445,4 +447,3 @@ Ces points exigent prototypes et mesures ; ils ne doivent pas etre tranches par 
 - [Parallax — papier du scheduler deux phases](https://arxiv.org/abs/2509.26182) ;
 - [Parallax issue 411 — continuation apres panne](https://github.com/GradientHQ/parallax/issues/411) ;
 - [Parallax issue 342 — reservation KV](https://github.com/GradientHQ/parallax/issues/342).
-
