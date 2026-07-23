@@ -19,9 +19,11 @@ Fabi construit un seul moteur cohérent, et non deux frameworks empilés :
 - **Iroh** comme unique transport applicatif des activations, RPC et transferts de contenu,
   avec chemin direct préféré et relay chiffré disponible ;
 - **iroh-blobs** pour distribuer des poids adressés par contenu, vérifiables et reprenables ;
-- **une DHT éprouvée** pour le catalogue de leases. La première implémentation évaluera le DHT
-  Hivemind déjà utilisé par Petals. Iroh ne fournit pas un catalogue applicatif arbitraire : son
-  Mainline DHT sert à retrouver l'adresse d'un endpoint, pas à remplacer ce catalogue ;
+- **rust-libp2p Kademlia** pour le catalogue de leases, derrière le port `DiscoveryStore`.
+  Petals/Hivemind fournit les sémantiques de référence et Lattica un donneur MIT utile, mais ni le
+  package Hivemind actuel (pas de binaire P2P Windows) ni Lattica entier ne devient une seconde
+  stack RPC. Iroh ne fournit pas un catalogue applicatif arbitraire : son Mainline DHT sert à
+  retrouver l'adresse d'un endpoint, pas à remplacer ce catalogue ;
 - **services Fabi répliqués** pour l'identité, les droits de consommation, la comptabilité et
   l'entrée OpenAI/OpenCode. Ils ne possèdent ni les poids ni l'allocation permanente des
   workers.
@@ -524,7 +526,7 @@ ne suffit seul comme preuve produit.
 | Brique | Décision |
 |---|---|
 | Petals `choose_best_blocks` | Adapter au déficit de routes/KV/région, conserver l'idée de placement autonome |
-| Petals DHT + TTL | Réutiliser le protocole/implémentation Hivemind lors du premier prototype |
+| Petals DHT + TTL | Reprendre les leases/TTL/validateurs ; implémenter le catalogue avec rust-libp2p Kademlia derrière `DiscoveryStore` |
 | Petals route min-latency | Remplacer le score simple par le DAG et la télémétrie Parallax/Fabi |
 | Petals cache admission | Reprendre l'allocation exacte, ajouter `PREPARE/COMMIT` et blocs KV backend |
 | Petals replay après panne | Reprendre l'algorithme, ajouter journal, epochs et commit-before-SSE |
@@ -536,12 +538,46 @@ ne suffit seul comme preuve produit.
 | Fabi memory envelope | Conserver, rendre la capacité par span et par backend |
 | Fabi contribution gate | Conserver l'intention, remplacer le booléen par reçus de travail |
 
+### 19.1 Choix du DHT après audit des implémentations
+
+L'audit du 23 juillet 2026 a invalidé l'idée d'utiliser directement Hivemind dans tous les
+workers. Son packaging courant embarque `p2pd` pour Darwin et Linux en amd64/arm64, mais son
+sélecteur de plateforme rejette Windows. Cela contredit l'exigence fondamentale de Fabi : un PC
+Windows RTX doit être un pair natif de première classe. Les algorithmes Petals/Hivemind restent
+la référence pour les TTL, sous-clés, validateurs et annonces périodiques, pas la dépendance
+runtime universelle.
+
+Lattica confirme que rust-libp2p Kademlia, les provider records et les bindings Python sont une
+voie multiplateforme réaliste. Il ne faut cependant pas copier sa branche courante aveuglément :
+son `LatticaBehaviour` actif construit un `MemoryStore`, tandis que son `MultiStore` persistant
+n'est pas branché à ce comportement et mélange actuellement une expiration encodée en
+nanosecondes avec une reconstruction en secondes. Importer Lattica entier réintroduirait aussi
+RPC, relay, DCUtR, Gossipsub et Bitswap en concurrence avec Iroh.
+
+La décision est donc :
+
+1. un port métier `DiscoveryStore` indépendant du réseau ;
+2. une implémentation de référence mémoire pour tests, simulation et shadow mode uniquement ;
+3. un adaptateur natif rust-libp2p Kademlia minimal dans `fabi-network`, avec TTL, réplication,
+   quorum, limites de taille, persistence et validation de signatures explicitement configurés ;
+4. Iroh reste l'unique plan de données pour RPC, activations, relay et contenu ;
+5. aucune capacité publiée dans le DHT n'est une réservation : `PREPARE/COMMIT` local reste
+   autoritaire.
+
+Avant activation réseau, l'identité applicative Fabi doit signer les envelopes et lier
+explicitement le `worker_id`, l'EndpointId Iroh et le PeerId libp2p. Les secrets de deux
+protocoles ne seront pas réutilisés implicitement. Une rotation de clé et une révocation de
+device doivent pouvoir invalider ce lien sans changer le hash d'un modèle.
+
 ## 20. Interfaces internes cibles
 
 ```text
 DiscoveryStore
-  publish_lease(record)
-  query_spans(swarm_id, region, snapshot)
+  publish_manifest(record)
+  publish_offer(record)
+  publish_span_lease(record)
+  publish_link(record)
+  snapshot(swarm_id, instant)
   query_blob_providers(content_hash)
 
 PlacementPolicy
@@ -590,7 +626,7 @@ Gate : mêmes générations, SSE, abort, heartbeats et mémoire que le runtime q
 
 Gate : concurrence, refus KV, expiration, retry et aucune surallocation sous chaos.
 
-### Phase C — catalogue Petals/Hivemind en shadow mode
+### Phase C — catalogue Petals/rust-libp2p en shadow mode
 
 - Publier `WorkerOffer` et `SpanLease` signés en parallèle du scheduler actuel.
 - Comparer systématiquement snapshot central et snapshot DHT.
@@ -682,10 +718,12 @@ Gate : route identique à snapshot identique, réservations sûres sous planners
 - [Petals — papier système](https://arxiv.org/abs/2209.01188)
 - [Petals — papier tolérance aux pannes et load balancing](https://arxiv.org/abs/2312.08361)
 - [Hivemind — DHT pour volontaires](https://github.com/learning-at-home/hivemind)
+- [rust-libp2p — implémentation Kademlia](https://docs.rs/libp2p/latest/libp2p/kad/index.html)
+- [libp2p — spécification Kademlia](https://github.com/libp2p/specs/blob/master/kad-dht/README.md)
+- [Lattica — dépôt officiel MIT](https://github.com/GradientHQ/lattica)
 - [Parallax — dépôt officiel](https://github.com/GradientHQ/parallax)
 - [Parallax — scheduler deux phases](https://arxiv.org/abs/2509.26182)
 - [Iroh — connexions, NAT et relays](https://docs.iroh.computer/about/faq)
 - [iroh-blobs — contenu adressé et streaming vérifié](https://docs.iroh.computer/protocols/blobs)
 - [IPFS Bitswap — want/have et découverte des fournisseurs](https://docs.ipfs.tech/concepts/bitswap/)
 - [BitTorrent BEP 3 — pièces, annonces et choking](https://www.bittorrent.org/beps/bep_0003.html)
-

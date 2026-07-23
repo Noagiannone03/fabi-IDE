@@ -3076,8 +3076,8 @@ un contexte par route. Ce patch doit être testé/isolé avant le premier chanti
    `ReservationLease` derrière un flag ;
 3. implémenter route exacte + admission `PREPARE/COMMIT` sur le registre actuel afin de valider
    les invariants avant d'ajouter la DHT ;
-4. brancher Hivemind en shadow mode, comparer les snapshots puis tester expiration/partition à
-   1 000 workers simulés ;
+4. brancher l'adaptateur rust-libp2p Kademlia en shadow mode, comparer les snapshots puis tester
+   expiration/partition à 1 000 workers simulés ;
 5. activer placement autonome, effective spans backend par backend et planners répliqués ;
 6. ajouter iroh-blobs, multi-modèles, replay/failover et reçus de contribution.
 
@@ -3100,7 +3100,96 @@ Cette tranche ajoute :
   idempotence, rejet de conflit et fencing d'epoch ;
 - libération atomique de l'ancienne réservation lorsqu'un epoch plus récent est accepté.
 
-Validation exacte : `15` tests v3 ciblés verts, dont une course de deux prepares sur la même
+Validation exacte à ce jalon : `15` tests v3 ciblés verts, dont une course de deux prepares sur la même
 capacité ; suite moteur complète `454 passed, 7 skipped`, avec uniquement le warning externe
 Starlette/httpx déjà connu ; Ruff et `git diff --check` verts. Aucun RPC runtime, DHT ou trafic
 modèle n'utilise encore ces contrats.
+
+## Route exacte, catalogue shadow et choix DHT du 23 juillet 2026
+
+Deux tranches supplémentaires sont poussées sur `swarm-engine`, branche
+`codex/swarm-protocol-v3`, sans toucher le worktree qualifié ni ses changements locaux :
+
+- `41b937c` — `feat: plan exact request-scoped swarm routes` ;
+- `e67e704` — `feat: define soft-state discovery semantics`.
+
+### Route planner v3 réellement implémenté
+
+`ExactRoutePlanner` compose une couverture contiguë `[0, num_layers)` à partir d'offres et de
+leases immuables. Il :
+
+- élimine offres/leases expirées, spans non `READY`, modèles incompatibles et workers qui
+  n'annoncent pas le rôle d'exécution ;
+- calcule le KV exact de chaque stage après arrondi au block size propre au backend ;
+- respecte la différence entre un backend `FIXED` et un backend capable de `SUBSPAN` ;
+- exige une métrique Iroh vivante entre chaque stage et pour le retour tail vers head du decode ;
+- score calcul mesuré, RTT, goodput, perte et coût du relay ;
+- produit un résultat déterministe indépendamment de l'ordre de découverte ;
+- ne considère jamais ce plan comme une réservation : le `PREPARE/COMMIT` local reste requis.
+
+La reprise `RECOVERABLE` est volontairement refusée pour l'instant : annoncer une tolérance aux
+pannes sans calculer une couverture alternative complète serait mensonger. L'algorithme actuel
+n'est pas encore déclaré apte à 10 000 workers ; sa complexité et ses index seront qualifiés par
+les simulations prévues.
+
+### Port `DiscoveryStore` et mode shadow local
+
+Le port métier de découverte et son implémentation de référence `InMemoryDiscoveryStore` sont
+livrés. Cette implémentation n'est pas présentée comme un DHT. Elle fixe et teste les sémantiques
+que devra respecter l'adaptateur natif :
+
+- soft state avec TTL strict (`expires_at_ms > snapshot_time`) ;
+- séquences monotones par offre et par lease, idempotence et rejet d'un rollback ;
+- conservation d'un watermark après collecte d'un payload expiré, afin qu'un message retardé ne
+  ressuscite pas une ancienne capacité ;
+- remplacement local du span d'un worker sans modifier les autres workers ;
+- snapshots immuables, cohérents et triés de façon déterministe ;
+- exclusion des leases orphelines et liens dont une extrémité n'a plus d'offre vivante ;
+- publication thread-safe et convergence vers la séquence la plus haute sous arrivées
+  concurrentes.
+
+### Audit Hivemind, Lattica et rust-libp2p
+
+Sources relues à leurs états courants : Hivemind `4bd43b7`, Lattica `f63a6ec`, rust-libp2p
+Kademlia `0.56` et sa spécification officielle. La conclusion modifie le candidat d'implémentation
+sans modifier les principes Petals :
+
+- Hivemind reste une excellente source pour DHT TTL, sous-clés, validation et signatures, mais
+  son packaging `p2pd` courant ne fournit que Darwin/Linux amd64/arm64 et rejette Windows. Il ne
+  peut donc pas être une dépendance runtime obligatoire des workers Fabi ;
+- Lattica est MIT et démontre l'intégration Python/rust-libp2p Kademlia/provider records. Son
+  code actuel ne doit pas être copié en bloc : le comportement actif utilise `MemoryStore`, le
+  `MultiStore` persistant n'y est pas branché et son encodage d'expiration convertit actuellement
+  des nanosecondes comme des secondes ;
+- importer Lattica entier réintroduirait RPC, relay/DCUtR, Gossipsub et Bitswap en parallèle
+  d'Iroh, ce qui recréerait deux plans de données ;
+- la cible est donc un adaptateur Kademlia minimal dans le crate natif `fabi-network`, derrière
+  `DiscoveryStore`. Iroh reste seul responsable des RPC, activations, chemins direct/relay et
+  contenus.
+
+La spécification normative `FABI-SWARM-PROTOCOL-V3.md` est mise à jour avec cette décision. Les
+enveloppes signées devront lier l'identité device Fabi, l'EndpointId Iroh et le PeerId libp2p sans
+réutiliser implicitement un même secret entre protocoles.
+
+### Validation exacte
+
+- `29 passed` sur contrats, réservations, routing et discovery v3 ;
+- suite moteur complète : `468 passed, 7 skipped` ;
+- seul warning : dépréciation externe Starlette/httpx déjà connue ;
+- Ruff et `git diff --check` verts ;
+- commits poussés sur `origin/codex/swarm-protocol-v3`.
+
+Aucun paquet réseau Kademlia natif, aucune signature wire, aucune comparaison shadow avec le
+scheduler central et aucun trafic modèle n'utilise encore `DiscoveryStore`. La génération Iroh
+complète Mac mini + RTX reste également à qualifier.
+
+### Prochain ordre exact
+
+1. définir l'enveloppe wire canonique signée et le binding des trois identités ;
+2. implémenter l'adaptateur rust-libp2p Kademlia minimal dans `fabi-network`, avec TTL,
+   réplication, quorum, taille maximale, persistence et validateurs explicites ;
+3. brancher publication/lecture en shadow du registre central, sans router de trafic ;
+4. simuler ordre, churn, expiration, partitions et convergence à 1/10/100/1 000 workers, puis
+   profiler et borner le planner avant 10 000 ;
+5. qualifier simultanément le rollback laboratoire et une génération Iroh complète Mac mini +
+   RTX avant toute activation du nouveau catalogue.
