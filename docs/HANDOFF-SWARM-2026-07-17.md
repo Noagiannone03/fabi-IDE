@@ -3193,3 +3193,83 @@ complète Mac mini + RTX reste également à qualifier.
    profiler et borner le planner avant 10 000 ;
 5. qualifier simultanément le rollback laboratoire et une génération Iroh complète Mac mini +
    RTX avant toute activation du nouveau catalogue.
+
+## Enveloppes signées et premier réseau Kademlia v3 du 23 juillet 2026
+
+Deux nouveaux commits sont poussés sur `swarm-engine/codex/swarm-protocol-v3` :
+
+- `5ec02ed` — `feat: sign swarm discovery records` ;
+- `06fb337` — `feat: embed signed Kademlia discovery`.
+
+### Format signé réellement livré
+
+Le crate `native/fabi-network` possède maintenant une enveloppe Protobuf bornée pour
+`ModelManifest`, `WorkerOffer`, `SpanLease` et `LinkMetric`. Le choix cryptographique évite une
+erreur classique : la documentation officielle Protobuf précise qu'une sérialisation
+déterministe n'est pas canonique entre versions/langages. Fabi signe donc avec Ed25519 les
+**octets exacts du corps transporté**, précédés du domaine `fabi/swarm/catalog/v3`, puis parse le
+corps seulement après vérification.
+
+Les validateurs natifs imposent :
+
+- version protocolaire, type connu, payload non vide et enveloppe maximale de 32 Kio ;
+- TTL strictement positif et au plus cinq minutes, expiration et skew d'horloge borné ;
+- namespace logique lié à la clé Iroh du publisher pour offres, spans et métriques ;
+- signature de 64 octets et EndpointId Ed25519 valide ;
+- séquence monotone, idempotence exacte et refus d'une réutilisation conflictuelle ;
+- clé Kademlia identique à la clé logique signée.
+
+La clé Iroh stable signe le contenu applicatif. Une clé Ed25519 libp2p distincte et persistante
+authentifie seulement le transport DHT ; elle est créée avec `create_new`, permissions `0600` sur
+Unix, rechargée en Protobuf et jamais remplacée silencieusement si elle est corrompue. Il n'y a
+donc pas de réutilisation implicite de secret entre Iroh et libp2p.
+
+### Adaptateur Kademlia réellement livré
+
+L'adaptateur utilise rust-libp2p `0.56.0`, protocole privé `/fabi/swarm/kad/3`, TCP chiffré Noise,
+Yamux, Identify et Kademlia :
+
+- les nœuds publics stables fonctionnent en `Mode::Server` ;
+- les workers/laptops NAT fonctionnent en `Mode::Client`, conformément à la spécification
+  libp2p, et ne polluent pas les routing tables ;
+- les `PUT_VALUE` entrants sont en `StoreInserts::FilterBoth`, puis vérifiés par Fabi avant
+  insertion ;
+- les lecteurs attendent toutes les réponses et retiennent la plus haute séquence valide ;
+- le publisher refuse aussi son propre rollback avant publication ;
+- bootstrap, quorum, timeout, get/put et shutdown passent par une boucle d'événements bornée ;
+- l'API est exposée sur le même `NetworkNode` PyO3 que le transport Iroh.
+
+Le soft state est volontairement un `MemoryStore`, limité actuellement à 25 000 clés par routing
+node. Ce n'est pas une omission de persistence : offres/spans/liens expirent en cinq minutes et
+doivent revenir des heartbeats/répliques, pas du disque après un crash. L'identité réseau, elle,
+est persistante. Les manifestes immuables suivront un registre/cache persistant séparé.
+
+### Validation exacte et limites
+
+- test Rust réel à trois participants : client writer → routing server → second client reader ;
+- signature, tampering, foreign namespace, expiration, future clock, TTL maximal, idempotence,
+  rollback et ordre des réponses testés ;
+- `15` tests natifs avec feature Python verts ;
+- Clippy `--all-targets --all-features -D warnings` vert ;
+- wheel ABI3 macOS arm64 construite et importée ; surface DHT Python présente ;
+- suite moteur : `468 passed, 7 skipped`, warning externe Starlette/httpx seulement ;
+- workflow `.github/workflows/native-network.yml` ajouté pour construire/tester/importer les
+  wheels sur Ubuntu, Windows et macOS.
+
+À cet instant, le workflow GitHub nouvellement poussé n'est pas encore observé : **Windows n'est
+pas déclaré validé**. Le test DHT est loopback, pas Internet/NAT. Le catalogue n'est pas branché
+au scheduler central, ne route aucun prompt et n'a encore ni rate limiting/Sybil policy, ni liste
+d'autorités autorisées à publier les manifestes, ni simulation de partition. Le plafond mémoire
+doit être relié à un budget réel avant déploiement d'un routing node public.
+
+### Suite exacte
+
+1. obtenir les trois jobs CI natifs verts, corriger toute divergence Windows réelle ;
+2. ajouter l'adaptateur Python `DiscoveryStore` qui sérialise les contrats v3, publie en shadow et
+   compare DHT/registre central sans influencer les routes ;
+3. définir la trust policy des manifestes, les limites par publisher/IP/account et la protection
+   Sybil avant tout routing server public ;
+4. ajouter les simulations churn/partition/expiration et profiler 1/10/100/1 000 puis 10 000
+   workers ;
+5. seulement ensuite déployer plusieurs routing nodes Kademlia et qualifier deux NAT réels en
+   conservant Iroh comme unique plan de données.

@@ -559,7 +559,9 @@ La décision est donc :
 1. un port métier `DiscoveryStore` indépendant du réseau ;
 2. une implémentation de référence mémoire pour tests, simulation et shadow mode uniquement ;
 3. un adaptateur natif rust-libp2p Kademlia minimal dans `fabi-network`, avec TTL, réplication,
-   quorum, limites de taille, persistence et validation de signatures explicitement configurés ;
+   quorum, limites de taille et validation de signatures explicitement configurés. L'identité
+   libp2p est persistante ; les capacités restent volontairement en mémoire et sont restaurées
+   par réplication/heartbeat, afin qu'un disque ne ressuscite jamais une vieille capacité ;
 4. Iroh reste l'unique plan de données pour RPC, activations, relay et contenu ;
 5. aucune capacité publiée dans le DHT n'est une réservation : `PREPARE/COMMIT` local reste
    autoritaire.
