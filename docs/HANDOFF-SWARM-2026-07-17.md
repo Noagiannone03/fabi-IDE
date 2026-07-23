@@ -3080,3 +3080,27 @@ un contexte par route. Ce patch doit être testé/isolé avant le premier chanti
    1 000 workers simulés ;
 5. activer placement autonome, effective spans backend par backend et planners répliqués ;
 6. ajouter iroh-blobs, multi-modèles, replay/failover et reçus de contribution.
+
+### Première tranche implémentée
+
+Le chantier moteur est isolé dans le worktree
+`/Users/noagiannone/Documents/swarm-engine-v3`, branche `codex/swarm-protocol-v3`. Le commit
+`03ca5d5` (`feat: add swarm v3 contracts and local admission`) est poussé sans modifier la branche
+qualifiée `codex/dynamic-dp-product` ni son patch local de contexte continu.
+
+Cette tranche ajoute :
+
+- contrats Pydantic stricts et immuables pour `ModelManifest`, `WorkerOffer`, `SpanLease`,
+  `RoutePlan`, `ReservationLease` et `ContributionReceipt` ;
+- identité de swarm déterministe et sensible au tokenizer, poids, quantification et contrats
+  d'exécution ;
+- géométrie KV avec arrondi exact par worker et vérification des octets ;
+- validation qu'une route couvre exactement toutes les couches sans trou ni chevauchement ;
+- table d'admission KV locale thread-safe avec `PREPARE`, `COMMIT`, `RENEW`, `RELEASE`, TTL,
+  idempotence, rejet de conflit et fencing d'epoch ;
+- libération atomique de l'ancienne réservation lorsqu'un epoch plus récent est accepté.
+
+Validation exacte : `15` tests v3 ciblés verts, dont une course de deux prepares sur la même
+capacité ; suite moteur complète `454 passed, 7 skipped`, avec uniquement le warning externe
+Starlette/httpx déjà connu ; Ruff et `git diff --check` verts. Aucun RPC runtime, DHT ou trafic
+modèle n'utilise encore ces contrats.
