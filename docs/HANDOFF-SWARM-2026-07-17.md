@@ -3375,8 +3375,8 @@ arbitrairement la limite :
   `256 Kio` ;
 - validation locale après correction : `20` tests natifs, Clippy strict, `471 passed, 7 skipped`
   Python, Ruff et `git diff --check` verts ;
-- CI multiplateforme déclenchée par le push : run `29993962688`, encore **queued** au moment de
-  cette mise à jour. Ne pas la déclarer verte avant la fin des trois jobs.
+- CI multiplateforme du push : run `29993962688`, entièrement verte sur Windows, Ubuntu et macOS,
+  y compris tests, Clippy strict, wheels ABI3, installation et imports du catalogue membership.
 
 ### Limites honnêtes et suite
 
@@ -3388,9 +3388,9 @@ attestation account/device, autorités de manifestes et simulation de partition/
 
 Le prochain ordre est :
 
-1. obtenir les trois jobs du run `29993962688` verts et corriger toute divergence réelle ;
-2. définir et construire les manifestes immuables à partir des révisions et digests réels du
-   registre de modèles ; ne pas brancher le store en shadow avec des hashes factices ;
+1. **terminé** — les trois jobs du run `29993962688` sont verts ;
+2. **terminé dans `02b8e93`** — manifestes immuables construits depuis les révisions et digests
+   réels du registre de modèles, sans hashes factices ;
 3. brancher ensuite le store en shadow du registre central et comparer les snapshots sans
    influencer le trafic ;
 4. ajouter simulations de distribution de shards, expirations, ordre, partitions et churn à
@@ -3402,3 +3402,95 @@ Le prochain ordre est :
    justifient ;
 7. déployer plusieurs routing nodes, tester deux NAT réels, puis reprendre la génération modèle
    complète Iroh Mac mini + RTX et l'admission `PREPARE/COMMIT` de bout en bout.
+
+## Manifestes modèles immuables et content-addressed du 23 juillet 2026
+
+Le commit moteur `02b8e93b907725c19051cbb7e709556cd0906ea7`
+(`feat: build immutable model artifact manifests`) est poussé sur
+`swarm-engine/codex/swarm-protocol-v3`. Il n'est toujours pas déployé sur le labo qualifié et le
+worktree `/Users/noagiannone/Documents/swarm-engine-dynamic` n'a pas été modifié.
+
+### Recherche et décision
+
+Les sources officielles Hugging Face ont été vérifiées jusque dans `HfApi.model_info`,
+`RepoSibling`, `BlobLfsInfo`, le cache local et `hf_hub_download`. Avec
+`files_metadata=True`, le Hub fournit commit, chemin, taille, Git OID et métadonnées LFS. Le cache
+nomme les fichiers Git par SHA-1 et les fichiers LFS par SHA-256 : un `blob_id` Git de 40 caractères
+ne doit donc jamais remplir un champ SHA-256.
+
+Le format OCI descriptor/manifest a servi de pattern maintenu : une référence de contenu porte au
+minimum digest, taille et media type ; le manifest racine référence des collections ordonnées.
+Petals a aussi été relu sur `from_pretrained`, ses index de shards, révisions et `dht_prefix`.
+Petals sait charger un bloc à une révision donnée mais ne construit pas une identité cryptographique
+complète tokenizer + graphe + poids + contrats d'exécution. Fabi garde son routing communautaire,
+mais ne copie pas cette faiblesse d'identité.
+
+Le code Parallax réel a enfin été suivi dans les loaders MLX, vLLM et SGLang. Deux contraintes ont
+changé l'implémentation :
+
+- `trust_remote_code=True` est utilisé pour certains modèles, donc le code Python du repo fait
+  partie du graphe, pas seulement `config.json` ;
+- vLLM et SGLang résolvent actuellement le dtype depuis `config.json`, tandis que MLX peut recevoir
+  l'argument worker. Le builder refuse donc un dtype commun contredit par le config au lieu de
+  publier un contrat que CUDA ignorerait.
+
+### Implémentation livrée
+
+- `ArtifactDescriptor` borné : chemin POSIX relatif sûr, taille, SHA-256, media type et rôle
+  `architecture`, `tokenizer` ou `weight` ;
+- `ModelArtifactIndex` trié, sans doublons, maximum 100 000 pièces ;
+- résolution en deux appels : ref humaine vers SHA complet, puis `files_metadata=True` sur ce SHA ;
+- poids LFS liés directement à leur SHA-256 officiel et leur taille, sans téléchargement ;
+- petits fichiers Git téléchargés à la révision immuable puis SHA-256 calculé sur les octets ;
+  plafond 64 Mio sans LFS, fail closed au-delà ;
+- README, licence et contenu éditorial exclus ; config, code distant, tokenizer/chat template,
+  poids et index de shards inclus ;
+- racines de collections SHA-256 canonicalisées avec séparation de domaine inspirée d'OCI ;
+- hashes RoPE/contexte, attention/KV et prefill dérivés du config normalisé et du contrat wire ;
+- alias dtype et quantification canonicalisés ; configuration de quantification fingerprintée ;
+- normalisation Qwen/Minimax extraite dans `parallax.utils.model_config`, module pur partagé :
+  importer le registre de manifestes ne charge plus Torch, NumPy ni ZMQ ;
+- workflow multiplateforme étendu aux fichiers `swarm_protocol`, avec tests protocolaires dans un
+  environnement Python 3.12 minimal après installation de la wheel native.
+
+### Preuves exactes
+
+Smoke réseau réel, sans télécharger les poids, sur `Qwen/Qwen3-0.6B` :
+
+- révision immuable `c1899de289a04d12100db370d81485cdf75e47ca` ;
+- sept artefacts runtime : deux architecture, quatre tokenizer, un poids ;
+- `model.safetensors` : `1 503 300 328` octets, SHA-256 LFS
+  `f47f71177f32bcd101b7573ec9171e6a57f4f4d31148d38e382306f42996874b` ;
+- `ModelSwarmId` reproductible
+  `02cdee21bda4ddb34c9d63b507304f3a12ab1a1739b10831a3dc1391b9733819` ;
+- `bf16` et `bfloat16` produisent la même identité ; README ignoré, modification du code runtime
+  ou du dtype produit une autre identité.
+
+Validation locale finale :
+
+- suite Python complète `479 passed, 7 skipped` ; seul warning externe Starlette/httpx connu ;
+- `20` tests natifs, Clippy strict et Ruff ciblé verts ;
+- extraction de la normalisation couverte par `52 passed` sur manifestes, contrats, config statique
+  et shard loader ;
+- venv Python 3.12 vierge avec seulement Pydantic, huggingface-hub et pytest : `16 passed` avec
+  `--noconftest` ; le premier essai par `python3` local a correctement refusé Python 3.14.6 car le
+  projet déclare `<3.14`, ce n'est pas une validation 3.14 ;
+- CI du commit : run `29995144474`, encore **queued** à l'écriture. Ne pas la déclarer verte avant
+  la conclusion des trois OS.
+
+### Limites et prochain ordre
+
+Le builder produit des hashes réels, mais il ne publie encore rien dans le DHT et ne route aucune
+requête. Il manque la signature par une autorité de registre, la persistance et récupération de
+`ModelArtifactIndex`, la vérification worker après download, le mapping exact couches → fichiers,
+les adaptateurs ModelScope/local, puis le branchement shadow.
+
+Ordre recommandé :
+
+1. obtenir les trois jobs du run `29995144474` verts ;
+2. définir l'enveloppe signée d'autorité et la politique de rotation/révocation ;
+3. persister l'index complet par `model_swarm_id`, faire vérifier chaque blob local et produire les
+   `weight_hashes` exacts de chaque span ;
+4. brancher ensuite `DhtDiscoveryStore` en shadow et comparer registre historique / vue v3 sans
+   influencer le trafic ;
+5. reprendre quotas/Sybil, simulations de churn et qualification multi-routing-nodes/NAT réels.

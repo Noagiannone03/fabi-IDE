@@ -618,6 +618,42 @@ réelle de réplication et le churn. Un accélérateur incrémental type libp2p 
 peut être ajouté derrière le même port, comme un tracker BitTorrent, sans devenir autorité et sans
 remplacer le fallback Kademlia.
 
+### 19.3 Manifestes immuables : descripteurs de contenu, pas labels de modèle
+
+Le registre résout d'abord une référence humaine (`main`, tag) vers le SHA complet du commit Hub,
+puis redemande les métadonnées de fichiers **sur ce commit exact**. Cette seconde lecture évite
+qu'un déplacement de branche mélange révision et artefacts.
+
+L'index persistant `ModelArtifactIndex` suit le modèle des descriptors OCI : chemin POSIX relatif,
+taille, media type, rôle et SHA-256 du contenu. Les artefacts sont triés et uniques, les chemins
+ambigus sont refusés avant tout téléchargement, et l'index est borné à 100 000 entrées. Trois
+collections à domaine séparé forment les racines compactes du `ModelManifest` :
+
+- `architecture` : `config.json`, configurations structurées et code Python distant réellement
+  autorisé par les loaders Parallax ;
+- `tokenizer` : tokenizer, vocabulaire, merges, tokens spéciaux et chat templates ;
+- `weight` : format de poids sélectionné et son éventuel index de shards.
+
+Hugging Face expose deux identités différentes qu'il ne faut pas confondre : les petits fichiers
+Git ont un OID SHA-1, alors que les blobs LFS portent le SHA-256 de leur contenu. Fabi réutilise le
+SHA-256 LFS officiel pour les gros poids sans les télécharger ; les fichiers runtime Git sont lus
+à la révision immuable puis hachés sur leurs octets. Un fichier Git supérieur à 64 Mio sans
+métadonnée LFS est refusé au lieu de transformer son SHA-1 en faux SHA-256. Taille LFS, taille du
+repo et octets téléchargés doivent être cohérents.
+
+Les contrats RoPE/contexte et attention/KV sont dérivés des champs normalisés réellement lus par
+MLX, vLLM et SGLang. Le contrat prefill décrit le dtype d'activation, la largeur cachée,
+l'encodage safetensors, les positions et le chunking. Les alias `bf16`/`bfloat16` et
+`fp16`/`float16` sont canonicalisés. Si `config.json` impose un dtype différent, le manifeste est
+refusé : les loaders CUDA actuels choisissent ce dtype et auraient autrement ignoré le label du
+registre. La configuration exacte d'une quantification est également fingerprintée lorsqu'elle
+existe.
+
+Le manifeste compact va dans le catalogue signé ; l'index complet reste dans un registre/cache
+persistant et pourra alimenter iroh-blobs. Une autorité de registre doit encore signer ce couple,
+et les workers devront vérifier les pièces téléchargées avant de publier une lease. Les hashes
+réels rendent désormais possible le shadow mode, mais ne remplacent pas cette trust policy.
+
 ## 20. Interfaces internes cibles
 
 ```text
