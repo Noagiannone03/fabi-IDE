@@ -3305,7 +3305,7 @@ supplémentaire, une hot key et des lookups N+1. Cette voie n'a donc pas été f
 Le crate `fabi-network` porte maintenant une sémantique de sous-clés signées, sharded et bornée :
 
 - nouveau record `ModelMember`, clé `fabi/swarm/v3/member/<model_swarm_id>/<shard>` ;
-- `64` shards fixes ; le shard vient du hash de l'EndpointId Ed25519, donc un publisher ne peut pas
+- `256` shards fixes ; le shard vient du hash de l'EndpointId Ed25519, donc un publisher ne peut pas
   choisir arbitrairement sa partition ;
 - chaque entrée garde sa signature Iroh, sa séquence et son TTL indépendants ; le conteneur de set
   n'est jamais une autorité et n'est pas cru sans revérifier toutes ses entrées ;
@@ -3315,7 +3315,7 @@ Le crate `fabi-network` porte maintenant une sémantique de sous-clés signées,
   d'équivocation exploitable par la future politique de réputation ;
 - maximum `512` entrées et `256 Kio` par shard, paquet Kademlia et `MemoryStore` bornés ;
 - un routing server fusionne delta individuel et snapshot répliqué avant insertion ;
-- lecture des 64 shards avec concurrence 16 ; une vraie erreur réseau d'un shard fait échouer le
+- lecture des 256 shards avec concurrence 16 ; une vraie erreur réseau d'un shard fait échouer le
   snapshot, tandis qu'un shard `NotFound` est correctement interprété comme vide.
 
 Le binding PyO3 expose maintenant `model_member`, `catalog_get_members` et
@@ -3324,7 +3324,8 @@ Le binding PyO3 expose maintenant `model_member`, `catalog_get_members` et
 Le nouveau `DhtDiscoveryStore` Python sérialise réellement les contrats v3. Son
 `ModelMemberAdvertisement` reprend le meilleur pattern de Petals `ServerInfo + next_pings` : chaque
 entrée signée contient le `WorkerOffer`, le `SpanLease` et les métriques réseau sortantes encore
-vivantes. Une lecture sharded produit donc directement la matière du planner sans 2N lectures
+vivantes, bornées aux huit meilleurs liens par nature de chemin, perte, RTT puis débit. Une lecture
+sharded produit donc directement la matière du planner sans 2N lectures
 supplémentaires. Les records exacts offre/span/lien restent publiés pour lookup ciblé et audit.
 
 Les contrôles Python refusent notamment :
@@ -3341,8 +3342,8 @@ qui est autorisé à revendiquer ce nom.
 
 ### Validation exacte
 
-- tests natifs : `18 passed`, dont serveur Kademlia + deux writers dans le même shard + reader,
-  puis lecture des 64 shards du modèle ;
+- tests natifs du commit membership : `18 passed`, dont serveur Kademlia + deux writers dans le
+  même shard + reader, puis lecture des 64 shards alors configurés ;
 - Clippy `--all-targets --all-features -- -D warnings` vert ;
 - tests Python ciblés contrats/discovery/routing : `25 passed` ;
 - suite moteur complète : `471 passed, 7 skipped` ; seul warning externe Starlette/httpx connu ;
@@ -3351,27 +3352,53 @@ qui est autorisé à revendiquer ce nom.
   importées avec succès ;
 - la CI du commit précédent `06fb337`, run `29991752219`, est entièrement verte sur Windows,
   Ubuntu et macOS : tests, wheel, installation et import ;
-- la CI du nouveau commit membership est déclenchée par push, run `29993456967`. À l'écriture de
-  cette section elle est **queued** : ne pas déclarer encore ce nouveau commit validé Windows.
+- la CI du commit membership `8788c86`, run `29993456967`, est entièrement verte sur Windows,
+  Ubuntu et macOS : format, Clippy strict, tests DHT, wheel ABI3, installation et import.
+
+### Correction de dimensionnement 10 000 workers
+
+La mesure du JSON réel a invalidé la première hypothèse de 64 shards : une advertisement occupe
+`1 080` octets sans lien, `1 481` avec deux liens, `2 687` avec huit liens et `4 301` avec seize.
+Avec 10 000 workers, 64 shards pouvaient donc franchir la borne de `256 Kio` bien avant la limite
+de 512 entrées.
+
+Le commit moteur `d6c9abed273e3d01eab867389da88d4cfb21926f`
+(`fix: bound membership shards at ten thousand workers`) corrige le contrat plutôt que de relever
+arbitrairement la limite :
+
+- 256 shards déterministes, toujours imposés par l'EndpointId signé ;
+- au plus huit liens sortants utiles par advertisement, suivant le pattern borné `next_pings` de
+  Petals ; tous les liens exacts restent disponibles séparément pour audit ;
+- fixture déterministe de 10 000 EndpointIds : les 256 shards sont utilisés et le maximum observé
+  reste inférieur ou égal à 64 membres ;
+- fixture wire de 64 annonces signées avec payload de `2 800` octets : le set fusionné reste sous
+  `256 Kio` ;
+- validation locale après correction : `20` tests natifs, Clippy strict, `471 passed, 7 skipped`
+  Python, Ruff et `git diff --check` verts ;
+- CI multiplateforme déclenchée par le push : run `29993962688`, encore **queued** au moment de
+  cette mise à jour. Ne pas la déclarer verte avant la fin des trois jobs.
 
 ### Limites honnêtes et suite
 
 Le `DhtDiscoveryStore` n'est pas encore branché au registre/scheduler historique en shadow et ne
-route aucun prompt. Les 64 shards et leurs bornes sont un design testable, pas une preuve à 10 000
-workers. Il manque encore rate limits, quota mémoire réel du routing node, défense Sybil,
+route aucun prompt. La fixture établit une borne de paquet pour une population déterministe de
+10 000 workers, mais ne prouve pas encore churn, charge CPU/réplication ou adversaires. Il manque
+encore rate limits, quota mémoire réel du routing node, défense Sybil,
 attestation account/device, autorités de manifestes et simulation de partition/churn.
 
 Le prochain ordre est :
 
-1. obtenir les trois jobs du run `29993456967` verts et corriger toute divergence réelle ;
-2. brancher le store en shadow du registre central et comparer les snapshots sans influencer le
-   trafic ;
-3. ajouter simulations de distribution de shards, expirations, ordre, partitions et churn à
+1. obtenir les trois jobs du run `29993962688` verts et corriger toute divergence réelle ;
+2. définir et construire les manifestes immuables à partir des révisions et digests réels du
+   registre de modèles ; ne pas brancher le store en shadow avec des hashes factices ;
+3. brancher ensuite le store en shadow du registre central et comparer les snapshots sans
+   influencer le trafic ;
+4. ajouter simulations de distribution de shards, expirations, ordre, partitions et churn à
    1/10/100/1 000 puis 10 000 workers avec budgets mémoire/paquets/CPU ;
-4. définir trust policy des manifestes, quotas par publisher/account/IP et comportement shard
+5. définir trust policy des manifestes, quotas par publisher/account/IP et comportement shard
    plein ;
-5. étudier un accélérateur incrémental officiel libp2p Rendezvous/Gossipsub derrière le même port,
+6. étudier un accélérateur incrémental officiel libp2p Rendezvous/Gossipsub derrière le même port,
    analogue à un tracker BitTorrent mais jamais autoritaire, seulement si les mesures le
    justifient ;
-6. déployer plusieurs routing nodes, tester deux NAT réels, puis reprendre la génération modèle
+7. déployer plusieurs routing nodes, tester deux NAT réels, puis reprendre la génération modèle
    complète Iroh Mac mini + RTX et l'admission `PREPARE/COMMIT` de bout en bout.

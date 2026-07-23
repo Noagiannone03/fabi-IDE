@@ -589,7 +589,7 @@ l'index de capacité du planner.
 
 Fabi v3 implémente donc la sémantique éprouvée des sous-clés avec des bornes supplémentaires :
 
-- `64` shards déterministes par `model_swarm_id`; le shard est dérivé de l'EndpointId signé, un
+- `256` shards déterministes par `model_swarm_id`; le shard est dérivé de l'EndpointId signé, un
   publisher ne choisit pas son shard ;
 - une entrée `ModelMember` signée indépendamment par endpoint, TTL maximal cinq minutes et
   séquence monotone ;
@@ -599,19 +599,23 @@ Fabi v3 implémente donc la sémantique éprouvée des sous-clés avec des borne
 - entrée invalide ou expirée éliminée sans empoisonner les autres publishers ;
 - maximum actuel de `512` entrées et `256 Kio` par shard ; un shard plein refuse une nouvelle
   entrée au lieu d'augmenter sans borne ;
-- lecture des 64 shards avec concurrence bornée à 16 ; timeout/erreur d'un shard fait échouer le
+- lecture des 256 shards avec concurrence bornée à 16 ; timeout/erreur d'un shard fait échouer le
   snapshot complet, afin qu'une vue partielle ne soit jamais prise pour une couverture réelle.
 
 Le payload `ModelMemberAdvertisement` reprend l'idée `ServerInfo + next_pings` de Petals : il
-embarque l'offre worker, la lease de span et les métriques sortantes vivantes. Le planner obtient
-donc sa matière en une lecture sharded, sans découvrir N endpoints puis lancer 2N lookups. Les
-records exacts `WorkerOffer`, `SpanLease` et `LinkMetric` restent publiés pour les lectures ciblées
-et l'audit.
+embarque l'offre worker, la lease de span et au maximum les huit meilleurs liens sortants vivants,
+triés par nature de chemin, perte, RTT puis débit. Le planner obtient donc sa matière en une lecture
+sharded, sans découvrir N endpoints puis lancer 2N lookups. Les records exacts `WorkerOffer`,
+`SpanLease` et `LinkMetric` restent publiés pour les lectures ciblées et l'audit.
 
-Ces bornes rendent le coût explicite mais ne constituent pas encore une preuve à 10 000 workers.
-Avant production, les simulations doivent mesurer distribution des shards, taille de paquet,
-charge de réplication et churn. Un accélérateur incrémental type libp2p Rendezvous/Gossipsub peut
-être ajouté derrière le même port, comme un tracker BitTorrent, sans devenir autorité et sans
+Le passage initial à 64 shards ne tenait pas sa propre cible : les annonces mesurées occupent
+`1 080` octets sans lien, `1 481` avec deux liens, `2 687` avec huit et `4 301` avec seize. À
+10 000 workers, 64 shards pouvaient donc dépasser `256 Kio`. Le protocole est passé à 256 shards
+et huit liens bornés. Un fixture déterministe de 10 000 EndpointIds vérifie que les 256 shards sont
+utilisés, qu'aucun n'excède 64 membres dans cette population et qu'un shard de 64 annonces de
+`2 800` octets reste sous la limite wire. Cela prouve la borne de référence, pas encore la charge
+réelle de réplication et le churn. Un accélérateur incrémental type libp2p Rendezvous/Gossipsub
+peut être ajouté derrière le même port, comme un tracker BitTorrent, sans devenir autorité et sans
 remplacer le fallback Kademlia.
 
 ## 20. Interfaces internes cibles
