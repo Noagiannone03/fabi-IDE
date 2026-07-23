@@ -3630,3 +3630,119 @@ ne sont pas encore publiées par `DhtDiscoveryStore` et ne pilotent aucun prompt
    immédiat vers le scheduler qualifié ;
 7. poursuivre churn/partition, quotas/Sybil, plusieurs routing nodes, deux NAT réels puis
    failover/répliques.
+
+## Route active, catalogue DHT et placement autonome v3 du 23 juillet 2026
+
+Trois commits moteur ont été poussés sur `swarm-engine/codex/swarm-protocol-v3` :
+
+- `5aaf64c` — `feat(swarm-v3): authorize active request routes` ;
+- `7463543` — `feat(swarm-v3): add autonomous placement foundations` ;
+- `1a35a3b` — `feat(swarm-v3): drive autonomous worker reloads`.
+
+La ref distante vérifiée après push est
+`1a35a3b864611aed6b05c58f6d77f3e6ed5faf80`.
+
+### Recherche et décisions reprises
+
+Petals officiel `22afba627a7eb4fcfe9418c49472c6a51334b8ac` a été relu dans
+`server.py`, `block_selection.py`, les annonces DHT et le cycle
+`JOINING → ONLINE → OFFLINE`. Le pattern conservé est : placement local depuis la couverture
+partagée, refus d'ouvrir un trou de couverture, annonce non prête pendant le chargement,
+redémarrage du conteneur de modules et nettoyage mémoire. Fabi y ajoute les réservations KV,
+epochs et identités Iroh qui manquent à ce cycle.
+
+Le format SafeTensors officiel et le chemin de métadonnées Hugging Face déjà maintenu dans Fabi
+servent à calculer les octets exacts par couche et par endpoint. Le manifeste de production porte
+désormais ce profil ; le placement autonome refuse un manifeste qui ne l'a pas au lieu d'estimer
+la taille. Les changements de poids modifient donc légitimement le `ModelSwarmId` du bundle de
+staging à republier.
+
+### Route et admission réellement actives
+
+- le budget réel `prompt_tokens + reserved_output_tokens` entre dans le planner v3 ;
+- `RoutePlan` et commandes de réservation sont signés avec l'EndpointId Iroh ;
+- le coordinateur fait `PREPARE` en parallèle, puis `COMMIT`, renouvelle les sessions dans un
+  thread indépendant et nettoie toute préparation partielle ;
+- chaque worker vérifie l'identité du coordinateur, son span local, les octets KV exacts,
+  l'epoch et la route avant prefill, chaque hop et abort ;
+- `route_id` et `route_epoch` passent réellement dans le protobuf et le data plane ;
+- un worker sans métrique de débit reste éligible : la performance est marquée incomplète au lieu
+  d'inventer une valeur ;
+- le timeout de heartbeat configuré est enfin lu ; l'enveloppe de capacité reste stable pendant
+  une génération et la pression live est séparée pour ne pas recompter les poids chargés.
+
+### Catalogue DHT réellement branché
+
+- `IrohTransport` démarre optionnellement le DHT Kademlia natif en `client` ou `server`, avec
+  identité libp2p persistante, bootstraps explicites et fermeture coordonnée ;
+- les workers publient une advertisement cohérente offre + lease + huit liens maximum dans une
+  boucle coalescée hors heartbeat ;
+- le scheduler publie et renouvelle le manifeste vérifié, lit les 256 shards hors requête et
+  conserve un snapshot immuable ;
+- en présence du catalogue, la route active utilise le membership DHT et non plus l'existence du
+  worker dans le tableau central ;
+- le manifeste DHT doit être strictement identique au bundle TUF local. La DHT ne devient jamais
+  l'autorité du modèle ;
+- la maintenance de route utilise aussi la liveness du snapshot DHT.
+
+### Placement et reload worker réellement implémentés
+
+La politique calcule tous les spans contigus exacts qui tiennent dans
+`stable_memory_envelope_bytes`, poids, endpoints et KV arrondi compris. Elle classe la couverture
+minimale, le déficit de réplication rempli et la couverture pondérée avec tie-break déterministe.
+Un backend fixed ne bouge que si chaque couche qu'il abandonne possède déjà une autre lease
+`READY`. Réservations actives, cooldown et hystérésis empêchent les oscillations.
+
+`FABI_SWARM_V3_PLACEMENT=autonomous` active le chemin worker :
+
+1. lecture DHT asynchrone, jamais dans le heartbeat ;
+2. barrière atomique `DRAINING` dans `WorkerExecutionAdmission` ;
+3. refus des nouveaux `PREPARE`, mais `RENEW/RELEASE/FENCE` restent disponibles pour drainer ;
+4. publication DHT `DRAINING` séquencée ;
+5. passage de la nouvelle plage et de sa génération dans `SharedState` ;
+6. arrêt frontend avant executor, rotation des IPC et chargement de la nouvelle plage ;
+7. réouverture seulement après poids vérifiés, KV mesuré et annonce `READY` de la même génération ;
+8. détection d'un exitcode executor non nul ; publication de l'erreur au contrôleur, nouvel epoch
+   local et reload de la dernière plage vérifiée. Sans ancienne plage, le worker échoue fermé.
+
+L'ancien scheduler ne peut plus appliquer un context replan, un late-join rebalance ou un
+rebalance de départ pendant une route v3 active. L'intention de rebalance après départ est
+mémorisée puis rejouée après drain, elle n'est pas perdue.
+
+### Validations exactes
+
+- suite Python complète au commit `1a35a3b` : `548 passed, 7 skipped` ;
+- seul warning : dépréciation externe Starlette/httpx déjà connue ;
+- Ruff ciblé et `git diff --check` verts ;
+- Rust `cargo fmt --check`, `cargo test --all-targets` : `21 passed` ;
+- Rust `cargo clippy --all-targets -- -D warnings` vert ;
+- tests ajoutés : DHT client/server et cleanup, membership sans N+1, route DHT sans nœud central,
+  drain concurrent, rollback génération, absence de reload pendant route v3, publisher
+  non bloquant, ordre d'arrivée déterministe et passage réel vers `SharedState`.
+
+Ces preuves sont locales et simulées. Le workflow GitHub du push `1a35a3b` n'avait pas encore de
+résultat visible au moment de cette écriture ; Windows ne doit donc pas être déclaré revalidé pour
+ces commits.
+
+### Limites honnêtes et ordre de reprise
+
+- **non testé au labo** : aucune génération `1a35a3b` n'a encore tourné sur VPS + Mac mini + RTX ;
+- **bootstrap froid encore transitoire** : le scheduler historique fournit la première plage avant
+  que le worker autonome puisse la déplacer. Il faut publier une intention `BUILDING` vérifiée
+  depuis l'offre de capacité pour supprimer cette dernière autorité de placement ;
+- le registre staging doit être republié avec le profil exact de poids, ce qui change le swarm id ;
+- le rollback de chargement est couvert en tests, pas encore provoqué avec MLX/vLLM réels ;
+- il manque encore simulation churn/partition 1/10/100/1 000/10 000, quotas/Sybil, plusieurs
+  routing servers, iroh-blobs, réplica/failover et replay KV.
+
+Ordre exact :
+
+1. attendre les trois jobs CI Windows/Ubuntu/macOS du commit `1a35a3b` ;
+2. reconstruire le wheel natif et le registre staging exact ;
+3. déployer un routing server DHT sur le VPS sans toucher au service 1.7B qualifié ;
+4. activer le client DHT + v3 active sur Mac mini et RTX, vérifier les deux ordres d'arrivée ;
+5. générer avec 12 220 tokens d'entrée + 4 096 réservés, SSE, abort, outils et changement modèle ;
+6. provoquer reload, échec de reload, départ pendant prefill/decode et mesurer TTFT, débit, KV,
+   RAM, direct/relay ;
+7. seulement après ces preuves, concevoir le cold join totalement autonome et le failover à
+   réplica.

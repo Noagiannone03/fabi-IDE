@@ -1,7 +1,9 @@
 # Fabi Swarm Protocol v3 — réseau communautaire multi-modèles
 
-Statut : architecture cible, décidée le 23 juillet 2026. Aucun mécanisme décrit ici ne doit
-être présenté comme livré tant que sa phase de qualification n'est pas inscrite dans
+Statut : architecture cible et implémentation progressive, décidée le 23 juillet 2026. Les
+contrats, le DHT, la route active, l'admission distribuée et la transaction de reload existent
+sur `swarm-engine/codex/swarm-protocol-v3`. Ils ne sont pas encore qualifiés sur le laboratoire
+Mac mini + RTX ; le détail honnête et les commits exacts restent dans
 `HANDOFF-SWARM-2026-07-17.md`.
 
 Ce document est normatif pour la prochaine génération du swarm Fabi. Il remplace la cible de
@@ -693,6 +695,28 @@ Ces interfaces empêchent de recoller du code Petals Python directement dans les
 faire dépendre Iroh d'une décision de scheduling.
 
 ## 21. Migration depuis le produit actuel
+
+### État d'implémentation au 23 juillet 2026
+
+- Phases A/B : route réelle par requête, budget exact, `PREPARE/COMMIT/RENEW/RELEASE`, epoch,
+  fencing du plan de données, streaming et abort implémentés.
+- Phase C : catalogue Kademlia natif sharded branché aux workers et au planner ; manifests TUF
+  publiés périodiquement et membership renouvelé hors heartbeat.
+- Phase D : calcul exact poids + KV, politique autonome, invariant de couverture, drain atomique,
+  reload `SharedState`, confirmation `READY` et rollback de génération implémentés derrière
+  `FABI_SWARM_V3_PLACEMENT=autonomous`.
+- Phase E : le planner actif peut router depuis le snapshot DHT sans exiger la présence du worker
+  dans l'ancien tableau central. Le bootstrap froid d'un worker dépend encore de l'allocation
+  initiale historique ; cette dépendance doit disparaître avant de déclarer le scheduler
+  non autoritaire de bout en bout.
+- Phases F/G : iroh-blobs, failover avec réplique, journal/replay KV et reçus économiques restent
+  à construire et qualifier.
+
+Une transition de topologie héritée est maintenant bloquée tant qu'une route v3 possède des
+réservations. Un départ mémorise l'intention de rebalance et la reprend après drain. Le worker
+publie `DRAINING`, refuse atomiquement tout nouveau `PREPARE`, attend ses réservations, déclenche
+le reload existant, puis ne rouvre l'admission qu'après vérification de la nouvelle annonce
+`READY`. Une erreur executor incrémente la génération et recharge le dernier span vérifié.
 
 ### Phase A — figer les contrats et préserver le laboratoire
 
