@@ -3475,8 +3475,8 @@ Validation locale finale :
 - venv Python 3.12 vierge avec seulement Pydantic, huggingface-hub et pytest : `16 passed` avec
   `--noconftest` ; le premier essai par `python3` local a correctement refusé Python 3.14.6 car le
   projet déclare `<3.14`, ce n'est pas une validation 3.14 ;
-- CI du commit : run `29995144474`, encore **queued** à l'écriture. Ne pas la déclarer verte avant
-  la conclusion des trois OS.
+- CI du commit : run `29995144474`, entièrement verte sur Windows, Ubuntu et macOS, y compris
+  tests de manifestes, tests DHT, Clippy strict, wheels ABI3, installation et imports.
 
 ### Limites et prochain ordre
 
@@ -3494,3 +3494,139 @@ Ordre recommandé :
 4. brancher ensuite `DhtDiscoveryStore` en shadow et comparer registre historique / vue v3 sans
    influencer le trafic ;
 5. reprendre quotas/Sybil, simulations de churn et qualification multi-routing-nodes/NAT réels.
+
+## Autorité TUF, vérification locale et shadow Parallax du 23 juillet 2026
+
+Le commit moteur `28cd0775eccc1aeecf0fa20471555cba7b461a13`
+(`feat: connect trusted worker shadow reports`) est poussé sur
+`swarm-engine/codex/swarm-protocol-v3`. Le worktree qualifié
+`/Users/noagiannone/Documents/swarm-engine-dynamic` et le labo v2 n'ont pas été modifiés. Ce palier
+est volontairement **shadow-only** : les générations réelles utilisent toujours le scheduler et
+les réservations qualifiés.
+
+### Recherche et choix de confiance
+
+Les sources officielles suivantes ont été lues avant l'implémentation :
+
+- python-tuf, API `Metadata`, `ngclient.Updater`, exemples de repository et rotation de root,
+  source `c3e5ea6977bfaf370b37fd202f47059c9581f489` ;
+- spécification TUF : rôles root/targets/snapshot/timestamp, seuils, expiration, consistent
+  snapshots, protection rollback/freeze et continuité old-root/new-root ;
+- securesystemslib et `CryptoSigner`, source
+  `0593df312ceb40dcc390c84050547443742b6ed4` ;
+- cache officiel huggingface_hub, source
+  `e8bb3199451824621bcdcb92b7ba0d86586ef5b6` : les snapshots sont des symlinks vers le répertoire
+  sibling `blobs`, donc interdire tout symlink aurait cassé le cache maintenu ;
+- observabilité vLLM/SGLang : distinction prompt/prefill, génération/decode, TTFT/ITL et métriques
+  de tokens réellement ordonnancés.
+
+Sigstore reste pertinent pour la provenance des releases, mais ne remplace pas le registre de
+modèles : TUF fournit directement seuils d'autorité, révocation/rotation, expiration et
+anti-rollback. Fabi dépend maintenant explicitement de `tuf==7.0.0` et
+`cryptography>=40.0.0` au lieu de réimplémenter ces garanties.
+
+### Registre de modèles réellement livré
+
+- `ModelRegistryBundle` lie le `ModelManifest` compact à son `ModelArtifactIndex` complet et
+  recalcule les trois racines architecture/tokenizer/poids avant acceptation ;
+- catalogue TUF signé `catalog.json` : résolution nom humain + commit immuable + variante
+  dtype/quantification vers `model_swarm_id`, avec refus des variantes ambiguës ;
+- publisher operator-side : targets, snapshot et timestamp versionnés, consistent snapshots,
+  écriture atomique et publication du timestamp en dernier ;
+- clés injectées sous forme de `Signer` : aucune clé privée n'est créée, loggée ou persistée par le
+  runtime ;
+- seuil configurable par rôle et rotation de root signée simultanément par l'ancien et le nouveau
+  seuil ; la nouvelle root peut retirer les clés compromises ;
+- client `TrustedModelRegistry` initialisé uniquement depuis une root fournie hors bande : aucun
+  TOFU silencieux ; `ngclient` vérifie la chaîne root → timestamp → snapshot → targets, la taille
+  et le hash du bundle ;
+- tests d'altération de target, timestamp expiré, rollback, seuil incomplet, substitution
+  manifest/index et rotation root 2-of-2.
+
+Le labo pourra commencer en 1-of-1 pour les rôles en ligne timestamp/snapshot/targets, mais cette
+configuration devra être explicitement marquée staging. La root de production reste destinée à
+un seuil offline ; aucune clé de production n'existe à ce stade.
+
+### Vérification exacte des poids du span
+
+Le worker ne dérive plus ses `weight_hashes` d'une hypothèse :
+
+- l'index safetensors/PyTorch signé est vérifié avant parsing ;
+- le même normaliseur de clés et la même règle couches/endpoints que les loaders Parallax calculent
+  les fichiers exacts de `[start_layer, end_layer)` ;
+- toute référence de `weight_map` absente de l'index signé est rejetée ;
+- checkpoints non shardés acceptés seulement s'il existe exactement un fichier poids signé ;
+- chaque fichier utilisé est vérifié en streaming par taille et SHA-256, avec détection d'un
+  changement pendant le hash ;
+- les symlinks officiels Hugging Face vers `blobs` sont acceptés, mais uniquement si les octets de
+  la cible satisfont toujours le descriptor signé ;
+- tokenizer vérifié seulement pour un worker annonçant le rôle frontend ; un exécuteur pur ne doit
+  pas télécharger des octets qu'il n'utilise pas ;
+- un seul thread de vérification lourd peut tourner par worker. Une succession de réallocations ne
+  lance donc pas plusieurs hashages concurrents qui satureraient disque, CPU et heartbeat.
+
+La géométrie KV n'est plus réduite à une constante globale : le manifeste porte un nombre
+d'octets/token pour chaque couche. Les architectures attention uniformes actuelles remplissent le
+vecteur avec la géométrie exacte du config ; une architecture recurrente/state-space est refusée
+tant qu'un contrat cache spécifique n'existe pas. Le planner additionne la géométrie du subspan
+réel.
+
+### Branchement shadow aux workers et au scheduler actuels
+
+`FABI_SWARM_V3_MODE=shadow` active un chemin isolé :
+
+- le heartbeat v2 reste synchrone et prioritaire ; récupération TUF et hashage de poids tournent
+  hors du thread de heartbeat ;
+- un worker publie dans son `node_update` un `WorkerOffer` et un `SpanLease` v3 seulement après
+  récupération indépendante du bundle signé et vérification locale ;
+- erreurs et contrats incomplets deviennent `waiting_contract`, `verifying` ou `rejected`, sans
+  arrêter le runtime v2 ;
+- les vrais transferts d'activations v2 alimentent un EWMA de goodput par peer. La taille mesurée
+  est celle du message effectivement envoyé au peer, pas le batch d'origine avant regroupement ;
+- les executors publient séparément les tokens prefill et decode réellement ordonnancés par MLX,
+  vLLM ou SGLang, divisés par leur temps de traitement ; seuls les workers `max_sessions == 1`
+  exposent actuellement ces scalaires au planner v3 ;
+- le scheduler conserve le report sans le mélanger aux champs v2, récupère lui-même le bundle TUF,
+  exécute `ExactRoutePlanner`, compare la route v3 aux couvertures complètes v2 et expose le résultat
+  dans `/cluster/status` ;
+- les états expliquent les divergences, notamment `missing_executor_throughput` et
+  `missing_link_goodput`, plutôt que de fabriquer des valeurs par défaut.
+
+Le DHT reste le futur plan de découverte. Pour ce premier shadow, les advertisements transitent
+dans le RPC scheduler déjà qualifié afin de comparer sans ouvrir un nouveau chemin de panne. Elles
+ne sont pas encore publiées par `DhtDiscoveryStore` et ne pilotent aucun prompt.
+
+### Validation exacte
+
+- suite moteur complète : `498 passed, 7 skipped` ; seul warning externe Starlette/httpx connu ;
+- hooks pre-commit, Ruff et `git diff --check` verts ;
+- `20` tests natifs, `cargo fmt --check`, Clippy tous targets/features avec warnings interdits ;
+- tests spécifiques : cache HF symlink, poids altéré, index référençant un fichier non signé,
+  TUF tamper/expiry/rollback/rotation, heartbeat non bloquant, absence de hashages concurrents,
+  compteurs MLX/vLLM/SGLang, shadow agreement et shadow sans métriques ;
+- smoke Hub réel `Qwen/Qwen3-0.6B`, même commit
+  `c1899de289a04d12100db370d81485cdf75e47ca`, 28 couches, géométrie KV `4 096`
+  octets/token/couche, bundle TUF `2 355` octets ;
+- l'ajout de la géométrie KV au contrat change légitimement l'identité : nouveau `ModelSwarmId`
+  `76390f00bf883056baf3ab07c74908b7a1cdd99bed9ca161daa286e4e85218d2` ;
+- vérification locale réelle du poids 0.6B **non faite** : le cache du Mac courant ne contient pas
+  `model.safetensors` (ni tous les tokenizer files). Le test a échoué proprement en
+  `FileNotFoundError`, aucun téléchargement de 1,5 Go n'a été lancé implicitement ;
+- CI multiplateforme du commit : run `29997876299`, encore **queued** à cette écriture. Ne pas la
+  déclarer verte avant les trois conclusions Windows/Ubuntu/macOS.
+
+### Limites et prochain ordre exact
+
+1. obtenir les trois jobs verts du run `29997876299` ;
+2. ajouter l'outil opérateur de staging avec stockage de clés chiffré/permissions strictes, publier
+   le bundle exact du modèle labo et distribuer seulement la root publique pinée ;
+3. brancher la vérification dans l'admission **avant** le chargement du nouvel executor. En shadow,
+   elle qualifie l'annonce v3 après le READY v2 ; ce n'est pas encore une garantie pré-load ;
+4. publier les mêmes advertisements signées dans `DhtDiscoveryStore` et comparer vue RPC, vue DHT
+   et scheduler historique ;
+5. déployer le shadow sur VPS + Mac mini + RTX, provoquer les deux ordres de connexion, lancer de
+   vrais prompts et mesurer agreement/divergence, TTFT, débit, KV, RAM et chemins direct/relay ;
+6. seulement après ces preuves, activer PREPARE/COMMIT v3 pour une fraction de trafic avec rollback
+   immédiat vers le scheduler qualifié ;
+7. poursuivre churn/partition, quotas/Sybil, plusieurs routing nodes, deux NAT réels puis
+   failover/répliques.
