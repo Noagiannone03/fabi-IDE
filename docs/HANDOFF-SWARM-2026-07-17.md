@@ -3273,3 +3273,105 @@ doit être relié à un budget réel avant déploiement d'un routing node public
    workers ;
 5. seulement ensuite déployer plusieurs routing nodes Kademlia et qualifier deux NAT réels en
    conservant Iroh comme unique plan de données.
+
+## Membership sharded Petals/Hivemind et `DiscoveryStore` natif du 23 juillet 2026
+
+Le commit moteur `8788c8680f7f6cb8602fe646832f029261841a86`
+(`feat: add sharded model membership discovery`) est poussé sur
+`swarm-engine/codex/swarm-protocol-v3`. Le worktree qualifié
+`/Users/noagiannone/Documents/swarm-engine-dynamic` et son patch local n'ont pas été modifiés.
+
+### Problème découvert avant de brancher Python
+
+Le premier adaptateur Kademlia savait publier et lire une clé exacte. Il ne pouvait pas encore
+répondre proprement à « quels workers servent ce modèle ? » : Kademlia standard ne fournit pas de
+`LIST(prefix)`, et le planner ne connaît pas à l'avance les EndpointIds qui composent les clés
+`offer/<endpoint>` et `span/<model>/<endpoint>`.
+
+Le code Petals/Hivemind a été relu jusque dans `declare_active_modules`, `DHTProtocol`,
+`DictionaryDHTValue`, `DHTLocalStorage.store_subkey` et `_SearchState.add_candidate`. Petals écrit
+une sous-clé par peer et par module ; Hivemind conserve une expiration par sous-clé et fusionne les
+dictionnaires reçus de plusieurs répliques. C'est une extension réelle du protocole, pas un
+`GET(prefix)` caché.
+
+Les provider records libp2p ont également été comparés dans la documentation et le code officiels.
+Ils renvoient des `PeerId`, la récupération de la valeur reste hors scope de cette API et le
+`MemoryStore` limite par défaut les providers d'une clé à `K = 20`. Ils conviennent aux fournisseurs
+de blobs, mais utilisés seuls pour les workers ils auraient imposé un mapping d'identité
+supplémentaire, une hot key et des lookups N+1. Cette voie n'a donc pas été forcée.
+
+### Implémentation réellement livrée
+
+Le crate `fabi-network` porte maintenant une sémantique de sous-clés signées, sharded et bornée :
+
+- nouveau record `ModelMember`, clé `fabi/swarm/v3/member/<model_swarm_id>/<shard>` ;
+- `64` shards fixes ; le shard vient du hash de l'EndpointId Ed25519, donc un publisher ne peut pas
+  choisir arbitrairement sa partition ;
+- chaque entrée garde sa signature Iroh, sa séquence et son TTL indépendants ; le conteneur de set
+  n'est jamais une autorité et n'est pas cru sans revérifier toutes ses entrées ;
+- fusion déterministe par EndpointId et plus haute séquence, indépendante de l'ordre d'arrivée ;
+- une entrée invalide/expirée ne peut pas empoisonner les entrées honnêtes ;
+- même séquence avec deux contenus signés converge par digest déterministe et reste une preuve
+  d'équivocation exploitable par la future politique de réputation ;
+- maximum `512` entrées et `256 Kio` par shard, paquet Kademlia et `MemoryStore` bornés ;
+- un routing server fusionne delta individuel et snapshot répliqué avant insertion ;
+- lecture des 64 shards avec concurrence 16 ; une vraie erreur réseau d'un shard fait échouer le
+  snapshot, tandis qu'un shard `NotFound` est correctement interprété comme vide.
+
+Le binding PyO3 expose maintenant `model_member`, `catalog_get_members` et
+`catalog_get_model_members`.
+
+Le nouveau `DhtDiscoveryStore` Python sérialise réellement les contrats v3. Son
+`ModelMemberAdvertisement` reprend le meilleur pattern de Petals `ServerInfo + next_pings` : chaque
+entrée signée contient le `WorkerOffer`, le `SpanLease` et les métriques réseau sortantes encore
+vivantes. Une lecture sharded produit donc directement la matière du planner sans 2N lectures
+supplémentaires. Les records exacts offre/span/lien restent publiés pour lookup ciblé et audit.
+
+Les contrôles Python refusent notamment :
+
+- une offre dont `endpoint_id` ne correspond pas à la clé Iroh qui signe ;
+- une lease sans offre locale correspondante ;
+- un lien dont la source n'est pas le worker local ou dont la cible n'a pas d'endpoint connu ;
+- une advertisement distante dont l'offre prétend un autre EndpointId que le signataire ;
+- un snapshot partiel présenté comme complet.
+
+Une collision volontaire de `worker_id` entre deux EndpointIds est résolue de façon déterministe
+par la vue signée la plus récente. La future attestation de device/account devra ensuite décider
+qui est autorisé à revendiquer ce nom.
+
+### Validation exacte
+
+- tests natifs : `18 passed`, dont serveur Kademlia + deux writers dans le même shard + reader,
+  puis lecture des 64 shards du modèle ;
+- Clippy `--all-targets --all-features -- -D warnings` vert ;
+- tests Python ciblés contrats/discovery/routing : `25 passed` ;
+- suite moteur complète : `471 passed, 7 skipped` ; seul warning externe Starlette/httpx connu ;
+- Ruff vert et `git diff --check` vert ;
+- wheel ABI3 macOS arm64 release construite, installée dans un venv vierge et nouvelles méthodes
+  importées avec succès ;
+- la CI du commit précédent `06fb337`, run `29991752219`, est entièrement verte sur Windows,
+  Ubuntu et macOS : tests, wheel, installation et import ;
+- la CI du nouveau commit membership est déclenchée par push, run `29993456967`. À l'écriture de
+  cette section elle est **queued** : ne pas déclarer encore ce nouveau commit validé Windows.
+
+### Limites honnêtes et suite
+
+Le `DhtDiscoveryStore` n'est pas encore branché au registre/scheduler historique en shadow et ne
+route aucun prompt. Les 64 shards et leurs bornes sont un design testable, pas une preuve à 10 000
+workers. Il manque encore rate limits, quota mémoire réel du routing node, défense Sybil,
+attestation account/device, autorités de manifestes et simulation de partition/churn.
+
+Le prochain ordre est :
+
+1. obtenir les trois jobs du run `29993456967` verts et corriger toute divergence réelle ;
+2. brancher le store en shadow du registre central et comparer les snapshots sans influencer le
+   trafic ;
+3. ajouter simulations de distribution de shards, expirations, ordre, partitions et churn à
+   1/10/100/1 000 puis 10 000 workers avec budgets mémoire/paquets/CPU ;
+4. définir trust policy des manifestes, quotas par publisher/account/IP et comportement shard
+   plein ;
+5. étudier un accélérateur incrémental officiel libp2p Rendezvous/Gossipsub derrière le même port,
+   analogue à un tracker BitTorrent mais jamais autoritaire, seulement si les mesures le
+   justifient ;
+6. déployer plusieurs routing nodes, tester deux NAT réels, puis reprendre la génération modèle
+   complète Iroh Mac mini + RTX et l'admission `PREPARE/COMMIT` de bout en bout.

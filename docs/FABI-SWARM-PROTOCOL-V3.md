@@ -571,6 +571,49 @@ explicitement le `worker_id`, l'EndpointId Iroh et le PeerId libp2p. Les secrets
 protocoles ne seront pas réutilisés implicitement. Une rotation de clé et une révocation de
 device doivent pouvoir invalider ce lien sans changer le hash d'un modèle.
 
+### 19.2 Énumération des membres : sous-clés sharded, pas faux `LIST(prefix)`
+
+L'implémentation du 23 juillet a révélé une différence fondamentale entre Kademlia standard et
+Hivemind : Kademlia sait résoudre une clé exacte, mais ne fournit pas de `LIST(prefix)`. Petals
+peut demander tous les serveurs d'une couche parce que Hivemind ajoute une valeur dictionnaire
+fusionnable : chaque `PeerId` écrit sa propre sous-clé, avec sa propre expiration, et le lecteur
+fusionne les sous-clés obtenues de plusieurs répliques.
+
+Les provider records libp2p ont été étudiés avant de porter cette mécanique. Ils sont adaptés à
+la découverte de fournisseurs de contenu et renouvellent automatiquement leurs TTL, mais ils ne
+retournent que des `PeerId`; la récupération de la valeur fournie est explicitement hors scope de
+l'API. Le `MemoryStore` rust-libp2p limite aussi par défaut les providers d'une clé à `K = 20`.
+Les utiliser seuls pour les workers aurait créé un mapping d'identité circulaire, un hot key et
+une seconde série de lookups. Ils restent le bon outil futur pour les blobs de poids, pas
+l'index de capacité du planner.
+
+Fabi v3 implémente donc la sémantique éprouvée des sous-clés avec des bornes supplémentaires :
+
+- `64` shards déterministes par `model_swarm_id`; le shard est dérivé de l'EndpointId signé, un
+  publisher ne choisit pas son shard ;
+- une entrée `ModelMember` signée indépendamment par endpoint, TTL maximal cinq minutes et
+  séquence monotone ;
+- un conteneur Kademlia non autoritaire et non signé qui ne fait qu'agréger des entrées opaques ;
+  chaque entrée est vérifiée avant fusion ;
+- fusion par EndpointId, plus haute séquence, ordre déterministe même en cas d'équivocation ;
+- entrée invalide ou expirée éliminée sans empoisonner les autres publishers ;
+- maximum actuel de `512` entrées et `256 Kio` par shard ; un shard plein refuse une nouvelle
+  entrée au lieu d'augmenter sans borne ;
+- lecture des 64 shards avec concurrence bornée à 16 ; timeout/erreur d'un shard fait échouer le
+  snapshot complet, afin qu'une vue partielle ne soit jamais prise pour une couverture réelle.
+
+Le payload `ModelMemberAdvertisement` reprend l'idée `ServerInfo + next_pings` de Petals : il
+embarque l'offre worker, la lease de span et les métriques sortantes vivantes. Le planner obtient
+donc sa matière en une lecture sharded, sans découvrir N endpoints puis lancer 2N lookups. Les
+records exacts `WorkerOffer`, `SpanLease` et `LinkMetric` restent publiés pour les lectures ciblées
+et l'audit.
+
+Ces bornes rendent le coût explicite mais ne constituent pas encore une preuve à 10 000 workers.
+Avant production, les simulations doivent mesurer distribution des shards, taille de paquet,
+charge de réplication et churn. Un accélérateur incrémental type libp2p Rendezvous/Gossipsub peut
+être ajouté derrière le même port, comme un tracker BitTorrent, sans devenir autorité et sans
+remplacer le fallback Kademlia.
+
 ## 20. Interfaces internes cibles
 
 ```text
@@ -720,8 +763,12 @@ Gate : route identique à snapshot identique, réservations sûres sous planners
 - [Petals — papier système](https://arxiv.org/abs/2209.01188)
 - [Petals — papier tolérance aux pannes et load balancing](https://arxiv.org/abs/2312.08361)
 - [Hivemind — DHT pour volontaires](https://github.com/learning-at-home/hivemind)
+- [Hivemind — dictionnaires à sous-clés et expirations indépendantes](https://github.com/learning-at-home/hivemind/blob/4bd43b7/hivemind/dht/storage.py)
+- [Hivemind — fusion des sous-clés pendant une recherche](https://github.com/learning-at-home/hivemind/blob/4bd43b7/hivemind/dht/node.py)
 - [rust-libp2p — implémentation Kademlia](https://docs.rs/libp2p/latest/libp2p/kad/index.html)
+- [rust-libp2p — provider records et `start_providing`](https://docs.rs/libp2p/latest/libp2p/kad/struct.Behaviour.html#method.start_providing)
 - [libp2p — spécification Kademlia](https://github.com/libp2p/specs/blob/master/kad-dht/README.md)
+- [libp2p — protocole Rendezvous](https://github.com/libp2p/specs/tree/master/rendezvous)
 - [Lattica — dépôt officiel MIT](https://github.com/GradientHQ/lattica)
 - [Parallax — dépôt officiel](https://github.com/GradientHQ/parallax)
 - [Parallax — scheduler deux phases](https://arxiv.org/abs/2509.26182)
