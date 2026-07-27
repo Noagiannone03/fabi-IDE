@@ -1,8 +1,9 @@
 # Fabi Swarm — conception de la reprise exacte en generation
 
-Etat : decision d'architecture du 18 juillet 2026. Ce document decrit le contrat a
-implementer apres l'admission statique de contexte (`swarm-engine` `76c7dd6`). Il ne declare
-pas encore la reprise qualifiee.
+Etat : décision d'architecture du 18 juillet 2026, replay froid implémenté localement le
+27 juillet 2026 dans `swarm-engine` `1e15437` puis `8f6310a`. La qualification sur une vraie
+route de secours complète reste à faire ; ce document ne déclare donc pas encore la reprise
+qualifiée au laboratoire.
 
 ## Objectif et garantie
 
@@ -151,3 +152,40 @@ annonces suffisants.
 Les premiers tests doivent utiliser trois workers. Avec seulement le Mac `[0,2)` et le PC
 Windows `[2,28)`, aucune plage n'a de secours : une panne doit donc rester une erreur propre,
 pas etre presentee comme une reprise possible.
+
+## État d'implémentation du replay froid au 27 juillet 2026
+
+Les étapes 1 à 4 ci-dessus sont maintenant présentes dans le chemin HTTP/SSE réel :
+
+- journal borné des IDs du prompt et des tokens de sortie, checksum en chaîne, machine d'états
+  et rejet des anciennes epochs ;
+- réservation d'une route complète worker-disjointe pour `RECOVERABLE`, promotion atomique avec
+  nouvel epoch, consommation unique du secours et RPC `FENCE` best effort sur l'ancienne route ;
+- commit de chaque token avant exposition de son événement SSE ;
+- reconstruction du KV sur `prompt original || sortie déjà commise`, sans re-tokeniser le texte ;
+- patch qualifié contre le commit vLLM `ee0da84ab9e04ac7610e28580af62c365e898389` : le renderer
+  vérifie les IDs du prompt, l'engine préfill le préfixe complet et le décodeur officiel restaure
+  l'état reasoning/tool calls ;
+- suppression du préfixe rejoué seulement après comparaison exacte des IDs, puis continuation du
+  même flux client sans doublon ; les compteurs d'usage sont recalculés pour la requête originale ;
+- erreur terminale propre si le replay diverge, si le secours disparaît ou si une seconde panne
+  survient après consommation de l'unique backup.
+
+La garantie exacte est limitée pour l'instant au greedy (`temperature=0` ou `top_k=1`). Les
+requêtes échantillonnées restent `RESTARTABLE` tant qu'un état RNG portable n'existe pas entre
+MLX, vLLM et SGLang. Les options dont la sémantique change quand le préfixe devient prompt
+(pénalités non neutres, stop strings, guided decoding, logprobs, thinking budget, beam search)
+ne sont jamais annoncées comme recoverable.
+
+Preuves locales au commit `8f6310a` :
+
+- `666 passed, 7 skipped` sur toute la suite Python ;
+- `97 passed` sur le sous-ensemble failover/routing/worker RPC/install ;
+- patch vLLM appliqué sur une copie exacte du commit piné, `cargo check`, deux tests de route et
+  Clippy strict des crates `vllm-chat`/`vllm-server` verts ;
+- scénario handler : A émet un token puis coupe, B rejoue le préfixe, continue sans duplication ;
+- scénario seconde panne : erreur OpenAI terminale, pas de boucle ni de fausse continuation.
+
+Non validé : build/install du frontend patché sur les machines du labo, kill réel pendant
+prefill/decode et reprise matérielle. Le Mac mini + RTX actuels forment ensemble une seule
+pipeline ; ils ne constituent pas une route worker-disjointe de secours.

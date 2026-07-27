@@ -709,8 +709,10 @@ faire dépendre Iroh d'une décision de scheduling.
   dans l'ancien tableau central. Le bootstrap froid d'un worker dépend encore de l'allocation
   initiale historique ; cette dépendance doit disparaître avant de déclarer le scheduler
   non autoritaire de bout en bout.
-- Phases F/G : iroh-blobs, failover avec réplique, journal/replay KV et reçus économiques restent
-  à construire et qualifier.
+- Phase G : journal de contrôle, route worker-disjointe, epochs/fencing, commit-before-SSE et
+  replay froid exact sont implémentés localement dans `1e15437`/`8f6310a`. Le build frontend et
+  la reprise sur une vraie réplique matérielle restent à qualifier. Journal d'activations,
+  réplique chaude, iroh-blobs et reçus économiques restent à construire.
 
 Une transition de topologie héritée est maintenant bloquée tant qu'une route v3 possède des
 réservations. Un départ mémorise l'intention de rebalance et la reprend après drain. Le worker
@@ -767,7 +769,9 @@ Gate : route identique à snapshot identique, réservations sûres sous planners
 
 ### Phase G — failover et économie
 
-- Replay froid, journaux, fencing puis accélérations KV.
+- Replay froid, journaux, fencing et SSE exact implémentés ; qualifier le frontend vLLM patché
+  et les kills prefill/decode sur une route complète de secours.
+- Ajouter ensuite journal d'activations et réplique chaude comme accélérations KV optionnelles.
 - Reçus de contribution et réciprocité progressive.
 - Audits, réputation et pairing multi-machine.
 

@@ -3746,3 +3746,103 @@ Ordre exact :
    RAM, direct/relay ;
 7. seulement après ces preuves, concevoir le cold join totalement autonome et le failover à
    réplica.
+
+## Replay froid exact et promotion de route v3 du 27 juillet 2026
+
+Cette section est le point de reprise le plus récent pour le failover. Deux commits sont poussés
+sur `swarm-engine/codex/swarm-protocol-v3` :
+
+- `1e15437` — `feat(swarm-v3): journal exact generation recovery` ;
+- `8f6310a` — `feat(swarm-v3): resume exact streams on backup routes`.
+
+La ref distante a été vérifiée à `8f6310a`. Le worktree qualifié
+`/Users/noagiannone/Documents/swarm-engine-dynamic` et le service labo existant n'ont pas été
+modifiés.
+
+### Recherche primaire et décision
+
+Petals officiel `22afba627a7eb4fcfe9418c49472c6a51334b8ac` a été relu dans
+`client/inference_session.py` : après perte d'un span, il choisit une nouvelle couverture et
+rejoue l'historique des hidden states pour reconstruire les caches d'attention. Fabi conserve cet
+invariant de reconstruction mais ajoute le journal de tokens, la réservation worker-disjointe,
+les epochs et le commit-before-SSE nécessaires à un service multi-client.
+
+Le frontend Rust officiel vLLM v0.24 a été étudié au commit immuable
+`ee0da84ab9e04ac7610e28580af62c365e898389`. La reprise n'utilise pas un décodeur ou un parser
+d'outils maison : un patch Fabi injecte le préfixe commis dans les décodeurs reasoning/tool calls
+officiels, tandis que l'engine reçoit `prompt original || sortie commise` pour reconstruire le KV.
+SGLang PD/Mooncake/NIXL ont aussi été relus. Le transfert direct de KV n'est pas retenu comme
+premier chemin de correction : il exige un contrat backend/layout/version beaucoup plus strict et
+des corruptions KV inter-nœuds sont encore rapportées dans le projet. Exo confirme l'intérêt du
+placement topologique, mais ne fournit pas ce contrat de reprise agentique.
+
+### Chemin de reprise réellement implémenté
+
+1. Le planner réserve une route primaire et une route complète dont les workers sont disjoints.
+2. Le premier chunk vLLM lie les IDs exacts du prompt au manifeste, tokenizer, dtype, contrats
+   prefill/KV, route et epoch.
+3. Chaque token reasoning, contenu ou outil est journalisé avant que son SSE soit visible.
+4. Une perte de route ou une fin de flux sans `[DONE]` promeut le secours avec un nouvel epoch.
+5. Le coordinateur consomme ce secours, clôt l'ancienne autorité par journal + leases et tente un
+   RPC `FENCE` sur tous les anciens stages encore joignables.
+6. Le nouveau head appelle `/inference/v1/chat-replay`. Le renderer doit reproduire exactement les
+   IDs du prompt ; le nouvel engine préfill le prompt étendu et le frontend réinjecte le préfixe
+   dans ses parsers maintenus.
+7. Le gateway compare les IDs rejoués au journal, masque les événements déjà livrés puis expose
+   seulement les nouveaux événements. Les compteurs prompt/completion/total sont réécrits pour la
+   requête originale.
+8. Une divergence, un secours indisponible ou une seconde panne produit une erreur OpenAI
+   terminale propre. Il n'existe ni boucle infinie, ni re-tokenisation, ni continuation inventée.
+
+Le patch est versionné sous `patches/vllm-v0.24.0-fabi-chat-replay.patch`. `install.sh` pince
+désormais le commit vLLM exact, vérifie que le patch s'applique et inclut son SHA-256
+`6c5ee14c59f8ea1ff02b3f97d3fd8a5849668e980fa3fccafa654f6819a8cdef` dans l'identité du frontend.
+
+### Portée exacte de la garantie
+
+Le replay froid exact n'est annoncé que pour `temperature=0` ou `top_k=1`. Un seed seul ne rend
+pas l'état RNG portable entre MLX, vLLM et SGLang. Les requêtes sampled restent donc
+`RESTARTABLE`. Sont également refusés comme recoverable : stop strings, guided/structured
+decoding, logprobs, thinking budget, beam search et pénalités de fréquence/présence/répétition non
+neutres. Les pénalités explicites neutres `0/0/1` restent acceptées.
+
+Le journal est borné et process-local. Il ne permet pas encore à un autre routing server de
+reprendre après le crash du routing server courant. Une route possède un seul secours réservé :
+après sa promotion, la garantie descend honnêtement à `RESTARTABLE`.
+
+### Validations exactes
+
+- suite Python complète : `666 passed, 7 skipped`, seul warning externe Starlette/httpx connu ;
+- Ruff ciblé sur tous les fichiers modifiés et `git diff --check` verts ;
+- `97 passed` sur failover, handler SSE, scheduler, active routes, worker RPC et install ;
+- patch appliqué à la source vLLM exacte ; `cargo check -p vllm-chat -p vllm-server` vert ;
+- deux tests Rust ciblés `/inference/v1/chat-replay` verts : préfill du préfixe exact +
+  continuation, et refus d'un prompt rendu différent ;
+- `cargo clippy -p vllm-chat -p vllm-server --lib --tests -- -D warnings` vert ;
+- le Clippy `--all-targets` global n'est pas déclaré vert : un exemple vLLM amont déclenche avec
+  Rust 1.97 un warning futur sur le type de `temperature(0.0)`, hors patch Fabi ;
+- tests Python : coupure après un token puis continuation sans doublon, mismatch prompt/token,
+  SSE d'erreur, replay prématurément terminé, usage corrigé, seconde panne sans secours.
+
+Le lint Ruff global du dépôt contient encore 85 erreurs historiques hors fichiers modifiés dans
+les benchmarks et modèles MLX. Elles ne sont pas introduites par ces commits et n'ont pas été
+mélangées à ce jalon.
+
+### Limites honnêtes et prochaine reprise
+
+La reprise fonctionne dans les tests intégrés, mais **n'est pas encore qualifiée sur des workers
+réels**. Le labo actuel Mac mini + RTX forme ensemble une seule pipeline ; il ne fournit pas une
+seconde couverture worker-disjointe. Ne pas déclarer le failover produit prêt sans au moins une
+troisième couverture complète.
+
+Ordre exact :
+
+1. vérifier la CI Windows/Ubuntu/macOS des commits `1e15437` et `8f6310a` ;
+2. construire le frontend vLLM patché depuis le commit piné, puis reconstruire le runtime/wheel ;
+3. déployer ce runtime sur VPS, Mac mini et RTX sans écraser le rollback qualifié ;
+4. revalider génération normale, SSE, outils, permissions, abort, contribution et gros contexte ;
+5. ajouter une route worker-disjointe réelle, puis tuer head/milieu/tail pendant prefill et decode ;
+6. mesurer temps de reconstruction, TTFT après panne, débit, RAM/KV et comportement direct/relay ;
+7. persister/répliquer le journal entre routing servers ;
+8. poursuivre journal d'activations, réplique chaude, iroh-blobs, multi-modèles, reçus de
+   contribution, quotas/Sybil et pairing multi-machine.
