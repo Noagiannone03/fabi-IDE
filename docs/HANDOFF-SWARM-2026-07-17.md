@@ -4112,3 +4112,41 @@ Ce jalon ne signifie pas encore « release utilisateur terminée ». Restent obl
 6. ajouter une vraie route worker-disjointe, kills prefill/decode, promotion, fencing et replay KV ;
 7. persister/répliquer le journal entre plusieurs routing servers, puis poursuivre quotas/Sybil,
    multi-modèles et pairing multi-machine.
+
+## Nettoyage définitif V2 et premier parcours UI packagé du 28 juillet 2026
+
+Le premier lancement de l'application macOS packagée a révélé deux problèmes d'intégration
+distincts, sans rapport avec le moteur d'inférence :
+
+- les actions `Fabi Swarm` et `Chat IA` de l'accueil visaient une ancienne vue/anciens identifiants
+  de commande. Le commit IDE `a3b4de1` les branche sur la commande réelle `fabi.newChat` ;
+- cinq conteneurs scheduler V2 arrêtés possédaient encore une politique de redémarrage Docker et
+  s'étaient relancés. Le catalogue publiait alors plusieurs anciens modèles ; l'IDE sélectionnait
+  le premier, Qwen3-1.7B, dont le profil n'avait pas de `schedulerPeer`. C'est la cause exacte de
+  l'écran grisé `Aucun peer scheduler trouvé pour ce swarm`.
+
+Les conteneurs exacts `parallax-scheduler`, `parallax-scheduler-qwen3-8b`,
+`parallax-scheduler-glm-4_5`, `parallax-scheduler-qwen3-coder-30b` et
+`parallax-scheduler-qwen3-coder-480b` ont d'abord reçu `restart=no`, ont été arrêtés proprement,
+puis ont été supprimés explicitement à la demande de l'opérateur. Aucune donnée ni aucun conteneur
+hors de cette liste n'a été supprimé. Le VPS ne conserve plus que
+`parallax-scheduler-qwen3-4b-v3` pour l'inférence et `fabi-catalog-router-2` pour le catalogue.
+
+Le registre public retourne désormais uniquement `qwen3-4b-v3`, avec :
+
+- peer scheduler `e888…b625`, transport `iroh` et protocole worker V3 ;
+- `pipelineReady=true`, `routingReady=true`, contexte annoncé `16 384` ;
+- deux nœuds actifs et la route Mac mini M4 vers RTX 4080 SUPER prête.
+
+Après actualisation, l'application packagée affiche bien `Qwen3-4B`, `3 nœuds` et `48 Go` ; le
+message d'absence de peer a disparu. Le troisième nœud est le Mac de développement lancé par
+l'IDE. Il rejoint réellement Iroh, renouvelle ses heartbeats et est vu `healthy`, mais reste
+`waiting_contract` : sous la charge actuelle il n'annonçait que `2 316 206 080` octets
+utilisables. Il n'est donc pas considéré comme une contribution active et l'input reste
+légitimement verrouillé pour ce compte. Le scheduler n'a pas dégradé la route déjà prête et
+n'a pas forcé une allocation dangereuse.
+
+La release runtime `v2.7.0-rc31` est encore en qualification au moment de cette note : les builds
+Linux ARM CPU, Linux x64 CPU et macOS ARM MLX sont verts ; Linux CUDA, macOS Intel et Windows CUDA
+sont encore en cours. L'IDE pointe localement vers rc31 pour la qualification, mais ce pin ne doit
+être commité qu'après les six jobs verts et l'installation réelle sur le Mac mini et le PC RTX.
