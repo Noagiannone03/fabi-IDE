@@ -18,7 +18,7 @@
 
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { ILogger, CommandService } from '@theia/core';
-import { CommonCommands } from '@theia/core/lib/browser';
+import { CommonCommands, QuickInputService, QuickPickItem } from '@theia/core/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
 import { ChatAgent, ChatAgentLocation } from '@theia/ai-chat/lib/common/chat-agents';
 import { MutableChatRequestModel } from '@theia/ai-chat/lib/common/chat-model';
@@ -31,7 +31,7 @@ import {
 import { LanguageModelRequirement } from '@theia/ai-core';
 import { AgentSpecificVariables, PromptVariantSet } from '@theia/ai-core/lib/common/agent';
 import { FabiCodeFrontend } from './fabi-code-frontend';
-import { FabiCodePart } from '../common/fabi-code-protocol';
+import { FabiCodePart, FabiCodeQuestion } from '../common/fabi-code-protocol';
 import { FABI_CODE_MODES, normalizeFabiCodeMode } from '../common/fabi-code-mode';
 
 /** Id stable du provider/agent Fabi (référencé par DefaultChatAgentId). */
@@ -50,6 +50,7 @@ export class FabiCodeAgent implements ChatAgent {
     @inject(FabiCodeFrontend) protected readonly engine: FabiCodeFrontend;
     @inject(WorkspaceService) protected readonly workspace: WorkspaceService;
     @inject(CommandService) protected readonly commands: CommandService;
+    @inject(QuickInputService) protected readonly quickInput: QuickInputService;
     @inject(ILogger) protected readonly logger: ILogger;
 
     // ---- Identité (interface Agent) — tout est neutre : aucun cerveau Theia ----
@@ -137,6 +138,57 @@ export class FabiCodeAgent implements ChatAgent {
         }
     }
 
+    protected async collectQuestionAnswers(request: FabiCodeQuestion): Promise<string[][] | undefined> {
+        const answers: string[][] = [];
+        for (let index = 0; index < request.questions.length; index++) {
+            const question = request.questions[index];
+            const customId = `fabi-custom:${request.id}:${index}`;
+            const items: QuickPickItem[] = question.options.map(option => ({
+                id: `option:${option.label}`,
+                label: option.label,
+                description: option.description
+            }));
+            if (question.custom) {
+                items.push({
+                    id: customId,
+                    label: 'Saisir une autre réponse…',
+                    description: 'Réponse libre'
+                });
+            }
+            if (items.length === 0) {
+                return undefined;
+            }
+            const options = {
+                title: question.header,
+                placeHolder: question.question,
+                prompt: `${index + 1}/${request.questions.length}`,
+                ignoreFocusLost: true
+            };
+            const picked = question.multiple
+                ? await this.quickInput.pick(items, { ...options, canPickMany: true })
+                : await this.quickInput.pick(items, { ...options, canPickMany: false });
+            if (!picked || (Array.isArray(picked) && picked.length === 0)) {
+                return undefined;
+            }
+            const selected = Array.isArray(picked) ? picked : [picked];
+            const values = selected.filter(item => item.id !== customId).map(item => item.label);
+            if (selected.some(item => item.id === customId)) {
+                const custom = (await this.quickInput.input({
+                    title: question.header,
+                    prompt: question.question,
+                    placeHolder: 'Votre réponse',
+                    ignoreFocusLost: true
+                }))?.trim();
+                if (!custom) {
+                    return undefined;
+                }
+                values.push(custom);
+            }
+            answers.push(values);
+        }
+        return answers;
+    }
+
     async invoke(request: MutableChatRequestModel): Promise<void> {
         const response = request.response;
         // Le contenu se pousse sur le ChatResponseImpl interne (response.response) ;
@@ -181,6 +233,7 @@ export class FabiCodeAgent implements ChatAgent {
                 doneSub.dispose();
                 cancelSub.dispose();
                 permSub.dispose();
+                questionSub.dispose();
                 userMsgSub.dispose();
                 if (error) {
                     response.error(new Error(error));
@@ -281,6 +334,7 @@ export class FabiCodeAgent implements ChatAgent {
                 // targets the server's default instance and leaves the real
                 // provider request running even though Theia looks canceled.
                 void this.engine.service.abort(ocSession, dir).catch(() => undefined);
+                this.quickInput.hide();
                 finish();
             });
 
@@ -312,6 +366,34 @@ export class FabiCodeAgent implements ChatAgent {
                     /* best-effort : si la réponse échoue, OpenCode finira par timeouter */
                 }
                 card.complete(allowed ? 'Autorisé' : 'Refusé');
+            });
+
+            const questionSub = this.engine.onQuestionAskedEvent(async question => {
+                if (question.sessionId !== ocSession || settled) {
+                    return;
+                }
+                const card = new ToolCallChatResponseContentImpl(
+                    `question:${question.id}`,
+                    'Question',
+                    question.questions.map(item => item.question).join('\n'),
+                    false
+                );
+                out.addContent(card);
+                const answers = await this.collectQuestionAnswers(question);
+                if (settled) {
+                    return;
+                }
+                try {
+                    if (answers) {
+                        await this.engine.service.replyQuestion(question.id, answers, dir);
+                        card.complete(answers.flat().join(', '));
+                    } else {
+                        await this.engine.service.rejectQuestion(question.id, dir);
+                        card.complete('Question ignorée');
+                    }
+                } catch {
+                    card.complete('Impossible d’envoyer la réponse');
+                }
             });
 
             // Capte l'id du message utilisateur de CE tour (1er message.updated

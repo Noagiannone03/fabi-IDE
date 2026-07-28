@@ -485,6 +485,37 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
                 }
                 return;
             }
+            case 'question.asked': {
+                if (sessionId) {
+                    const questions = Array.isArray(props.questions)
+                        ? props.questions as Array<Record<string, unknown>>
+                        : [];
+                    const rec = this.ensureRec(sessionId, now);
+                    rec.status = 'waiting';
+                    rec.pendingPermission = typeof questions[0]?.question === 'string'
+                        ? questions[0].question as string
+                        : 'Fabi attend votre réponse';
+                    rec.pendingPermissionId = undefined;
+                    rec.updatedAt = now;
+                    rec.lastSeen = now;
+                    this.schedulePush();
+                }
+                return;
+            }
+            case 'permission.replied':
+            case 'question.replied':
+            case 'question.rejected': {
+                if (sessionId) {
+                    const rec = this.ensureRec(sessionId, now);
+                    rec.status = 'generating';
+                    rec.pendingPermission = undefined;
+                    rec.pendingPermissionId = undefined;
+                    rec.updatedAt = now;
+                    rec.lastSeen = now;
+                    this.schedulePush();
+                }
+                return;
+            }
             default:
                 return;
         }

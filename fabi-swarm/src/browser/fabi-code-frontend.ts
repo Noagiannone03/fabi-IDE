@@ -3,7 +3,7 @@ import { Emitter, Event } from '@theia/core';
 import { RemoteConnectionProvider, ServiceConnectionProvider } from '@theia/core/lib/browser';
 import {
     FabiCodeService, FabiCodeClient, FABI_CODE_SERVICE_PATH,
-    FabiCodeServerInfo, FabiCodePart, FabiCodePermission, FabiCodeEvent
+    FabiCodeServerInfo, FabiCodePart, FabiCodePermission, FabiCodeQuestion, FabiCodeEvent
 } from '../common/fabi-code-protocol';
 
 /**
@@ -22,6 +22,7 @@ export class FabiCodeFrontend implements FabiCodeClient {
     protected readonly turnDoneEmitter = new Emitter<{ sessionId: string; error?: string }>();
     protected readonly fileEditedEmitter = new Emitter<{ sessionId: string; path: string }>();
     protected readonly permissionEmitter = new Emitter<FabiCodePermission>();
+    protected readonly questionEmitter = new Emitter<FabiCodeQuestion>();
     protected readonly userMessageEmitter = new Emitter<{ sessionId: string; messageId: string }>();
     protected readonly engineEventEmitter = new Emitter<FabiCodeEvent>();
 
@@ -33,6 +34,7 @@ export class FabiCodeFrontend implements FabiCodeClient {
     readonly onTurnDoneEvent: Event<{ sessionId: string; error?: string }> = this.turnDoneEmitter.event;
     readonly onFileEditedEvent: Event<{ sessionId: string; path: string }> = this.fileEditedEmitter.event;
     readonly onPermissionAskedEvent: Event<FabiCodePermission> = this.permissionEmitter.event;
+    readonly onQuestionAskedEvent: Event<FabiCodeQuestion> = this.questionEmitter.event;
     readonly onUserMessageEvent: Event<{ sessionId: string; messageId: string }> = this.userMessageEmitter.event;
     readonly onEngineEventEvent: Event<FabiCodeEvent> = this.engineEventEmitter.event;
 
@@ -58,6 +60,9 @@ export class FabiCodeFrontend implements FabiCodeClient {
     }
     onPermissionAsked(permission: FabiCodePermission): void {
         this.permissionEmitter.fire(permission);
+    }
+    onQuestionAsked(question: FabiCodeQuestion): void {
+        this.questionEmitter.fire(question);
     }
     onUserMessage(sessionId: string, messageId: string): void {
         this.userMessageEmitter.fire({ sessionId, messageId });

@@ -22,7 +22,7 @@ import { ILogger } from '@theia/core';
 import { BackendApplicationContribution } from '@theia/core/lib/node';
 import {
     FabiCodeService, FabiCodeClient, FabiCodeServerInfo, FabiCodePart,
-    FabiCodePermissionReply
+    FabiCodePermissionReply, parseFabiCodeQuestion
 } from '../common/fabi-code-protocol';
 import {
     FabiSwarmService, FABI_FALLBACK_MODEL
@@ -422,6 +422,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                     callId: tool?.callID
                 });
             }
+        } else if (type === 'question.asked') {
+            const question = parseFabiCodeQuestion(props);
+            if (question) {
+                this.client?.onQuestionAsked(question);
+            }
         }
     }
 
@@ -572,6 +577,24 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             'POST',
             `/permission/${encodeURIComponent(requestId)}/reply`,
             { reply },
+            directory
+        );
+    }
+
+    async replyQuestion(requestId: string, answers: string[][], directory?: string): Promise<void> {
+        await this.http(
+            'POST',
+            `/question/${encodeURIComponent(requestId)}/reply`,
+            { answers },
+            directory
+        );
+    }
+
+    async rejectQuestion(requestId: string, directory?: string): Promise<void> {
+        await this.http(
+            'POST',
+            `/question/${encodeURIComponent(requestId)}/reject`,
+            {},
             directory
         );
     }

@@ -82,6 +82,76 @@ export interface FabiCodePermission {
 /** Réponse à une demande de permission. */
 export type FabiCodePermissionReply = 'once' | 'always' | 'reject';
 
+export interface FabiCodeQuestionOption {
+    label: string;
+    description: string;
+}
+
+export interface FabiCodeQuestionItem {
+    question: string;
+    header: string;
+    options: FabiCodeQuestionOption[];
+    multiple: boolean;
+    custom: boolean;
+}
+
+/** Question structurée émise par l'outil natif `question` d'OpenCode. */
+export interface FabiCodeQuestion {
+    id: string;
+    sessionId: string;
+    questions: FabiCodeQuestionItem[];
+    callId?: string;
+}
+
+/** Valide la charge SSE avant de l'envoyer au frontend RPC. */
+export function parseFabiCodeQuestion(properties: Record<string, unknown>): FabiCodeQuestion | undefined {
+    const id = typeof properties.id === 'string' ? properties.id : undefined;
+    const sessionId = typeof properties.sessionID === 'string' ? properties.sessionID : undefined;
+    if (!id || !sessionId || !Array.isArray(properties.questions)) {
+        return undefined;
+    }
+    const questions = properties.questions.map(raw => {
+        if (!raw || typeof raw !== 'object') {
+            return undefined;
+        }
+        const value = raw as Record<string, unknown>;
+        if (typeof value.question !== 'string' || typeof value.header !== 'string' || !Array.isArray(value.options)) {
+            return undefined;
+        }
+        const options = value.options.map(option => {
+            if (!option || typeof option !== 'object') {
+                return undefined;
+            }
+            const item = option as Record<string, unknown>;
+            return typeof item.label === 'string' && typeof item.description === 'string'
+                ? { label: item.label, description: item.description }
+                : undefined;
+        }).filter((option): option is FabiCodeQuestionOption => !!option);
+        if (options.length !== value.options.length) {
+            return undefined;
+        }
+        return {
+            question: value.question,
+            header: value.header,
+            options,
+            multiple: value.multiple === true,
+            custom: value.custom !== false
+        };
+    }).filter((question): question is FabiCodeQuestionItem => !!question);
+    if (questions.length === 0 || questions.length !== properties.questions.length) {
+        return undefined;
+    }
+    const tool = properties.tool && typeof properties.tool === 'object'
+        ? properties.tool as Record<string, unknown>
+        : undefined;
+    return {
+        id,
+        sessionId,
+        questions,
+        callId: typeof tool?.callID === 'string' ? tool.callID : undefined
+    };
+}
+
 /**
  * Event OpenCode BRUT relayé tel quel au frontend (le widget de chat est un
  * miroir fidèle de la session OpenCode). `properties` est la charge utile
@@ -107,6 +177,8 @@ export interface FabiCodeClient {
     onFileEdited(sessionId: string, path: string): void;
     /** OpenCode demande l'autorisation de lancer un outil sensible. */
     onPermissionAsked(permission: FabiCodePermission): void;
+    /** OpenCode demande une ou plusieurs réponses structurées à l'utilisateur. */
+    onQuestionAsked(question: FabiCodeQuestion): void;
     /** Id du message utilisateur d'un tour (capté en début de tour) → checkpoint. */
     onUserMessage(sessionId: string, messageId: string): void;
     /** Event OpenCode brut (pour le widget de chat qui mirroite la session). */
@@ -155,6 +227,10 @@ export interface FabiCodeService {
      * refuse.
      */
     replyPermission(requestId: string, reply: FabiCodePermissionReply, directory?: string): Promise<void>;
+
+    /** Répond ou refuse une demande de l'outil `question` d'OpenCode. */
+    replyQuestion(requestId: string, answers: string[][], directory?: string): Promise<void>;
+    rejectQuestion(requestId: string, directory?: string): Promise<void>;
 
     /**
      * Checkpoint « message + code » : restaure les fichiers à l'état du message
