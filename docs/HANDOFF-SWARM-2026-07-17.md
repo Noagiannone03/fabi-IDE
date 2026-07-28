@@ -3846,3 +3846,97 @@ Ordre exact :
 7. persister/répliquer le journal entre routing servers ;
 8. poursuivre journal d'activations, réplique chaude, iroh-blobs, multi-modèles, reçus de
    contribution, quotas/Sybil et pairing multi-machine.
+
+## Découverte V3-only, registre produit et qualification après redémarrage du 28 juillet 2026
+
+Trois nouveaux commits sont poussés :
+
+- `swarm-engine/codex/swarm-protocol-v3` :
+  `2c564cc1089e9d832c1f0896c0a56383d78b07db`
+  (`fix(swarm-v3): publish Iroh scheduler identity`) ;
+- `fabi/main` : `1fd9b60` (`fix(registry): discover active V3 Iroh swarms`) ;
+- `fabi-IDE/main` : `41133b9` (`feat: make IDE discovery V3-only`).
+
+### Correction de la découverte sans parsing de logs
+
+`/cluster/status_json` publie maintenant deux champs machine-readable :
+`scheduler_endpoint_id` et `network_transport`. `SchedulerManage.get_peer_id()` lit directement
+`iroh_transport` et ne dépend plus de l'alias de compatibilité Lattica. Le registry consomme cet
+EndpointId avant tout fallback logs et le conserve sous `schedulerPeer` pour ne pas casser le
+contrat v1 existant ; il publie aussi `networkTransport=iroh`.
+
+En mode `swarm_v3_shadow.mode=active`, les champs historiques
+`prefill_contract_ready`, `pipeline_ready` et `routing_ready` ne décident plus de la disponibilité.
+Le registry exige simultanément `status=available` et `swarm_v3_shadow.state=route_ready`. Une
+route `no_feasible_route`, même avec un ancien statut optimiste, reste donc fermée. Les schedulers
+historiques restent lisibles uniquement pour diagnostic.
+
+L'IDE ne retombe plus silencieusement sur le swarm 1.7B/Lattica si le registry est indisponible :
+son fallback pointe vers `qwen3-4b-v3`, Qwen3-4B et l'EndpointId Iroh qualifié. Le fetch ponctuel
+de statut préfère `scheduler_endpoint_id`; le parsing de `node_join_command` ne subsiste que comme
+fallback de lecture historique. Le helper labo versionné sait maintenant piloter explicitement le
+profil `iroh` sur macOS et Windows sans confondre ses propres processus `awk` avec un worker.
+
+### Déploiement et preuves exactes
+
+Le scheduler VPS utilise l'image
+`local/parallax-scheduler:swarm-v3-2c564cc`, construite comme overlay source sur l'image
+`9cee193` et étiquetée avec le SHA complet exact. Le conteneur précédent est conservé arrêté sous
+`parallax-scheduler-qwen3-4b-v3-pre-2c564cc`. Les mêmes volumes de cache, état, identité, root TUF
+et secret relay ont été réutilisés.
+
+Le binaire registry Linux self-contained déployé sous systemd a le SHA-256
+`05831dcfccc7a7b0b355c4049dc0cb183de8762621f0c5ad438855e28b958e37`; l'ancien binaire est
+conservé sous `/opt/fabi-registry/fabi-registry.pre-1fd9b60`.
+
+Après redémarrage propre Mac mini + RTX, la V3 a volontairement traversé
+`waiting_workers`, `no_feasible_route`, `scheduler_transition` puis `verifying`. Elle n'a annoncé
+`route_ready` qu'après la nouvelle lease DHT et la vérification locale des poids RTX. L'état public
+final observé est :
+
+- `status=available`, `swarm_v3_shadow.state=route_ready`, deux workers acceptés ;
+- EndpointId scheduler
+  `e88817843267aed089d8aa88bcca70426c3bfe93670289eaddd6abb74009b625` ;
+- `networkTransport=iroh`, `pipelineReady=true`, `routingReady=true` ;
+- capacité de contexte mesurée publiée : `25 072` tokens ;
+- smoke génération authentifiée après déploiement : HTTP 200, SSE jusqu'à `[DONE]`, zéro erreur,
+  TTFT `4,999904 s`, total `6,423056 s`.
+
+Validations locales : suite moteur `730 passed, 7 skipped` avec le seul warning externe
+Starlette/httpx déjà connu ; Ruff ciblé vert ; registry typecheck, build Linux et `16 passed` ;
+build TypeScript IDE vert et `27 passed`.
+
+### Bootstrap relay produit : décision issue du code Iroh officiel
+
+L'audit du chemin installable a confirmé une limite importante : le worker lancé par l'IDE ne
+reçoit pas encore le profil complet V3 (relay, DHT, root TUF et répertoires d'état), et le runtime
+qualifié déclaré par l'IDE reste `v2.7.0-rc29` / Parallax `c14c997...`, antérieur au moteur V3 de
+ce jalon. Le chemin manuel qualifié fonctionne ; le chemin utilisateur « installer puis
+contribuer » n'est donc **pas encore** déclaré prêt.
+
+Ne pas embarquer ou retourner le secret relay partagé dans l'IDE. Le code officiel Iroh 1.0.3,
+exactement la version pincée par Fabi, documente que `shared_token` ne peut être révoqué qu'en
+redémarrant le relay. Il fournit à la place un contrôle d'accès HTTP par EndpointId et couvre aussi
+une allow-list dynamique avec révocation des connexions actives :
+
+- [documentation officielle du contrôle d'accès relay](https://github.com/n0-computer/iroh/blob/7d8c9bf05d3f77dd0ef85f5f2f028f4fd0e72f55/iroh-relay/README.md#access-control) ;
+- [tests officiels de révocation à chaud](https://github.com/n0-computer/iroh/blob/7d8c9bf05d3f77dd0ef85f5f2f028f4fd0e72f55/iroh-relay/tests/runtime_auth.rs).
+
+Le design retenu pour la prochaine étape est donc : identité Iroh stable créée localement,
+enrôlement HTTPS court avec credential de compte et preuve de possession, allow-list EndpointId
+persistée avec TTL/révocation, puis `access.http` côté relay. Le worker ne reçoit plus le secret
+global. Il faut implémenter et tester ce bootstrap avant de déclarer tous les chemins V3 prêts.
+
+### Ordre de reprise exact
+
+1. implémenter l'enrôlement EndpointId et le contrôle `access.http` du relay, avec stockage
+   persistant, TTL, révocation, limites et tests de bootstrap/reconnexion ;
+2. définir un profil de connexion V3 versionné dans le registry : relay URL, EndpointId scheduler,
+   bootstraps DHT et endpoints TUF, sans secret ;
+3. livrer la root TUF publique pinée dans le runtime et faire construire automatiquement les
+   chemins identité, catalogue, fence DB et état V3 sur macOS/Windows/Linux ;
+4. reconstruire une nouvelle release runtime depuis le commit moteur qualifié, valider les trois
+   artefacts CI puis l'installer sur Mac mini et RTX ;
+5. faire l'E2E depuis un clone IDE local complet : sélection modèle, install runtime, enrôlement,
+   contribution autonome, prompt OpenCode, SSE, outils, permissions, abort et changement modèle ;
+6. seulement ensuite reprendre la route de secours worker-disjointe et les kills prefill/decode.
