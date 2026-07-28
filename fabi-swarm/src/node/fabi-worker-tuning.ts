@@ -8,6 +8,8 @@ import { randomUUID } from 'crypto';
 import { homedir, totalmem } from 'os';
 import { join } from 'path';
 import { getAccountToken } from './fabi-account-token';
+import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
+import { WorkerConnectionProfile } from '../common/fabi-swarm-protocol';
 
 export type Accelerator = 'apple-silicon' | 'cuda' | 'generic';
 
@@ -130,7 +132,11 @@ export function prefixCacheEnabled(): boolean {
 }
 
 /** Env du worker : jeton de compte + réserves mémoire selon le matériel. */
-export function buildWorkerEnv(): NodeJS.ProcessEnv {
+export function buildWorkerEnv(
+    profile: WorkerConnectionProfile,
+    bootstrap: PreparedWorkerBootstrap,
+    swarmId = 'default'
+): NodeJS.ProcessEnv {
     const env = { ...process.env };
     const hw = getHardware();
     const setIfUnset = (key: string, value: string) => {
@@ -143,10 +149,31 @@ export function buildWorkerEnv(): NodeJS.ProcessEnv {
     // worker can contribute under one account while the API client consumes with
     // another token and the scheduler gate returns 402.
     env.FABI_ACCOUNT_TOKEN = getAccountToken();
-    setIfUnset(
-        'PARALLAX_KEY_PATH',
-        join(process.env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'fabi', 'identity')
-    );
+    const safeSwarmId = swarmId.replace(/[^a-z0-9_.-]/gi, '_');
+    const networkRoot = join(bootstrap.dataRoot, 'network');
+    const stateRoot = join(bootstrap.dataRoot, 'swarm-v3', safeSwarmId);
+    // Le profil sélectionné est autoritaire. On supprime tout ancien secret
+    // relay hérité d'un shell/labo : l'enrôlement EndpointId le remplace.
+    delete env.FABI_RELAY_TOKEN;
+    delete env.FABI_RELAY_TOKEN_FILE;
+    env.FABI_NETWORK_TRANSPORT = 'iroh';
+    env.FABI_RELAY_URL = profile.relayUrl;
+    env.FABI_RELAY_ENROLLMENT_URL = profile.enrollmentUrl;
+    env.FABI_NETWORK_IDENTITY_PATH = join(networkRoot, 'worker.key');
+    env.FABI_CATALOG_DHT_MODE = 'client';
+    env.FABI_CATALOG_DHT_BOOTSTRAPS = JSON.stringify(profile.catalogDhtBootstraps);
+    env.FABI_CATALOG_DHT_IDENTITY_PATH = join(networkRoot, 'worker-catalog.key');
+    env.FABI_CATALOG_DHT_LISTEN_ADDRESS = '/ip4/127.0.0.1/tcp/0';
+    env.FABI_SWARM_V3_MODE = 'active';
+    env.FABI_SWARM_V3_PLACEMENT = 'autonomous';
+    env.FABI_SWARM_V3_STATE_DIR = join(stateRoot, 'registry');
+    env.FABI_SWARM_V3_FENCE_DB = join(stateRoot, 'fencing.sqlite3');
+    env.FABI_MODEL_REGISTRY_ROOT = bootstrap.rootPath;
+    env.FABI_MODEL_REGISTRY_METADATA_URL = profile.modelRegistry.metadataUrl;
+    env.FABI_MODEL_REGISTRY_TARGETS_URL = profile.modelRegistry.targetsUrl;
+    env.FABI_FORCE_RELAY = '0';
+    env.FABI_INITIAL_ALLOCATION_TIMEOUT_SECONDS = '0';
+    env.PARALLAX_KEY_PATH = join(bootstrap.dataRoot, 'identity');
     // Stable peer identity restores the shard; this epoch fences an old process.
     env.FABI_WORKER_SESSION_ID = randomUUID();
     // Official vLLM setting. Cold multi-GB model downloads can legitimately

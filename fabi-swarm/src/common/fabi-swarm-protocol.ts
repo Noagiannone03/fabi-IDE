@@ -21,6 +21,8 @@ export const FABI_FALLBACK_SCHEDULER_URL = 'https://server.undefinedstudio.fr/fa
 export const FABI_FALLBACK_SCHEDULER_PEER = 'e88817843267aed089d8aa88bcca70426c3bfe93670289eaddd6abb74009b625';
 /** Modèle de repli si rien n'est annoncé. */
 export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-4B';
+/** TUF root qualifiée avec le moteur V3. Une rotation impose une release Fabi. */
+export const FABI_QUALIFIED_MODEL_ROOT_SHA256 = '7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce';
 /** Id du provider tel qu'enregistré dans Theia AI. */
 export const FABI_MODEL_ID = 'fabi-swarm';
 
@@ -28,6 +30,20 @@ export const FABI_MODEL_ID = 'fabi-swarm';
  * Un swarm tel qu'annoncé par le registry (`GET /v1/swarms`). Miroir fidèle du
  * type `SwarmEntry` côté fabi-registry — ne pas diverger.
  */
+export interface WorkerConnectionProfile {
+    protocolVersion: 3;
+    transport: 'iroh';
+    relayUrl: string;
+    enrollmentUrl: string;
+    catalogDhtBootstraps: string[];
+    modelRegistry: {
+        rootUrl: string;
+        rootSha256: string;
+        metadataUrl: string;
+        targetsUrl: string;
+    };
+}
+
 export interface SwarmEntry {
     id: string;
     name: string;
@@ -36,6 +52,8 @@ export interface SwarmEntry {
     schedulerPeer: string | null;
     /** Transport réellement annoncé par le scheduler. */
     networkTransport?: 'iroh' | 'lattica';
+    /** Profil V3 public complet ; il ne contient aucun token relais. */
+    workerConnection?: WorkerConnectionProfile;
     model: string;
     status: 'online' | 'offline' | 'unknown';
     /** Statut applicatif Parallax : 'waiting' (pipeline incomplet) | 'available'. */

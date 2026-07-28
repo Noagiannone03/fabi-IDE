@@ -14,6 +14,7 @@ import { deriveConnection, requireContribution } from './fabi-connection';
 import { getAccountToken } from './fabi-account-token';
 import { FabiMetricsCollector } from './fabi-metrics';
 import { FabiMetrics } from '../common/fabi-swarm-protocol';
+import { prepareWorkerBootstrap } from './fabi-worker-bootstrap';
 
 const SWARM_STATE_PATH = join(homedir(), '.config', 'fabi', 'swarm-state.json');
 
@@ -443,9 +444,24 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 this.setWorkerState({ kind: 'error', swarmId, message: 'aucun peer scheduler pour ce swarm' });
                 return this.workerState;
             }
+            if (swarm.networkTransport !== 'iroh' || !swarm.workerConnection) {
+                this.setWorkerState({
+                    kind: 'error', swarmId,
+                    message: 'ce swarm ne publie pas le profil automatique V3 requis'
+                });
+                return this.workerState;
+            }
+            const bootstrap = await prepareWorkerBootstrap(swarm.workerConnection);
 
             // Le worker pilote ensuite son propre état (running → étapes → crash/restart).
-            this.handle = spawnWorker(found.binary, peer, swarmId, s => this.setWorkerState(s));
+            this.handle = spawnWorker(
+                found.binary,
+                peer,
+                swarmId,
+                swarm.workerConnection,
+                bootstrap,
+                s => this.setWorkerState(s)
+            );
         } catch (e) {
             this.setWorkerState({ kind: 'error', swarmId, message: e instanceof Error ? e.message : String(e) });
         } finally {

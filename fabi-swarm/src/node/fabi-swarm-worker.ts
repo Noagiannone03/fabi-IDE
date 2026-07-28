@@ -8,7 +8,8 @@ import { createWriteStream, mkdirSync, type WriteStream } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
-import { WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
+import { WorkerConnectionProfile, WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
+import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
 
 // Parallax intercepte SIGINT et accorde ensuite 5 s à SIGINT puis 5 s à SIGTERM
@@ -35,6 +36,8 @@ export function spawnWorker(
     bin: string,
     peer: string,
     swarmId: string,
+    profile: WorkerConnectionProfile,
+    bootstrap: PreparedWorkerBootstrap,
     onUpdate: (state: WorkerState) => void
 ): WorkerHandle {
     let stopped = false;
@@ -44,7 +47,7 @@ export function spawnWorker(
 
     const startChild = (): void => {
         const args = buildJoinArgs(peer);
-        const env = buildWorkerEnv();
+        const env = buildWorkerEnv(profile, bootstrap, swarmId);
         const log = openWorkerLog(swarmId);
         const proc = spawn(bin, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
