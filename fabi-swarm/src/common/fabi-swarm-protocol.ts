@@ -16,11 +16,11 @@ export const FabiSwarmClient = Symbol('FabiSwarmClient');
 
 /** Registry Fabi (prod) — liste les swarms et expose le flux SSE. */
 export const FABI_REGISTRY_URL = 'https://server.undefinedstudio.fr/fabi-registry';
-/** Repli si le registry est injoignable : un scheduler unique connu. */
-export const FABI_FALLBACK_SCHEDULER_URL = 'https://server.undefinedstudio.fr/fabi-scheduler';
-export const FABI_FALLBACK_SCHEDULER_PEER = '12D3KooWKLCTHRAhMEafQfaGZTAEx8kJjeMqpXDDeyhBGVotuSfR';
+/** Repli V3 si le registry est injoignable : le swarm produit qualifié. */
+export const FABI_FALLBACK_SCHEDULER_URL = 'https://server.undefinedstudio.fr/fabi-scheduler/qwen3-4b-v3';
+export const FABI_FALLBACK_SCHEDULER_PEER = 'e88817843267aed089d8aa88bcca70426c3bfe93670289eaddd6abb74009b625';
 /** Modèle de repli si rien n'est annoncé. */
-export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-1.7B';
+export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-4B';
 /** Id du provider tel qu'enregistré dans Theia AI. */
 export const FABI_MODEL_ID = 'fabi-swarm';
 
@@ -32,7 +32,10 @@ export interface SwarmEntry {
     id: string;
     name: string;
     schedulerUrl: string;
+    /** EndpointId Iroh V3 (ou PeerID Lattica historique pour lecture seulement). */
     schedulerPeer: string | null;
+    /** Transport réellement annoncé par le scheduler. */
+    networkTransport?: 'iroh' | 'lattica';
     model: string;
     status: 'online' | 'offline' | 'unknown';
     /** Statut applicatif Parallax : 'waiting' (pipeline incomplet) | 'available'. */

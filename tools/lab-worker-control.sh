@@ -5,7 +5,7 @@
 #   tools/lab-worker-control.sh status all
 #   tools/lab-worker-control.sh restart mac
 #   tools/lab-worker-control.sh stop windows
-#   tools/lab-worker-control.sh restart all public
+#   tools/lab-worker-control.sh restart all iroh
 #
 # This is intentionally a lab helper, not the product launcher. It is strict
 # about only killing processes that run from the Fabi runtime roots on the
@@ -22,7 +22,7 @@ win_ssh="${FABI_LAB_WINDOWS_SSH:-gmbhl@100.105.234.82}"
 
 usage() {
   cat >&2 <<'EOF'
-Usage: tools/lab-worker-control.sh <status|start|stop|restart> <mac|windows|all> [tailscale|public]
+Usage: tools/lab-worker-control.sh <status|start|stop|restart> <mac|windows|all> [tailscale|public|iroh]
 
 Environment overrides:
   FABI_LAB_VPS_SSH       default: vps
@@ -44,7 +44,7 @@ case "$target" in
 esac
 
 case "$network_mode" in
-  tailscale|public) ;;
+  tailscale|public|iroh) ;;
   *) usage; exit 2 ;;
 esac
 
@@ -57,7 +57,10 @@ network_mode="$2"
 engine_sha="${3:-}"
 runtime="$HOME/.local/share/fabi/runtime"
 screen_name="fabi-worker-$network_mode"
-if [ "$network_mode" = "public" ]; then
+if [ "$network_mode" = "iroh" ]; then
+  launcher="$HOME/.local/share/fabi/mac-worker-iroh.sh"
+  log="$HOME/.local/share/fabi/worker-mac-iroh.nohup.log"
+elif [ "$network_mode" = "public" ]; then
   launcher="$HOME/.local/share/fabi/mac-worker-public-nat.sh"
   log="$HOME/.local/share/fabi/mac-worker-public-nat.nohup.log"
 else
@@ -66,7 +69,12 @@ else
 fi
 
 runtime_pids() {
-  ps -axo pid=,command= | awk -v runtime="$runtime" 'index($0, runtime) { print $1 }'
+  # `awk -v runtime=...` itself contains the runtime path in its argv.  Match
+  # only executable command lines rooted in the runtime directory so the
+  # lifecycle probe never observes (or terminates) its own inspector.
+  ps -axo pid=,command= | awk -v runtime="$runtime/" '
+    index($0, runtime) && $0 !~ /awk -v runtime/ { print $1 }
+  '
 }
 
 stop_worker() {
@@ -106,7 +114,7 @@ start_worker() {
   else
     source_dir=""
   fi
-  if [ "$network_mode" = "public" ]; then
+  if [ "$network_mode" = "public" ] || [ "$network_mode" = "iroh" ]; then
     if ! command -v screen >/dev/null 2>&1; then
       echo "missing_screen_for_persistent_macos_public_worker"
       exit 1
@@ -115,11 +123,13 @@ start_worker() {
     # responsible process. In this lab a detached ssh/nohup child loses that
     # context, while screen keeps a durable user session for the worker.
     if [ -n "$source_dir" ]; then
-      FABI_PARALLAX_SOURCE="$source_dir" screen -DmS "$screen_name" \
-        /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log"
+      FABI_PARALLAX_SOURCE="$source_dir" nohup screen -DmS "$screen_name" \
+        /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log" \
+        </dev/null >/dev/null 2>&1 &
     else
-      screen -DmS "$screen_name" \
-        /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log"
+      nohup screen -DmS "$screen_name" \
+        /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log" \
+        </dev/null >/dev/null 2>&1 &
     fi
     echo "started mac screen=$screen_name"
   else
@@ -140,7 +150,9 @@ status_worker() {
   echo "screen:"
   screen -ls 2>/dev/null | grep -F "$screen_name" || true
   echo "processes:"
-  ps -axo pid=,rss=,command= | awk -v runtime="$runtime" 'index($0, runtime) { print }' || true
+  ps -axo pid=,rss=,command= | awk -v runtime="$runtime/" '
+    index($0, runtime) && $0 !~ /awk -v runtime/ { print }
+  ' || true
   echo "ports:"
   lsof -nP -iTCP:19080 -iUDP:19080 2>/dev/null || true
   echo "memory:"
@@ -169,9 +181,19 @@ run_windows() {
 \$NetworkMode = "$network_mode"
 \$EngineSha = "${FABI_LAB_ENGINE_SHA:-}"
 \$Runtime = Join-Path \$env:LOCALAPPDATA "fabi\\runtime"
-\$TaskName = if (\$NetworkMode -eq "public") { "FabiWorkerPublicNat" } else { "FabiWorkerE2E" }
+\$TaskName = if (\$NetworkMode -eq "iroh") {
+  "FabiWorkerIroh"
+} elseif (\$NetworkMode -eq "public") {
+  "FabiWorkerPublicNat"
+} else {
+  "FabiWorkerE2E"
+}
 \$CandidatePointer = Join-Path \$env:LOCALAPPDATA "fabi\\runtime-candidate-current.txt"
-if (\$NetworkMode -eq "public") {
+if (\$NetworkMode -eq "iroh") {
+  \$Launcher = Join-Path \$env:LOCALAPPDATA "fabi\\windows-worker-iroh.ps1"
+  \$OutLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-iroh.out.log"
+  \$ErrLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-iroh.err.log"
+} elseif (\$NetworkMode -eq "public") {
   \$Launcher = Join-Path \$env:LOCALAPPDATA "fabi\\windows-worker-public-nat.ps1"
   \$OutLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-public-nat.out.log"
   \$ErrLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-public-nat.err.log"
@@ -187,15 +209,21 @@ function Get-FabiRuntimeProcess {
 }
 
 function Stop-FabiWorker {
-  Stop-ScheduledTask -TaskName \$TaskName -ErrorAction SilentlyContinue
+  # The transport profiles are mutually exclusive because they share the
+  # worker identity, ports and GPU. Stop every managed profile before the
+  # selected one is started so an old Task Scheduler parent cannot survive a
+  # mode switch and relaunch a duplicate worker.
+  @("FabiWorkerE2E", "FabiWorkerPublicNat", "FabiWorkerIroh") | ForEach-Object {
+    Stop-ScheduledTask -TaskName \$_ -ErrorAction SilentlyContinue
+  }
   Get-FabiRuntimeProcess | ForEach-Object {
     Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue
   }
 }
 
 function Start-FabiWorker {
-  if (\$NetworkMode -eq "public") {
-    if (-not (Test-Path \$Launcher)) { throw "Missing public launcher: \$Launcher" }
+  if (\$NetworkMode -eq "public" -or \$NetworkMode -eq "iroh") {
+    if (-not (Test-Path \$Launcher)) { throw "Missing \$NetworkMode launcher: \$Launcher" }
     if (\$EngineSha) {
       \$CandidateSource = Join-Path \$env:LOCALAPPDATA "fabi\\runtime-candidates\\\$EngineSha\\parallax-src"
       if (-not (Test-Path (Join-Path \$CandidateSource "src\\parallax"))) {

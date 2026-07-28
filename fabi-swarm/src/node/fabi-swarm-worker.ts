@@ -301,8 +301,25 @@ function handleLine(line: string, state: WorkerState, push: () => void): void {
     push();
 }
 
-/** Extrait le peer du scheduler depuis node_join_command (repli ponctuel si le
- *  registry n'a pas encore le peer — PAS un poll, un seul appel au connect). */
+interface SchedulerDiscoveryPayload {
+    data?: {
+        scheduler_endpoint_id?: unknown;
+        node_join_command?: { command?: unknown };
+    };
+}
+
+/** Lit d'abord l'EndpointId machine-readable V3, puis l'ancienne commande
+ *  humaine uniquement pour rester capable de diagnostiquer un scheduler historique. */
+export function parseSchedulerPeer(payload: SchedulerDiscoveryPayload): string | undefined {
+    const explicit = payload.data?.scheduler_endpoint_id;
+    if (typeof explicit === 'string' && explicit.trim()) {
+        return explicit.trim();
+    }
+    const command = payload.data?.node_join_command?.command;
+    return typeof command === 'string' ? command.match(/-s\s+(\S+)/)?.[1] : undefined;
+}
+
+/** Extrait l'identité du scheduler via un appel ponctuel au connect, pas un poll. */
 export async function fetchSchedulerPeer(scheduler: string, timeoutMs = 4000): Promise<string | undefined> {
     try {
         const ctrl = new AbortController();
@@ -312,9 +329,7 @@ export async function fetchSchedulerPeer(scheduler: string, timeoutMs = 4000): P
         if (!res.ok) {
             return undefined;
         }
-        const json = await res.json() as { data?: { node_join_command?: { command?: string } } };
-        const match = json.data?.node_join_command?.command?.match(/-s\s+(\S+)/);
-        return match?.[1];
+        return parseSchedulerPeer(await res.json() as SchedulerDiscoveryPayload);
     } catch {
         return undefined;
     }
