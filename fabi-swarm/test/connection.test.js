@@ -76,14 +76,23 @@ test('keeps the prompt locked until contribution is authorized', () => {
     assert.equal(pending.ready, false);
     assert.equal(pending.reason, 'contribution-pending');
 
+    const stillLoading = requireContribution(
+        transport,
+        { allowed: false, reason: 'no_eligible_worker' }
+    );
+    assert.equal(stillLoading.ready, false);
+    assert.equal(stillLoading.reason, 'contribution-pending');
+    assert.match(stillLoading.headline, /Préparation/);
+    assert.match(stillLoading.activity, /charge et vérifie/);
+
     const denied = requireContribution(
         transport,
-        { allowed: false, reason: 'no_eligible_worker' },
-        true
+        { allowed: false, reason: 'invalid_credential' }
     );
     assert.equal(denied.ready, false);
     assert.equal(denied.reason, 'contribution-required');
-    const busy = requireContribution(transport, { allowed: false, reason: 'capacity_reached' }, true);
+
+    const busy = requireContribution(transport, { allowed: false, reason: 'capacity_reached' });
     assert.equal(busy.ready, false);
     assert.equal(busy.reason, 'contribution-pending');
     assert.match(busy.headline, /déjà utilisée/);

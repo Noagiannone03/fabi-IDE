@@ -44,8 +44,19 @@ const UNKNOWN_CONTRIBUTION: ContributionAccess = {
     maxConcurrentRequests: 0
 };
 const CONTRIBUTION_RETRY_MS = 1_000;
+const CONTRIBUTION_RETRY_MAX_MS = 5_000;
 const CONTRIBUTION_REVALIDATE_MS = 5_000;
-const CONTRIBUTION_MAX_ATTEMPTS = 35;
+
+/** Retry forever while the local worker is healthy, with bounded jitter.
+ * Loading a selectively downloaded shard is a state transition, not a
+ * deadline: a slow network must never become a false credential rejection. */
+function contributionRetryDelay(attempt: number): number {
+    const exponential = Math.min(
+        CONTRIBUTION_RETRY_MAX_MS,
+        CONTRIBUTION_RETRY_MS * Math.pow(1.5, Math.max(0, attempt - 1))
+    );
+    return Math.round(exponential * (0.85 + Math.random() * 0.3));
+}
 
 /**
  * Implémentation backend : pilote le worker Parallax (rejoindre/quitter un
@@ -202,8 +213,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         if (transport.ready && !this.contribution.allowed) {
             this.connection = requireContribution(
                 transport,
-                this.contribution,
-                this.contributionCheckAttempts >= CONTRIBUTION_MAX_ATTEMPTS
+                this.contribution
             );
             this.ensureContributionCheck();
         } else {
@@ -233,7 +243,6 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected ensureContributionCheck(revalidate = false): void {
         if (this.contributionCheckInFlight || this.contributionRetry
             || (this.contribution.allowed && !revalidate)
-            || this.contributionCheckAttempts >= CONTRIBUTION_MAX_ATTEMPTS
             || !deriveConnection(this.activeSwarm, this.workerState).ready) {
             return;
         }
@@ -255,8 +264,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 return;
             }
             if (deriveConnection(this.activeSwarm, this.workerState).ready
-                && (this.contribution.allowed
-                    || this.contributionCheckAttempts < CONTRIBUTION_MAX_ATTEMPTS)) {
+                && this.workerState.kind === 'running') {
                 const revalidate = this.contribution.allowed;
                 if (revalidate) {
                     this.contributionCheckAttempts = 0;
@@ -264,7 +272,9 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 this.contributionRetry = setTimeout(() => {
                     this.contributionRetry = undefined;
                     this.ensureContributionCheck(revalidate);
-                }, revalidate ? CONTRIBUTION_REVALIDATE_MS : CONTRIBUTION_RETRY_MS);
+                }, revalidate
+                    ? CONTRIBUTION_REVALIDATE_MS
+                    : contributionRetryDelay(this.contributionCheckAttempts));
                 this.contributionRetry.unref?.();
             }
             this.recomputeConnection();

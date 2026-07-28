@@ -4140,11 +4140,33 @@ Le registre public retourne désormais uniquement `qwen3-4b-v3`, avec :
 
 Après actualisation, l'application packagée affiche bien `Qwen3-4B`, `3 nœuds` et `48 Go` ; le
 message d'absence de peer a disparu. Le troisième nœud est le Mac de développement lancé par
-l'IDE. Il rejoint réellement Iroh, renouvelle ses heartbeats et est vu `healthy`, mais reste
-`waiting_contract` : sous la charge actuelle il n'annonçait que `2 316 206 080` octets
-utilisables. Il n'est donc pas considéré comme une contribution active et l'input reste
-légitimement verrouillé pour ce compte. Le scheduler n'a pas dégradé la route déjà prête et
-n'a pas forcé une allocation dangereuse.
+l'IDE. Il rejoint réellement Iroh, renouvelle ses heartbeats et est vu `healthy`. Sous la charge
+initiale il annonçait `2 316 206 080` octets utilisables et le placement autonome lui a choisi
+`[25,31)`, soit six couches. Le selective download a matérialisé six fichiers d'environ 202 Mo,
+puis l'exécuteur MLX a chargé 1,128 Go de poids et réservé 0,75 Go de KV pour 32 768 tokens.
+Le nœud est ensuite passé `available / ready / healthy` et l'input de l'IDE s'est déverrouillé.
+Le scheduler n'a pas dégradé la route déjà prête.
+
+Un essai intermédiaire avec une enveloppe momentanément plus grande a choisi huit couches
+`[25,33)`, puis le runtime MLX a correctement refusé le contrat KV 32k lorsque la pression live
+ne laissait plus de marge après chargement. Aucun OOM système n'a eu lieu. Le superviseur a
+redémarré le worker et le placement suivant a retenu les six couches qui tiennent réellement.
+Cette boucle doit encore être améliorée pour re-sélectionner localement un span plus court sans
+redémarrer tout le process.
+
+La comparaison avec Petals `22afba6` confirme le comportement attendu : un nouveau serveur choisit
+les blocs les moins couverts en incluant les annonces `JOINING`, les matérialise, puis ne se
+rééquilibre que si le gain est suffisant et si le mouvement ne rend pas le swarm disjoint. La V3
+Fabi suit ce principe avec une demande cible de deux répliques par couche ; ce test démontre qu'une
+pipeline déjà complète n'empêche pas un nouveau worker de prendre une tranche.
+
+L'IDE avait toutefois un défaut de présentation : après 35 polls espacés d'une seconde,
+`no_eligible_worker`
+devenait artificiellement `Contribution non reconnue`, alors qu'un selective download légitime
+peut durer plusieurs minutes. Ce timeout sémantique est supprimé. Tant que le worker est sain,
+le statut reste `Préparation de ta contribution`, les vérifications continuent avec backoff
+exponentiel borné et jitter, et seuls `invalid_credential`/`missing_credential` deviennent un
+refus définitif. Les 32 tests du paquet et son build TypeScript sont verts.
 
 La release runtime `v2.7.0-rc31` est encore en qualification au moment de cette note : les builds
 Linux ARM CPU, Linux x64 CPU et macOS ARM MLX sont verts ; Linux CUDA, macOS Intel et Windows CUDA

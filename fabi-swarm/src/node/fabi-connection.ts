@@ -13,8 +13,7 @@ import { ConnectionInfo, SwarmEntry, WorkerState } from '../common/fabi-swarm-pr
 /** Apply the scheduler-authoritative account gate to an otherwise ready route. */
 export function requireContribution(
     transport: ConnectionInfo,
-    access: { allowed: boolean; reason: string },
-    attemptsExhausted = false
+    access: { allowed: boolean; reason: string }
 ): ConnectionInfo {
     if (!transport.ready || access.allowed) {
         return transport;
@@ -28,16 +27,21 @@ export function requireContribution(
             activity: 'ce worker sert déjà une génération — le prompt se libère à sa fin'
         };
     }
-    const definitive = ['invalid_credential', 'missing_credential'].includes(access.reason)
-        || (attemptsExhausted && access.reason === 'no_eligible_worker');
+    // `no_eligible_worker` is a live state, never a timeout-based verdict:
+    // selective layer download, verification and backend/KV materialization can
+    // legitimately take minutes. Only an explicit credential rejection is
+    // definitive. Keep polling while the worker process remains healthy.
+    const definitive = ['invalid_credential', 'missing_credential'].includes(access.reason);
     return {
         ...transport,
         ready: false,
         reason: definitive ? 'contribution-required' : 'contribution-pending',
-        headline: definitive ? 'Contribution non reconnue' : 'Validation de la contribution',
+        headline: definitive ? 'Compte Fabi non reconnu' : 'Préparation de ta contribution',
         activity: definitive
             ? 'ce compte ne possède aucun worker prêt sur ce modèle'
-            : 'le scheduler confirme ton worker et son allocation…',
+            : access.reason === 'no_eligible_worker'
+                ? 'ton worker charge et vérifie sa tranche du modèle…'
+                : 'le scheduler confirme ton worker et son allocation…',
         detail: definitive
             ? 'Reconnecte le worker avec le même compte Fabi que cet IDE.'
             : undefined
