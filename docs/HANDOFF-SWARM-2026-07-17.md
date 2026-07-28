@@ -3940,3 +3940,175 @@ global. Il faut implémenter et tester ce bootstrap avant de déclarer tous les 
 5. faire l'E2E depuis un clone IDE local complet : sélection modèle, install runtime, enrôlement,
    contribution autonome, prompt OpenCode, SSE, outils, permissions, abort et changement modèle ;
 6. seulement ensuite reprendre la route de secours worker-disjointe et les kills prefill/decode.
+
+## Enrôlement relay automatique, bootstrap IDE et qualification réelle du 28 juillet 2026
+
+Cette section remplace l'ordre de reprise relay ci-dessus. Le chemin sans secret global est
+maintenant implémenté et qualifié sur le VPS, le Mac mini et le RTX. Les commits poussés sont :
+
+- `swarm-engine/codex/swarm-protocol-v3` :
+  `98889e6216c00bc3aca3c91136e0203426d37316` (`feat(network): enroll Iroh endpoints
+  automatically`) puis `c91ab3dad373fe60e267178e274fe89739915ea5` (`fix(ci): install protocol
+  HTTP dependency`) ;
+- `fabi/main` : `adc6a71` (`feat(registry): authorize relay endpoints dynamically`),
+  `ba85065` (`fix(registry): separate relay infrastructure identities`) puis `855ceb5`
+  (`fix(registry): accept Iroh relay node header`) ;
+- `fabi-IDE/main` : `427284d` (`feat: bootstrap V3 workers automatically`).
+
+### Design produit retenu après recherche primaire
+
+Le design combine des invariants déjà éprouvés au lieu d'exposer le token partagé Iroh :
+
+- comme Tailscale, la clé privée du device reste locale et seule l'identité publique est enrôlée ;
+- comme libp2p AutoNAT/Circuit Relay v2/DCUtR, le relay est un chemin de repli borné, pas une
+  identité partagée ni une obligation pour le trafic worker-to-worker ;
+- comme Petals, l'identité et les annonces sont durables, la joignabilité est mesurée et le
+  réseau continue à se réparer hors du chemin d'inférence ;
+- l'implémentation utilise directement `access.http` d'Iroh 1.0.3. Iroh envoie l'EndpointId au
+  registre et n'autorise la connexion que pour un HTTP 200 dont le corps est exactement `true`.
+
+Sources primaires relues :
+
+- [Iroh relay access control 1.0.3](https://github.com/n0-computer/iroh/blob/7d8c9bf05d3f77dd0ef85f5f2f028f4fd0e72f55/iroh-relay/README.md#access-control) ;
+- [libp2p DCUtR](https://docs.libp2p.io/concepts/nat/dcutr/) et
+  [Circuit Relay](https://docs.libp2p.io/concepts/nat/circuit-relay/) ;
+- [Tailscale node keys](https://tailscale.com/kb/1010/node-keys) ;
+- Petals officiel au commit `22afba627a7eb4fcfe9418c49472c6a51334b8ac`, notamment le cycle
+  serveur/DHT/relay ;
+- [Microsoft App Control : audit des binaires bloqués](https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/deployment/audit-appcontrol-policies)
+  et [catalogues signés](https://learn.microsoft.com/windows/security/application-security/application-control/app-control-for-business/deployment/deploy-catalog-files-to-support-appcontrol).
+
+Le blocage de compilation Cargo sur le PC Windows (`os error 4551`) venait bien d'Application
+Control qui refusait les `build-script-build.exe` temporaires non approuvés. La politique n'a pas
+été désactivée et aucune exclusion locale n'a été ajoutée. La solution produit est de construire
+les wheels dans la CI, les vérifier puis les distribuer par le runtime.
+
+### Contrat d'enrôlement réellement implémenté
+
+Le moteur natif Rust crée une preuve Ed25519 avec préimage binaire versionnée et domaine séparé.
+Le worker envoie credential de compte, EndpointId, timestamp et nonce unique au registre HTTPS
+avant d'ouvrir Iroh. Une boucle indépendante renouvelle la lease toutes les six heures ; les
+échecs ont retry/backoff et ne bloquent ni heartbeat ni génération. La clé Iroh stable reste dans
+le répertoire data Fabi.
+
+Le registre Bun valide simultanément le credential de compte, la possession de la clé, la fenêtre
+temporelle et le nonce anti-replay. Les leases sont persistées dans SQLite WAL, bornées à seize
+devices actifs par compte, expirent après 24 heures et peuvent être révoquées. Le callout relay est
+protégé par un bearer machine-à-machine distinct. Les identités d'infrastructure scheduler et
+catalog router vivent dans une allowlist opérateur séparée : elles ne prétendent jamais être des
+devices contributeurs.
+
+Le profil public `workerConnection` contient uniquement relay URL, URL d'enrôlement, bootstrap
+DHT et URLs TUF. L'IDE :
+
+1. télécharge ce profil ;
+2. vérifie HTTPS et la structure du contrat ;
+3. télécharge une root TUF de taille bornée ;
+4. compare son SHA au pin **embarqué dans l'IDE**, pas seulement au hash retourné par le serveur ;
+5. écrit root et profil atomiquement avec permissions owner-only ;
+6. prépare automatiquement identité Iroh, identité DHT, état V3 et fence DB ;
+7. lance le worker en `iroh`, DHT client, placement autonome et V3 active.
+
+`FABI_RELAY_TOKEN` et `FABI_RELAY_TOKEN_FILE` hérités sont supprimés de l'environnement du worker.
+Une installation neuve n'a donc plus de secret relay global à copier. Le seul prérequis utilisateur
+restant est le login/credential de compte déjà nécessaire au gate de contribution.
+
+### Écart doc/code Iroh découvert pendant la bascule
+
+La documentation et le commentaire de `iroh-relay` 1.0.3 annoncent le header
+`X-Iroh-Endpoint-Id`, mais la constante du binaire publié vaut en réalité `X-Iroh-NodeId`. Le
+registre suivait initialement la documentation et recevait donc `null`, ce qui a correctement
+fermé toutes les connexions. Une capture limitée à ce seul header sur la boucle locale a isolé
+l'écart. `855ceb5` accepte désormais les deux orthographes et les teste, afin de supporter le
+binaire piné comme une future correction upstream.
+
+Le debug Iroh affiche la configuration complète et a inscrit le bearer M2M dans le journal pendant
+ce diagnostic. Ce bearer a immédiatement été considéré compromis, remplacé dans les deux services
+et les processus ont été redémarrés au niveau `info`. Aucun credential de compte worker ni secret
+utilisateur n'a été exposé. Ne jamais réactiver `RUST_LOG=iroh_relay=debug` sur ce service sans
+filtrage de la structure `ServerConfig`.
+
+### CI, artefacts et déploiement exacts
+
+La première matrice du commit `98889e6` a échoué avant les tests protocole parce que le workflow
+minimal installait le projet avec `--no-deps` sans installer `requests`, pourtant déclaré dans
+`pyproject.toml`. Ce n'était pas un échec Rust ou Windows. `c91ab3d` corrige la dépendance CI.
+
+Le run GitHub Actions `30360413957` est vert sur Windows, macOS et Ubuntu. Chaque job a exécuté
+formatage, Clippy warnings interdits, tests Rust/Python bindings et DHT trois nœuds, build wheel,
+installation réelle de la wheel, import de l'API native, tests contrats/trust/discovery/shadow puis
+upload. Les actions v4/v5 produisent seulement un avertissement de dépréciation Node 20 à traiter
+séparément.
+
+Artefacts installés au labo :
+
+- Windows ABI3 x64 CI : SHA-256
+  `b99ac940c74b7b207c599127ed12b2c3d914243497b375d1e66ce0308bbbe190` ;
+- macOS ARM64 : SHA-256
+  `6fc7933d4d0ff48db7c5640b433d9ad74884ffbcb7a6810318ff88e7db8e6508` ;
+- root TUF bootstrap : SHA-256
+  `7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce`.
+
+Le binaire registry `855ceb5` déployé sur le VPS a le SHA-256
+`aa26c5356aa069fd7092b5b5172eefc5de317f01f899c8745579d9f0c3fad559`. Les versions précédentes
+et les configs relay précédentes sont conservées en backups explicites. Le relay utilise désormais
+`access.http.url = http://127.0.0.1:3002/v1/network/relay-access`; le service n'importe plus
+`relay.env` et charge seulement le bearer HTTP privé.
+
+### Qualification labo après migration
+
+Les quatre identités nécessaires sont autorisées : scheduler `e888…b625`, catalog router
+`5884…8d75`, RTX `c4a8…3714` et Mac mini `eac4…64ec`. Les métriques relay après stabilisation
+montrent quatre clients uniques, quatre connexions acceptées, aucun disconnect et des octets dans
+les deux sens. Aucun refus n'a été observé pendant les 90 secondes du contrôle final.
+
+Le VPS était encore pollué par six schedulers historiques V2/Lattica sans workers. Ils ont été
+arrêtés sans suppression ; seuls `parallax-scheduler-qwen3-4b-v3` et `fabi-catalog-router-2`
+restent actifs. Le registre public ne publie plus qu'un swarm.
+
+Après connexion Windows puis Mac et reformation autonome :
+
+- Mac mini M4 : layers `[0,25)`, MLX prêt, KV mesuré `16 384` tokens ;
+- RTX 4080 SUPER : layers `[25,36)`, vLLM prêt, KV mesuré `164 960` tokens ;
+- route `available` / `route_ready`, deux workers `healthy`, réservations revenues à zéro ;
+- contexte routable exact `16 384`, limité par l'enveloppe live du Mac au démarrage ;
+- lien worker-to-worker direct qualifié, aucun worker dans `relayed_peer_ids` ;
+- workers vers scheduler via relay, RTT observés environ `87-90 ms`.
+
+Le premier appel depuis le Mac courant a reçu HTTP 403 `contribution_required`. Les empreintes ont
+confirmé que ce Mac utilise un autre compte que le Mac mini et le RTX : le gate fonctionne et n'a
+pas été contourné par l'enrôlement réseau.
+
+Depuis le compte réellement contributeur du Mac mini, le vrai E2E OpenAI/SSE a retourné :
+
+- HTTP 200 ;
+- premier événement `1,223 s`, premier contenu `1,729 s`, total `3,846 s` ;
+- `19` chunks, `[DONE]` reçu ;
+- contenu exact `FABI-DYNAMIC-RELAY-E2E-OK` ;
+- route toujours disponible et réservations KV à zéro après la génération.
+
+### Validations et limites honnêtes
+
+- moteur `98889e6` : `736 passed, 7 skipped`, seul warning Starlette/httpx externe connu ;
+- natif : `cargo fmt`, Clippy tous targets/features avec `-D warnings`, `23 passed` ;
+- registre : `25 passed`, typecheck et build Linux verts ;
+- IDE : `29 passed` et build TypeScript vert ;
+- preuve inter-langages : la preuve produite par le Rust natif a été acceptée par le registre Bun ;
+- tests registre couvrent credential, signature, timestamp, replay nonce, limite devices,
+  révocation, infrastructure séparée et les deux headers Iroh.
+
+Ce jalon ne signifie pas encore « release utilisateur terminée ». Restent obligatoires :
+
+1. publier une nouvelle release runtime multi-OS contenant `98889e6/c91ab3d` et ses wheels, puis
+   faire consommer cette release par l'IDE au lieu des candidats labo ;
+2. tester une installation IDE réellement neuve depuis un clone local complet : fetch profil,
+   root TUF, création identité, enrôlement, contribution, redémarrage et renouvellement de lease ;
+3. faire l'E2E UI complet OpenCode : sélection modèle, streaming, outils, permissions, abort et
+   changement de modèle ;
+4. refaire le gros contexte ~12 220 tokens d'entrée + 4 096 réservés. La route live actuelle est
+   exactement à 16 384 et ne doit donc pas accepter un budget supérieur ;
+5. provoquer expiration/révocation d'une lease active et vérifier la déconnexion puis le
+   ré-enrôlement après login ;
+6. ajouter une vraie route worker-disjointe, kills prefill/decode, promotion, fencing et replay KV ;
+7. persister/répliquer le journal entre plusieurs routing servers, puis poursuivre quotas/Sybil,
+   multi-modèles et pairing multi-machine.
