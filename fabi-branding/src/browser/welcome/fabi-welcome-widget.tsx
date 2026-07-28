@@ -127,8 +127,21 @@ export class FabiWelcomeWidget extends ReactWidget {
                 <div className="fabi-section">
                     <h2>L’IA Fabi</h2>
                     <div className="fabi-actions">
-                        {this.renderAction('codicon-broadcast', 'Fabi Swarm', 'Choisis un modèle, prête ton GPU, code avec', () => this.openView('fabi.swarm'))}
-                        {this.renderAction('codicon-comment-discussion', 'Chat IA', 'Discuter avec le modèle du swarm', () => this.run(['aiChat:open', 'ai-chat-ui:open', 'workbench.action.chat.open'], 'Ouvre le chat IA depuis la barre latérale.'))}
+                        {this.renderAction(
+                            'codicon-broadcast',
+                            'Fabi Swarm',
+                            'Choisis un modèle, prête ton GPU, code avec',
+                            () => this.run(
+                                ['fabi.newChat'],
+                                'Impossible d’ouvrir le sélecteur de modèle Fabi.'
+                            )
+                        )}
+                        {this.renderAction(
+                            'codicon-comment-discussion',
+                            'Chat IA',
+                            'Discuter avec le modèle du swarm',
+                            () => this.run(['fabi.newChat'], 'Impossible d’ouvrir un chat Fabi.')
+                        )}
                     </div>
                     <p className="fabi-next-note">Le swarm est un réseau pair-à-pair : ton worker fait tourner une part du modèle, et tu peux consommer le modèle complet réparti sur tous les contributeurs.</p>
                 </div>
