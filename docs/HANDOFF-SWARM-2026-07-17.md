@@ -4383,6 +4383,12 @@ Le run runtime rc32 `30429459757` est désormais entièrement vert, y compris Wi
 CUDA. Cela qualifie la construction des artefacts rc32, mais **rc32 n'a pas encore été installé et
 revalidé sur le Mac mini et le RTX** dans ce jalon.
 
+Le socle a été poussé dans `swarm-engine/codex/swarm-protocol-v3` au commit
+`c4eab05b0ef7dcf0234565fc8ee00d34fcd1a089`. Le run natif `30433012518` est entièrement vert sur
+Ubuntu, macOS 15 et Windows : fmt, Clippy strict, tests Rust/Python/DHT, construction et
+installation des trois wheels ABI3, import de leur surface, 157 tests protocole puis upload.
+Seuls les avertissements GitHub Actions Node 20 déjà connus restent présents.
+
 ### Reprise exacte
 
 1. exposer l'émission de permit/capacité au Request Agent local avec ledger atomique et quotas ;
