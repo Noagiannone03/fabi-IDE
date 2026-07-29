@@ -4615,3 +4615,84 @@ Reprise exacte :
 4. ajouter journal SSE commit-before-publish et abort ;
 5. implémenter replanification froide + replay prompt/tokens commis ;
 6. seulement ensuite intégrer l'IDE, publier le runtime et qualifier le labo.
+
+## Keepalive indépendant du Request Agent local du 29 juillet 2026
+
+Le jalon précédent est désormais qualifié par le workflow natif
+`30436557739`, entièrement vert sur Ubuntu, macOS 15 et Windows. Le moteur
+local suivant ajoute le cycle de vie automatique des leases de route sans le
+coupler au frontend OpenAI ni au streaming SSE. Il est poussé sur
+`codex/swarm-protocol-v3` au commit
+`250b1b521990961285ddc65b4a265f11912fd22a` ; son workflow multi-OS doit encore
+être observé avant qualification de ce nouveau commit.
+
+### Sémantique retenue
+
+La boucle de maintenance du `RequestAgentRouteRuntime` est un thread dédié.
+Elle ne dépend ni de l'arrivée d'un token, ni d'un heartbeat SSE, ni de la
+durée du prefill ou d'un outil OpenCode. Elle reprend les invariants déjà
+qualifiés dans l'ancien runtime actif au lieu d'introduire un second modèle :
+
+- horloge murale seulement pour les contrats signés, horloge monotone locale
+  pour juger les fenêtres de lease ;
+- deadline locale démarrée avant le RPC, donc volontairement conservatrice ;
+- renouvellement normal à 20 secondes pour une lease de 60 secondes ;
+- retry court seulement si le budget maximal d'une nouvelle tentative et la
+  garde d'expiration tiennent encore avant la dernière deadline reconnue ;
+- seul un accusé de renouvellement reçu à temps prolonge la deadline locale ;
+- un renouvellement reçu trop tard, une fenêtre devenue insuffisante ou des
+  erreurs persistantes retirent d'abord la route du data plane local, puis
+  déclenchent RELEASE et libération du permit en best effort ;
+- `release`, renouvellement manuel et renouvellement automatique utilisent le
+  même verrou par requête.
+
+La gestion de ces verrous compte maintenant les appels actifs et les waiters.
+Cela corrige une course présente dans le premier runtime local : un `release`
+pouvait supprimer l'entrée du verrou alors qu'un nouveau `reserve` attendait
+encore ce même objet, puis laisser la nouvelle réservation sans verrou
+enregistré.
+
+`active_reservation()` rend toujours la dernière version reconnue de la
+réservation, ce qui évite qu'un data plane conserve l'objet antérieur à un
+renew automatique. `status()` expose route, epoch, modèle, contexte, politique,
+TTL restant, nombre d'échecs et dernier échec, sans exposer permit, credential
+de compte ni Biscuit.
+
+Les patterns primaires relus pour cette étape sont l'API Lease/KeepAlive
+d'etcd, notamment la règle qu'une réponse du serveur est la connaissance
+client de l'opération commise, ainsi que la boucle de session/reconstruction de
+Petals et le runtime actif V3 existant. Une absence de tokens ne sert jamais de
+détecteur de panne.
+
+### Validation exacte
+
+- tests Request Agent/coordinator : `14 passed` ;
+- suite moteur complète : `766 passed, 7 skipped` ;
+- quatre nouveaux tests déterministes, sans `sleep`, couvrent renouvellement
+  dû, retry transitoire, refus avant franchissement de deadline et accusé reçu
+  trop tard ;
+- Ruff ciblé, format et `git diff --check` verts ;
+- le seul warning de la suite complète reste la dépréciation externe
+  Starlette/httpx déjà documentée.
+
+### Limite de sécurité encore ouverte
+
+La boucle entretient les leases des workers, mais un permit/capability
+d'autorité reste aujourd'hui borné à cinq minutes. Le data plane local ne doit
+pas transformer ce keepalive en autorisation infinie. Avant de qualifier des
+générations dépassant cette durée, il faut soit rafraîchir explicitement
+permit et capability auprès de l'autorité et faire revalider cette nouvelle
+borne par les workers, soit borner puis replanifier proprement avec un nouvel
+epoch. Cette propriété doit être traitée avec le frontend local ; elle n'est
+pas déclarée validée ici.
+
+### Reprise exacte
+
+1. committer/pousser ce keepalive et attendre son workflow multi-OS ;
+2. construire le frontend OpenAI/OpenCode local autour du Request Agent ;
+3. ajouter le journal durable commit-before-publish, abort et états typés ;
+4. implémenter `replan_cold` avec nouvel epoch et replay du prompt + préfixe
+   commis, sans route de secours pré-réservée par défaut ;
+5. relier ces états à l'IDE ;
+6. publier un runtime, provisionner la clé TUF opérateur, puis qualifier Mac
+   mini, RTX, troisième worker, NAT et kills prefill/decode.
