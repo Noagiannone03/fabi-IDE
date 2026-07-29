@@ -4463,8 +4463,8 @@ multi-lignes quota + epoch + émission nécessaires.
   macOS et Windows.
 
 Le moteur correspondant est poussé sur `codex/swarm-protocol-v3` au commit
-`9cce7171b8c7e5237f2440c4347e7b57f27d7486` ; son workflow multi-OS doit encore terminer avant de
-déclarer les wheels de ce jalon qualifiées.
+`9cce7171b8c7e5237f2440c4347e7b57f27d7486`. Le workflow `30434984193` est entièrement vert sur
+Ubuntu, macOS 15 et Windows, y compris wheels ABI3, imports, Rust/DHT et tests protocole.
 
 Une commande locale additionnelle `cargo test --all-features` n'est pas comptée comme validation :
 sur ce Mac elle tente de lier la `cdylib` PyO3 de test sans les symboles Python et échoue au linker.
@@ -4481,3 +4481,75 @@ multi-OS supporté construira et installera la wheel avant les tests protocole.
 5. intégrer l'état du Request Agent et les erreurs typées dans l'IDE ;
 6. publier le runtime, l'installer sur Mac mini/RTX, ajouter une couverture complète, puis
    qualifier NAT, churn et kills prefill/decode.
+
+## Autorité HTTP du Request Agent et quota partagé du 29 juillet 2026
+
+Le moteur `5ccea9f37e67bb36a5cb9fa69621cedfb0678558`, poussé sur
+`codex/swarm-protocol-v3`, expose maintenant le ledger précédent au Request Agent sans créer une
+deuxième autorité de contribution.
+
+### API et invariants
+
+Trois routes V3 sont montées avant le frontend statique :
+
+- `POST /v1/swarm/route-permits` ;
+- `POST /v1/swarm/route-capabilities` ;
+- `DELETE /v1/swarm/route-permits/{permit_id}`.
+
+La création de permit exige le credential Bearer du compte et un header `Idempotency-Key` qui
+devient le `request_id` signé. Le scope est `(account, Request Agent EndpointId, request id)`.
+Un retry exact rend le premier permit même si le slot est depuis occupé ; réutiliser la clé avec
+un modèle, contexte, TTL ou ensemble de politiques différent rend HTTP 422. Cette sémantique suit
+le draft IETF HTTPAPI Idempotency-Key plutôt qu'un retry ad hoc.
+
+Avant une nouvelle émission, l'autorité vérifie :
+
+- credential valide et worker READY du même compte ;
+- modèle demandé identique au swarm réellement servi ;
+- contexte demandé inférieur ou égal à la limite live ;
+- slot de contribution disponible ;
+- mode `FABI_GATE=on` et V3 active.
+
+Le gate compte maintenant ensemble les générations gateway et les permits locaux. Un worker qui
+ouvre un slot ne peut donc pas lancer simultanément une requête via chaque chemin. Les lectures de
+compteur SQLite restent des SELECT non bloquants ; seules les mutations quota/epoch prennent
+`BEGIN IMMEDIATE`.
+
+L'émission de capability revalide l'ownership du compte, l'EndpointId Iroh, la signature, le plan
+exact et le keyset TUF. La release est account-scoped : un permit absent et celui d'un autre compte
+rendent tous deux 404 pour ne pas créer d'oracle d'existence. Les erreurs sont typées
+401/403/409/410/422/429/503 avec `Retry-After` sur les états temporaires.
+
+L'autorité est fail-close et ne démarre que si ces deux secrets/états opérateur existent :
+
+- `FABI_ROUTE_CAPABILITY_PRIVATE_KEY`, seed Ed25519 hex owner-only déjà publié dans
+  `route-authorities.json` ;
+- `FABI_ROUTE_PERMIT_DB`, stockage persistant owner-only.
+
+Elle exige aussi Iroh, planner V3 active et gate actif. La clé est vérifiée contre le snapshot TUF
+dès le démarrage, puis via le cache TUF non bloquant. Une clé n'est jamais générée silencieusement
+au runtime, car sa clé publique doit passer le workflow de signature TUF.
+
+Seuls `best_effort` et `replan_cold` sont publiquement accordés. `activation_replay`,
+`reserved_route` et `hot_replica` restent fermés tant que leurs garanties ne sont pas
+implémentées et qualifiées.
+
+### Validations exactes
+
+- suite moteur complète : `759 passed, 7 skipped`, warning externe Starlette/httpx connu ;
+- tests HTTP/gate/ledger ciblés : `27 passed` ;
+- Ruff ciblé et `git diff --check` verts ;
+- documentation opérateur ajoutée dans `docs/fabi-request-agent-authority.md` ;
+- le workflow natif du commit `5ccea9f` teste désormais l'API HTTP et le partage de quota sur les
+  trois OS ; il est encore en cours au moment de cette note.
+
+### Reprise exacte
+
+1. surveiller le workflow multi-OS de `5ccea9f` et corriger sans contournement tout échec ;
+2. implémenter le client d'autorité et le planner DHT dans le Request Agent local ;
+3. y exécuter `RouteReservationCoordinator` avec le capability reçu ;
+4. servir OpenAI/OpenCode et le SSE local commit-before-publish ;
+5. remplacer la route de secours par `replan_cold`, puis ajouter le replay d'activations borné ;
+6. intégrer les états et erreurs Request Agent dans l'IDE ;
+7. provisionner/publier la clé opérateur, produire un runtime, puis seulement déployer et
+   qualifier Mac mini, RTX, NAT, churn et kills.
