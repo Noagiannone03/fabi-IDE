@@ -4541,7 +4541,7 @@ implémentées et qualifiées.
 - Ruff ciblé et `git diff --check` verts ;
 - documentation opérateur ajoutée dans `docs/fabi-request-agent-authority.md` ;
 - le workflow natif du commit `5ccea9f` teste désormais l'API HTTP et le partage de quota sur les
-  trois OS ; il est encore en cours au moment de cette note.
+  trois OS. Le run `30436044965` est entièrement vert sur Ubuntu, macOS 15 et Windows.
 
 ### Reprise exacte
 
@@ -4553,3 +4553,65 @@ implémentées et qualifiées.
 6. intégrer les états et erreurs Request Agent dans l'IDE ;
 7. provisionner/publier la clé opérateur, produire un runtime, puis seulement déployer et
    qualifier Mac mini, RTX, NAT, churn et kills.
+
+## Premier runtime local Request Agent du 29 juillet 2026
+
+Le moteur `1ae0d9ea365a5f625e3cb1c0f40f419b823ac377`, poussé sur
+`codex/swarm-protocol-v3`, contient désormais le cœur de coordination locale. Ce jalon ne sert pas
+encore l'API OpenAI et ne bascule donc pas l'IDE.
+
+`RequestAgentAuthorityClient` fournit un client HTTPS borné :
+
+- HTTPS obligatoire sauf loopback explicite ;
+- credential Bearer jamais exposé par l'API publique de l'objet ;
+- timeouts connexion/lecture ;
+- réponses limitées à 1 MiB et JSON objet obligatoire ;
+- propagation typée du code, statut et `Retry-After` ;
+- `Idempotency-Key` stable sur la création du permit.
+
+`RequestAgentRouteRuntime` réalise maintenant localement :
+
+1. chargement du bundle modèle vérifié TUF ;
+2. lecture d'un snapshot modèle depuis la DHT native ;
+3. égalité exacte entre manifeste DHT et manifeste TUF ;
+4. allocation durable d'un nouvel epoch ;
+5. demande d'un permit pour le contexte exact ;
+6. planification `ExactRoutePlanner` sur offres/leases/liens du snapshot ;
+7. signature du plan avec l'EndpointId Iroh local ;
+8. obtention du Biscuit par l'autorité HTTPS ;
+9. PREPARE/COMMIT puis lease longue via `RouteReservationCoordinator` ;
+10. RENEW et RELEASE depuis le client, avec release du permit en `finally`.
+
+Deux appels identiques pour le même `request_id` rendent la même réservation locale. Un contrat
+différent avec le même ID est refusé. Renew et release partagent un verrou par requête : une release
+ne peut pas courir en parallèle avec un renew et laisser ce dernier ressusciter une lease. La
+release est idempotente et utilise toujours la dernière version renouvelée.
+
+`from_environment()` assemble le produit avec Iroh, DHT en mode client, bootstrap, registre TUF,
+credential owner-only, autorité HTTPS et `SqliteEpochAllocator` namespacé par EndpointId. Un échec
+partiel ferme le transport.
+
+Validations :
+
+- trois nouveaux tests couvrent plan DHT/TUF, identité locale, permit/capability, retry,
+  renew/release et erreurs HTTP ;
+- tests ciblés Request Agent/coordinator/DHT : `15 passed` ;
+- suite moteur complète : `762 passed, 7 skipped` ;
+- Ruff ciblé et `git diff --check` verts ;
+- le workflow multi-OS du commit `1ae0d9e` est encore en cours.
+
+Limites explicites :
+
+- pas encore de boucle automatique de renouvellement pendant une génération longue ;
+- pas encore de frontend/data plane OpenAI local ni de journal SSE ;
+- `replan_cold` est autorisé mais le remplacement/replay après panne n'est pas encore branché ;
+- aucune clé opérateur ni ce runtime n'a encore été déployé sur VPS/Mac mini/RTX.
+
+Reprise exacte :
+
+1. surveiller le CI `1ae0d9e` ;
+2. ajouter le gestionnaire de lease automatique indépendant du streaming ;
+3. brancher le frontend de la première étape et le data plane sur la route locale ;
+4. ajouter journal SSE commit-before-publish et abort ;
+5. implémenter replanification froide + replay prompt/tokens commis ;
+6. seulement ensuite intégrer l'IDE, publier le runtime et qualifier le labo.
