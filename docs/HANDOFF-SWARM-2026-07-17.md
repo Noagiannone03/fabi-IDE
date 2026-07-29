@@ -4400,3 +4400,84 @@ Seuls les avertissements GitHub Actions Node 20 déjà connus restent présents.
 6. publier/installer un runtime contenant ce socle, puis qualifier Mac mini + RTX + troisième
    worker, NAT, churn et kills prefill/decode ;
 7. seulement après, basculer l'IDE packagé sur le Request Agent local par défaut.
+
+## Ledger atomique des permits et émission idempotente du 29 juillet 2026
+
+Le premier point de la reprise ci-dessus est désormais implémenté côté moteur, sans encore être
+exposé par une API publique de l'IDE ni déployé sur les machines du labo.
+
+### Contrat transactionnel
+
+`SqliteRoutePermitLedger` fournit le backend durable mono-instance de l'autorité de contribution :
+
+- WAL SQLite, `busy_timeout`, clés étrangères et transactions `BEGIN IMMEDIATE` ;
+- quota de permits actifs par compte pris atomiquement, y compris entre deux connexions/processus ;
+- clé d'idempotence `(account, request, coordinator EndpointId)` ;
+- permit lié au modèle, au contexte maximal, aux politiques de reprise et à une expiration ;
+- claim de plan lié au digest exact, avec compare-and-swap d'epoch ;
+- même epoch + même digest idempotent, fork au même epoch refusé, recul d'epoch refusé ;
+- expiration et release qui rendent la capacité de compte disponible ;
+- persistance de chaque capability émise et de son identifiant de révocation Biscuit.
+
+Le fichier qui contient les capabilities bearer est créé en mode `0600` sur Unix et un fichier
+préexistant lisible par le groupe ou les autres utilisateurs est refusé. L'API de service dépend
+d'un `RoutePermitLedger` structurel plutôt que de SQLite directement : SQLite est le backend
+correct pour une autorité Fabi mono-instance ; un adaptateur PostgreSQL avec transactions et
+verrous de ligne reste requis avant de distribuer horizontalement plusieurs autorités d'émission.
+
+### Émission sûre face aux retries
+
+Le binding Rust exporte maintenant
+`route_capability_root_revocation_id(public_key, token)`. Il authentifie d'abord la signature
+Biscuit, puis extrait l'identifiant du bloc d'autorité que le ledger doit pouvoir révoquer.
+
+`RouteCapabilityService` enchaîne :
+
+1. lecture du permit actif et vérification du compte ;
+2. signature du `RoutePlan`, identité Iroh du Request Agent, TUF, contexte, modèle, durée et
+   politique ;
+3. claim atomique du digest/epoch ;
+4. retour de l'émission déjà stockée en cas de retry exact ;
+5. sinon émission Biscuit, persistance, puis réponse.
+
+Si deux appels concurrents fabriquent momentanément deux tokens, l'insertion atomique choisit le
+premier et tous les appelants retournent ce token persistant. Un retry après perte de réponse ne
+crée donc ni deuxième autorisation exploitable ni branche d'epoch. Un contrat différent sur le
+même epoch est refusé. La révocation du permit retourne tous les identifiants Biscuit encore
+vivants ; le vérificateur Rust les refuse effectivement.
+
+Cette étape suit les primitives documentées de SQLite (`BEGIN IMMEDIATE`/WAL) et garde un contrat
+de stockage transposable aux transactions et row locks PostgreSQL. L'ancien pattern de lock Redis
+`SETNX` n'a pas été retenu comme source de vérité : il ne fournit pas à lui seul les invariants
+multi-lignes quota + epoch + émission nécessaires.
+
+### Validations exactes
+
+- suite Python complète : `755 passed, 7 skipped`, seul warning externe Starlette/httpx connu ;
+- tests ciblés capability/ledger/coordinator : `16 passed` ;
+- Rust : `28 passed`, dont cinq tests Biscuit/capability ;
+- `cargo fmt --check` et `cargo clippy --all-targets --all-features -- -D warnings` verts ;
+- Ruff ciblé et `git diff --check` verts ;
+- wheel ABI3 macOS ARM release reconstruite, réinstallée et testée via l'extension réelle ;
+- la CI native vérifie désormais explicitement les quatre exports de capability sur Linux,
+  macOS et Windows.
+
+Le moteur correspondant est poussé sur `codex/swarm-protocol-v3` au commit
+`9cce7171b8c7e5237f2440c4347e7b57f27d7486` ; son workflow multi-OS doit encore terminer avant de
+déclarer les wheels de ce jalon qualifiées.
+
+Une commande locale additionnelle `cargo test --all-features` n'est pas comptée comme validation :
+sur ce Mac elle tente de lier la `cdylib` PyO3 de test sans les symboles Python et échoue au linker.
+`cargo test` normal, la wheel Maturin réelle et les tests Python natifs passent. Le workflow
+multi-OS supporté construira et installera la wheel avant les tests protocole.
+
+### Reprise exacte après ce jalon
+
+1. exposer création/release/révocation de permit et émission de capability derrière
+   l'authentification du Request Agent et le gate de contribution réel ;
+2. déplacer planner DHT et `RouteReservationCoordinator` dans le runtime local ;
+3. servir l'API OpenAI/OpenCode locale et son journal SSE commit-before-publish ;
+4. implémenter `replan_cold`, puis le replay borné d'activations façon Petals ;
+5. intégrer l'état du Request Agent et les erreurs typées dans l'IDE ;
+6. publier le runtime, l'installer sur Mac mini/RTX, ajouter une couverture complète, puis
+   qualifier NAT, churn et kills prefill/decode.
