@@ -4623,8 +4623,8 @@ Le jalon précédent est désormais qualifié par le workflow natif
 local suivant ajoute le cycle de vie automatique des leases de route sans le
 coupler au frontend OpenAI ni au streaming SSE. Il est poussé sur
 `codex/swarm-protocol-v3` au commit
-`250b1b521990961285ddc65b4a265f11912fd22a` ; son workflow multi-OS doit encore
-être observé avant qualification de ce nouveau commit.
+`250b1b554a2c0178755f1ba3bd56790c270d6444`. Son workflow `30437753008` est
+entièrement vert sur Ubuntu, macOS 15 et Windows.
 
 ### Sémantique retenue
 
@@ -4696,3 +4696,93 @@ pas déclarée validée ici.
 5. relier ces états à l'IDE ;
 6. publier un runtime, provisionner la clé TUF opérateur, puis qualifier Mac
    mini, RTX, troisième worker, NAT et kills prefill/decode.
+
+## Autorisation renouvelable des générations longues du 29 juillet 2026
+
+La limite ouverte du jalon précédent est résolue dans le moteur
+`7c6899481fde5bd0b7e758092727ed66849c4a34`, poussé sur
+`codex/swarm-protocol-v3`. Une génération n'est plus bornée par la durée du
+premier permit et aucun silence de tokens ou de SSE n'est utilisé comme
+détecteur de panne.
+
+### Chaîne d'accusés explicites
+
+Avant chaque extension des leases KV des workers, le Request Agent :
+
+1. envoie un keepalive HTTP authentifié par le compte pour le permit existant ;
+2. l'autorité revalide qu'un worker READY du même compte contribue toujours et
+   que le swarm demandé sert réellement ;
+3. le ledger SQLite avance atomiquement une
+   `authorization_generation` monotone et rend la nouvelle expiration ;
+4. l'autorité émet un nouveau Biscuit pour la même route signée, le même epoch
+   et cette génération précise ;
+5. chaque worker authentifie le peer Iroh et la commande RENEW, vérifie le
+   Biscuit avec le keyset TUF, refuse un rollback de génération et refuse une
+   lease KV qui dépasserait l'expiration de la capability.
+
+Un retry de keepalive possède une clé d'idempotence stable. La transaction
+`BEGIN IMMEDIATE` rend deux keepalives concurrents strictement monotones, y
+compris depuis deux connexions SQLite. Les émissions sont persistées par
+`(permit, epoch, authorization_generation)` ; une réponse perdue peut donc
+être rejouée sans créer un droit différent. La release/révocation couvre le
+Biscuit initial et tous les refresh encore vivants. Les anciennes lignes sont
+bornées et nettoyées.
+
+Le TTL n'est pas une estimation de la durée d'inférence. Il borne seulement la
+durée pendant laquelle une réservation orpheline peut survivre après le
+dernier accusé réellement reçu. Prefill lent, decode long, outil OpenCode ou
+absence complète de sortie ne changent donc rien tant que le plan de contrôle
+continue à obtenir ses accusés.
+
+Cette conception reprend des mécanismes établis :
+
+- leases/KeepAlive avec TTL retourné par le serveur dans etcd ;
+- rotation de credentials courts sur connexion authentifiée dans SPIRE ;
+- capability décentralisée, faits ambiants et identifiants de révocation de
+  Biscuit.
+
+Les références primaires et le contrat opérateur sont consignés dans
+`docs/fabi-request-agent-authority.md` du moteur.
+
+### Migrations et compatibilité
+
+Le ledger ajoute `authorization_generation` et `initial_ttl_ms` à
+`route_permits`, plus des tables séparées pour les refresh et les clés de
+keepalive. Une base existante est migrée et son TTL contractuel initial est
+reconstruit avant le premier retry. `initial_ttl_ms` reste immuable : prolonger
+un permit ne transforme pas un retry de la création originale en conflit.
+
+Les routes dynamiques refusent désormais un RENEW nu. Les routes fixes de
+migration refusent inversement un wrapper de capability. Ce fail-close évite
+qu'un ancien Request Agent puisse maintenir indéfiniment une route V3
+autorisée une seule fois.
+
+### Validation exacte
+
+- suite moteur complète : `772 passed, 7 skipped` ;
+- test déterministe d'une génération sans aucun événement SSE/token, maintenue
+  au-delà de trois fois sa lease initiale par onze chaînes d'accusés ;
+- tests de retry idempotent, ownership, contribution disparue, concurrence
+  SQLite, générations monotones, rollback, capability expirée, TTL KV trop
+  long, révocation et migration ;
+- wheel native reconstruite et vérification réelle des nouveaux faits Biscuit ;
+- `cargo fmt --check`, Clippy strict, tests Rust capability, Ruff et
+  `git diff --check` verts ;
+- seul warning : dépréciation externe Starlette/httpx déjà connue.
+
+Le workflow multi-OS de `7c68994` doit encore être observé avant de qualifier
+ce commit sur les trois OS. Aucun runtime de ce jalon n'est encore publié ni
+installé sur le VPS, le Mac mini ou la RTX.
+
+### Reprise exacte
+
+1. surveiller la CI multi-OS de `7c68994` ;
+2. construire le frontend OpenAI/OpenCode local et envoyer le data plane sur
+   la réservation V3 active ;
+3. ajouter journal SSE durable commit-before-publish et abort ;
+4. implémenter `replan_cold` avec nouvel epoch et replay du prompt + tokens
+   déjà commis ;
+5. exposer ces phases et erreurs Request Agent dans l'IDE ;
+6. publier le runtime et provisionner clé TUF/relay sur installation neuve ;
+7. installer Mac mini + RTX, puis qualifier NAT, churn et kills
+   prefill/decode avant toute promesse produit.
