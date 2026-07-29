@@ -3,6 +3,7 @@ import { FABI_CODE_PROVIDER_ID } from '../common/fabi-code-protocol';
 
 export const FABI_CODE_DEFAULT_CONTEXT_TOKENS = 32_768;
 export const FABI_CODE_DEFAULT_OUTPUT_TOKENS = 4_096;
+export const FABI_CODE_OUTPUT_CONTEXT_SHARE = 8;
 
 export interface FabiCodeConfigInput {
     baseURL: string;
@@ -26,12 +27,26 @@ export function positiveTokenLimit(value: unknown, fallback: number): number {
 }
 
 /**
+ * Réserve au plus un huitième de la fenêtre partagée à la sortie, plafonné à
+ * 4k. OpenCode soustrait `limit.output` de `limit.context` pour calculer son
+ * budget d'entrée : une route 16k annonce donc 2k de sortie, tandis qu'une
+ * route 32k+ conserve les 4k attendus. Un override explicite reste disponible
+ * pour les tests qualifiés.
+ */
+export function recommendedOutputTokens(contextTokens: number): number {
+    return Math.min(
+        FABI_CODE_DEFAULT_OUTPUT_TOKENS,
+        Math.max(1, Math.floor(contextTokens / FABI_CODE_OUTPUT_CONTEXT_SHARE))
+    );
+}
+
+/**
  * Construit le provider OpenCode à partir du contrat de capacité annoncé par le
  * scheduler. On ne revendique jamais une fenêtre fictive supérieure au modèle.
  */
 export function buildFabiCodeConfig(input: FabiCodeConfigInput): FabiCodeConfigResult {
     const contextTokens = positiveTokenLimit(input.maxContextTokens, FABI_CODE_DEFAULT_CONTEXT_TOKENS);
-    const requestedOutput = positiveTokenLimit(input.maxOutputTokens, FABI_CODE_DEFAULT_OUTPUT_TOKENS);
+    const requestedOutput = positiveTokenLimit(input.maxOutputTokens, recommendedOutputTokens(contextTokens));
     const outputTokens = Math.min(requestedOutput, contextTokens);
     const options: Record<string, unknown> = { baseURL: input.baseURL.replace(/\/+$/, '') };
     if (input.apiKey) {

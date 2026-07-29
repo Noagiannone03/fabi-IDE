@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
     buildFabiCodeConfig,
-    FABI_CODE_DEFAULT_CONTEXT_TOKENS
+    FABI_CODE_DEFAULT_CONTEXT_TOKENS,
+    recommendedOutputTokens
 } = require('../lib/node/fabi-code-config');
 const { buildFabiCodeServerArgs } = require('../lib/node/fabi-code-server');
 
@@ -22,6 +23,27 @@ test('uses the scheduler context contract instead of a fictitious IDE window', (
     assert.deepEqual(modelLimit(built), { context: 32768, output: 4096 });
     assert.equal(built.config.provider['fabi-swarm'].options.baseURL, 'https://scheduler.test/v1');
     assert.equal(JSON.stringify(built.config).includes('262144'), false);
+});
+
+test('derives the OpenCode output reserve from the qualified route window', () => {
+    const built = buildFabiCodeConfig({
+        baseURL: 'https://scheduler.test/v1',
+        model: 'Qwen/Qwen3-1.7B',
+        maxContextTokens: 16384
+    });
+    assert.deepEqual(modelLimit(built), { context: 16384, output: 2048 });
+    assert.equal(recommendedOutputTokens(32768), 4096);
+    assert.equal(recommendedOutputTokens(65536), 4096);
+});
+
+test('keeps an explicit output override for qualified experiments', () => {
+    const built = buildFabiCodeConfig({
+        baseURL: 'https://scheduler.test/v1',
+        model: 'Qwen/Qwen3-1.7B',
+        maxContextTokens: 16384,
+        maxOutputTokens: 1024
+    });
+    assert.deepEqual(modelLimit(built), { context: 16384, output: 1024 });
 });
 
 test('falls back to the qualified window and never exposes credentials in the restart key', () => {

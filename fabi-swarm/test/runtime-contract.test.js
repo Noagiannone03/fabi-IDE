@@ -6,6 +6,7 @@ const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
 const {
+    QUALIFIED_NATIVE_NETWORK_VERSION,
     QUALIFIED_OPENCODE_COMMIT,
     QUALIFIED_PARALLAX_COMMIT,
     QUALIFIED_RUNTIME_VERSION,
@@ -28,6 +29,7 @@ function manifest(overrides = {}) {
         accel: 'mlx',
         opencode: QUALIFIED_OPENCODE_COMMIT,
         parallax: QUALIFIED_PARALLAX_COMMIT,
+        nativeNetwork: QUALIFIED_NATIVE_NETWORK_VERSION,
         ...overrides
     };
     return [
@@ -38,6 +40,7 @@ function manifest(overrides = {}) {
         'python=3.12.9',
         `opencode_revision=${values.opencode}`,
         `parallax_revision=${values.parallax}`,
+        `native_network_version=${values.nativeNetwork}`,
         'built_at=2026-07-19T12:00:00Z',
         ''
     ].join('\n');
@@ -48,19 +51,28 @@ const contract = {
     target: 'bun-darwin-arm64',
     accel: 'mlx',
     opencodeRevision: QUALIFIED_OPENCODE_COMMIT,
-    parallaxRevision: QUALIFIED_PARALLAX_COMMIT
+    parallaxRevision: QUALIFIED_PARALLAX_COMMIT,
+    nativeNetworkVersion: QUALIFIED_NATIVE_NETWORK_VERSION
 };
 
 test('accepts only the exact qualified release manifest', () => {
     const parsed = validateRuntimeManifest(manifest(), contract);
     assert.equal(parsed.version, QUALIFIED_RUNTIME_VERSION);
     assert.equal(parsed.values.parallax_revision, QUALIFIED_PARALLAX_COMMIT);
+    assert.equal(parsed.values.native_network_version, QUALIFIED_NATIVE_NETWORK_VERSION);
 });
 
 test('rejects a runtime built from a different engine revision', () => {
     assert.throws(
         () => validateRuntimeManifest(manifest({ parallax: '0'.repeat(40) }), contract),
         /parallax_revision/
+    );
+});
+
+test('rejects a runtime without the qualified native V3 transport', () => {
+    assert.throws(
+        () => validateRuntimeManifest(manifest({ nativeNetwork: 'not-bundled' }), contract),
+        /native_network_version/
     );
 });
 

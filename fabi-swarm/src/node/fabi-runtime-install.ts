@@ -29,9 +29,10 @@ export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
-export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc29';
-export const QUALIFIED_OPENCODE_COMMIT = 'ea98e6ff8049c8a3191b5f009d808397fa1255eb';
-export const QUALIFIED_PARALLAX_COMMIT = 'c14c99759cc5b3b6e6cd6e11d74213309e7b7456';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc32';
+export const QUALIFIED_OPENCODE_COMMIT = 'c1406947c364d0cbd39b17177342408d674cb1a4';
+export const QUALIFIED_PARALLAX_COMMIT = '591cc3b8f338a763fb0540cc4d5be36097c484be';
+export const QUALIFIED_NATIVE_NETWORK_VERSION = '0.1.0';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
 
 export interface RuntimeManifest {
@@ -43,6 +44,7 @@ export interface RuntimeContract {
     version: string;
     opencodeRevision: string;
     parallaxRevision: string;
+    nativeNetworkVersion: string;
     target?: string;
     accel?: Accel;
 }
@@ -78,7 +80,9 @@ export function configuredRuntimeContract(version = configuredRuntimeVersion()):
     return {
         version,
         opencodeRevision: process.env.FABI_RUNTIME_OPENCODE_COMMIT?.trim() || QUALIFIED_OPENCODE_COMMIT,
-        parallaxRevision: process.env.FABI_RUNTIME_PARALLAX_COMMIT?.trim() || QUALIFIED_PARALLAX_COMMIT
+        parallaxRevision: process.env.FABI_RUNTIME_PARALLAX_COMMIT?.trim() || QUALIFIED_PARALLAX_COMMIT,
+        nativeNetworkVersion:
+            process.env.FABI_RUNTIME_NATIVE_NETWORK_VERSION?.trim() || QUALIFIED_NATIVE_NETWORK_VERSION
     };
 }
 
@@ -115,6 +119,7 @@ export function validateRuntimeManifest(raw: string, expected: RuntimeContract):
     check('version', manifest.version, expected.version);
     check('opencode_revision', manifest.values.opencode_revision, expected.opencodeRevision);
     check('parallax_revision', manifest.values.parallax_revision, expected.parallaxRevision);
+    check('native_network_version', manifest.values.native_network_version, expected.nativeNetworkVersion);
     check('target', manifest.values.target, expected.target);
     check('accel', manifest.values.accel, expected.accel);
     if (mismatches.length > 0) {

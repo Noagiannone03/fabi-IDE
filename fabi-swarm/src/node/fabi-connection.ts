@@ -15,9 +15,6 @@ export function requireContribution(
     transport: ConnectionInfo,
     access: { allowed: boolean; reason: string }
 ): ConnectionInfo {
-    if (!transport.ready || access.allowed) {
-        return transport;
-    }
     if (access.reason === 'capacity_reached') {
         return {
             ...transport,
@@ -26,6 +23,9 @@ export function requireContribution(
             headline: 'Contribution déjà utilisée',
             activity: 'ce worker sert déjà une génération — le prompt se libère à sa fin'
         };
+    }
+    if (!transport.ready || access.allowed) {
+        return transport;
     }
     // `no_eligible_worker` is a live state, never a timeout-based verdict:
     // selective layer download, verification and backend/KV materialization can
@@ -56,6 +56,7 @@ export function deriveConnection(
     const peersActive = active?.nodesActive;
     const peersInitializing = active?.nodesInitializing;
     const pipelineReady = active?.pipelineReady;
+    const routingReady = active?.routingReady;
     const pipelineCount = active?.pipelineCount;
     const pipelineReadyCount = active?.pipelineReadyCount;
     const layersAssigned = worker.startLayer !== undefined && worker.endLayer !== undefined
@@ -134,10 +135,19 @@ export function deriveConnection(
 
     const total = peersTotal ?? 0;
 
-    // Pipeline complet côté scheduler. Nouveau signal préféré :
-    // `pipelineReady=true` veut dire "au moins une route peut servir une requête
-    // maintenant". Fallback pour anciens registries : si `nodesActive` existe, il
-    // doit être > 0 ; sinon on conserve l'ancien comportement.
+    // Petals conserve les blocs ONLINE pendant qu'ils servent une requête et
+    // annonce séparément le KV restant. Même contrat ici : pipelineReady décrit
+    // la couverture chargée, routingReady la capacité d'admettre un nouveau
+    // tour. Une saturation ne doit jamais redevenir un faux bootstrap.
+    if (pipelineReady === true && routingReady === false) {
+        return { reason: 'route-busy', ready: false, headline: 'Swarm occupé',
+            activity: 'les routes prêtes servent déjà une génération — nouvelle admission dès qu’une route se libère',
+            ...base };
+    }
+
+    // Pipeline complet côté scheduler. Fallback pour anciens registries : si
+    // `nodesActive` existe, il doit être > 0 ; sinon on conserve l'ancien
+    // comportement.
     if (active.schedulerStatus === 'available') {
         const hasServingPipeline = pipelineReady ?? (peersActive === undefined || peersActive > 0);
         if (!hasServingPipeline) {
@@ -157,7 +167,8 @@ export function deriveConnection(
             activity: 'le swarm est prêt — démarrage de ton worker…', ...base };
     }
 
-    // schedulerStatus === 'waiting' : le pipeline n'est pas (encore) complet.
+    // schedulerStatus === 'waiting' : le pipeline n'est pas (encore) complet,
+    // sauf le cas chargé-mais-saturé traité explicitement juste au-dessus.
     // Verdict capacité/peers AVANT l'étape worker (sinon « joining » masquerait la vérité).
     if (pipelineCount && pipelineCount > 0 && pipelineReady === false) {
         return { reason: 'loading-model', ready: false, headline: 'Pipeline en préparation',

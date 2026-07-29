@@ -210,7 +210,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
 
     protected recomputeConnection(): void {
         const transport = deriveConnection(this.activeSwarm, this.workerState);
-        if (transport.ready && !this.contribution.allowed) {
+        if ((transport.ready || transport.reason === 'route-busy') && !this.contribution.allowed) {
             this.connection = requireContribution(
                 transport,
                 this.contribution

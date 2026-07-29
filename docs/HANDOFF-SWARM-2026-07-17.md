@@ -4172,3 +4172,225 @@ La release runtime `v2.7.0-rc31` est encore en qualification au moment de cette 
 Linux ARM CPU, Linux x64 CPU et macOS ARM MLX sont verts ; Linux CUDA, macOS Intel et Windows CUDA
 sont encore en cours. L'IDE pointe localement vers rc31 pour la qualification, mais ce pin ne doit
 être commité qu'après les six jobs verts et l'installation réelle sur le Mac mini et le PC RTX.
+
+## Gros contexte OpenCode, saturation et drain mémoire du 29 juillet 2026
+
+Cette section remplace le statut provisoire rc31 ci-dessus. Le run release rc31
+`30363519448` s'est terminé entièrement vert sur Linux ARM/x64 CPU, Linux x64 CUDA,
+Darwin ARM MLX, Darwin Intel CPU et Windows x64 CUDA.
+
+### E2E UI réel et budget de sortie adaptatif
+
+L'application macOS a été reconstruite depuis le clone local complet avec Node 22. Un vrai prompt
+OpenCode contenant `13 548` tokens d'entrée a été envoyé sur la route labo 16k avec `2 048` tokens
+de sortie réservés, soit `15 596 <= 16 384`. La réponse exacte a été streamée jusqu'au bout :
+
+- TTFT froid `52,160 s`, débit `7,62 tok/s`, `133` tokens de sortie ;
+- génération suivante à chaud : TTFT `2,306 s`, environ `7,57 tok/s` ;
+- réservations relâchées après génération.
+
+L'essai volontaire `13 496 + 4 096 = 17 592` a été refusé puisque la route 16k ne peut pas porter
+ce contrat. OpenCode 1.15 calcule son budget d'entrée en soustrayant `limit.output` de
+`limit.context`. L'IDE réserve donc localement `min(4 096, floor(context / 8))` : 2k sur une
+route 16k et 4k à partir de 32k. Un override explicite reste disponible pour les expériences.
+
+### Couverture chargée distincte de la capacité instantanée
+
+Pendant une génération, les leases annoncent correctement zéro KV instantanément libre. Le
+scheduler transformait toutefois cette saturation en `no_feasible_route`, puis le registre et
+l'IDE affichaient à tort un nouveau bootstrap du modèle. Le commit moteur
+`217d5ba` ajoute une planification structurelle exacte qui remplace uniquement le KV libre par
+l'enveloppe KV mesurée, sans ignorer leases, poids, liens ou liveness. Le statut V3 distingue :
+
+- `structural_pipeline_ready` : au moins une route complète est chargée ;
+- `admission_ready` : une nouvelle requête peut être réservée maintenant.
+
+Le registre `cf40e03` et l'IDE utilisent cette séparation. Une route chargée mais saturée affiche
+`Swarm occupé`, jamais `Bootstrapping du modèle`.
+
+### Cause et correction du worker bloqué sous pression mémoire
+
+Le Mac de développement a ensuite franchi le seuil critique de mémoire. La détection et la
+fermeture d'admission étaient correctes, mais `_wait_executors_check_layer_change` posait
+`_memory_shutdown_requested` puis continuait d'attendre un exécuteur qui ne pouvait pas deviner
+ce signal. Le même log était donc répété chaque seconde et le worker restait indéfiniment
+`warming`.
+
+Petals `22afba627a7eb4fcfe9418c49472c6a51334b8ac` a été relu dans `server.py`,
+`block_selection.py`, `memory_cache.py`, `utils/dht.py` et
+`client/inference_session.py`. Son invariant pertinent est : retirer l'admission, terminer les
+requêtes, annoncer la transition, fermer explicitement handlers/runtime/backends, nettoyer les
+caches CUDA/MPS, puis seulement recharger.
+
+Le commit moteur poussé `591cc3b8f338a763fb0540cc4d5be36097c484be`
+(`fix(runtime): complete critical memory drain`) remplace le booléen ambigu de supervision par
+trois issues typées : sortie normale, reload de placement et arrêt mémoire. Une pression critique
+rend exactement une issue terminale lorsque `current_requests == 0`, ou à la fin du délai de
+sécurité borné. Le lanceur ferme alors frontend, exécuteurs et P2P dans l'ordre ; le superviseur
+IDE redémarre ensuite le worker et l'enveloppe mémoire est recalculée depuis la disponibilité live.
+Il n'existe toujours aucun redimensionnement vers le haut ni réallocation continue pendant une
+génération.
+
+Validations :
+
+- tests ciblés pression/lancement : `38 passed` ;
+- suite moteur complète : `739 passed, 7 skipped`, seul warning externe Starlette/httpx connu ;
+- Ruff ciblé, format et `git diff --check` verts ;
+- IDE : build TypeScript et `35 passed`.
+
+### Comparaison Petals/Exo encore à intégrer
+
+La V3 respecte déjà l'autorité de placement demandée : en mode active, le scheduler refuse un
+worker legacy, ignore ses éventuelles couches retournées et le worker choisit seul son span depuis
+le catalogue/DHT signé. Le VPS reste coordinateur de requête, de réservations et de streaming.
+
+Deux améliorations de placement restent néanmoins réelles :
+
+1. Petals pondère la couverture par le débit de chaque serveur. Fabi collecte déjà le débit et
+   l'utilise pour estimer les routes, mais `CapacityDemandMap.uniform(..., desired_replicas=2)`
+   compte encore les répliques de manière uniforme lors du choix autonome du span.
+2. Exo actuel filtre ses cycles par mémoire/backend/RDMA et préfère une route dont les nœuds ont
+   déjà téléchargé le modèle. Fabi possède mémoire exacte, compatibilité backend, métriques
+   direct/relay et téléchargement sélectif, mais la localité du cache de shards n'entre pas encore
+   dans le score de placement.
+
+Petals reste plus décentralisé pour la reprise d'une session : le client remplace un span depuis
+la DHT et rejoue son historique d'activations sur le remplaçant. Fabi implémente une garantie plus
+forte pour OpenCode : route de secours worker-disjointe réservée, journal de tokens avant SSE,
+promotion avec nouvel epoch, fencing et replay `prompt + préfixe commis`. Cette garantie passe les
+tests intégrés mais n'est pas qualifiée sur une vraie seconde couverture complète.
+
+### Release rc32 en cours et ordre de reprise
+
+Les pins immuables sont poussés :
+
+- `fabi-cli/dev` `c1406947c364d0cbd39b17177342408d674cb1a4` ;
+- `swarm-engine/codex/swarm-protocol-v3`
+  `591cc3b8f338a763fb0540cc4d5be36097c484be` ;
+- `fabi/main` `10ce5a11fb572c56a314dfe8d67792377e2dec5f`.
+
+Le tag `v2.7.0-rc32` est poussé. Le run release `30429459757` est en cours ; ne pas déclarer cette
+release qualifiée avant les six jobs verts.
+
+Ordre exact :
+
+1. attendre et diagnostiquer toute plateforme rc32 en échec, surtout Windows CUDA ;
+2. installer rc32 sur Mac mini et RTX, confirmer les SHA/manifestes et redémarrer les deux workers ;
+3. déployer le scheduler moteur `591cc3b` et le registre `cf40e03`, puis vérifier états structurel
+   et admission pendant une génération ;
+4. reconstruire l'IDE avec son pin rc32, refaire sélection, contribution, SSE, outils,
+   permissions, abort et changement de modèle ;
+5. provoquer une pression critique contrôlée sur un worker sans requête puis avec requête active,
+   et vérifier un seul drain, départ DHT, restart et span plus petit ;
+6. ajouter une deuxième couverture complète avec RunPod ou d'autres machines et qualifier les
+   kills prefill/decode, promotion, fencing et replay ;
+7. intégrer ensuite demande pondérée par débit/popularité et localité des shards, avec simulation
+   de centaines/milliers de workers avant toute bascule.
+
+## Coordination client, capacités Biscuit et reprise Petals du 29 juillet 2026
+
+Cette section est un jalon de développement local **non encore commité ni déployé**. Elle complète
+la décision V3-only : le placement des couches reste autonome côté workers, et la coordination
+d'une génération doit normalement vivre dans un agent Fabi local. Le gateway VPS reste un fallback
+V3 pour les environnements où un client Iroh local ne peut pas tourner ; il ne redevient pas un
+scheduler de placement.
+
+### Décision issue de la comparaison Petals/Fabi
+
+Petals reconstruit une session en replanifiant depuis sa DHT et en remplaçant le span fautif ; il
+ne réserve pas un deuxième pipeline complet pour chaque requête. Fabi doit reprendre cette propriété
+comme comportement normal, tout en conservant ses invariants plus stricts : budget KV exact,
+PREPARE/COMMIT, epoch/fencing, journal de tokens avant SSE et contrôle de contribution.
+
+Les politiques de reprise deviennent explicites :
+
+1. `best_effort` ;
+2. `replan_cold`, qui choisit une nouvelle route puis rejoue prompt + tokens déjà commis ;
+3. `activation_replay`, qui remplace si possible le span/suffixe fautif depuis un historique
+   d'activations borné ;
+4. `reserved_route` et `hot_replica`, garanties coûteuses et opt-in.
+
+La route de secours complète pré-réservée ne doit donc plus être le défaut. Une couverture
+alternative observée dans la DHT est une possibilité structurelle, pas une garantie de capacité.
+
+Sources primaires relues :
+
+- Petals `sequence_manager.py`, `inference_session.py` et `block_selection.py` au commit
+  `22afba627a7eb4fcfe9418c49472c6a51334b8ac` ;
+- Hivemind pour DHT/leases ;
+- Exo pour topologie, mémoire/backend/RDMA et localité des téléchargements ;
+- spécification Biscuit et implémentation Rust Eclipse Biscuit 6.0.
+
+### Socle effectivement implémenté dans `swarm-engine-v3`
+
+Le moteur natif Rust utilise désormais `biscuit-auth = 6.0.0` pour émettre et vérifier hors ligne
+des capacités Ed25519 scellées. Une capacité est liée simultanément à :
+
+- permit et compte ;
+- request et model swarm ;
+- EndpointId du coordinateur client réellement authentifié par Iroh ;
+- SHA-256 des **octets exacts déjà signés** du `RoutePlan`, sans resérialisation ambiguë ;
+- epoch, budget de contexte maximal, politique de reprise et expiration.
+
+La durée maximale est cinq minutes avec skew borné. Une capacité copiée ne peut pas autoriser un
+autre coordinateur, plan, modèle, epoch, contexte ou niveau de reprise. Les identifiants de
+révocation Biscuit font 64 octets, donc 128 caractères hexadécimaux ; le test du vrai wheel a
+détecté et corrigé une première modélisation erronée en SHA-256/64 caractères.
+
+`WorkerExecutionAdmission` n'est plus couplé techniquement à un unique coordinateur global :
+
+- `FixedCoordinatorRouteAuthority` préserve le runtime gateway actuel pendant la migration ;
+- `CapabilityRouteAuthority` accepte un agent Fabi dynamique seulement avec le Biscuit exact ;
+- l'identité du coordinateur, le plan et le permit sont stockés par route ;
+- COMMIT/RENEW/RELEASE, frontend et data plane sont vérifiés contre cette route ;
+- un `FENCE` dynamique sans route admise est refusé ;
+- un plan signé dont `coordinator_id` diffère du signataire est refusé.
+
+Le keyset de capacité et les révocations sont une cible TUF `route-authorities.json`. L'opérateur
+du registre sait la publier lors d'`init-staging` et `publish`. Le worker charge le keyset signé au
+démarrage, le rafraîchit sur un thread indépendant pour ne bloquer ni PREPARE ni heartbeats,
+conserve le dernier état authentifié pendant une panne réseau, puis fail-close à son expiration.
+La rotation vérifie aussi l'absence de recul de génération.
+
+L'émetteur de service refuse de signer tant que :
+
+- le plan et l'appelant Iroh ne correspondent pas ;
+- le plan sort du modèle, du contexte, de l'expiration ou des politiques accordées au permit ;
+- sa propre clé publique n'est pas active dans le keyset TUF courant.
+
+Enfin `RouteReservationCoordinator` accepte maintenant un authorizer de plan. Un test intégré
+construit un pipeline deux workers sans coordinateur VPS configuré : le client signe le plan,
+obtient un Biscuit, transmet PREPARE aux deux workers puis réalise COMMIT, RENEW et RELEASE.
+
+### Validations exactes de ce jalon local
+
+- `157 passed` pour `tests/test_swarm_protocol_*.py` ;
+- suite moteur complète : `748 passed, 7 skipped`, avec le seul warning externe
+  Starlette/httpx déjà connu ;
+- `4 passed` pour les tests Rust Biscuit ;
+- `cargo check --all-features`, `cargo clippy --lib --all-features -- -D warnings` et
+  `cargo fmt --check` verts ;
+- wheel ABI3 macOS ARM release construit, installé, importé, puis émission/vérification,
+  mauvais digest, expiration et révocation testés via l'API Python réelle ;
+- tests TUF couvrant signature, rotation, révocation, substitution de key ID, panne registre et
+  expiration.
+
+L'avertissement Rust restant vient de la dépendance transitive Biscuit
+`proc-macro-error2 2.0.1`, signalée comme future-incompatible mais acceptée par la toolchain
+actuelle. Il n'est ni masqué ni interprété comme une validation future.
+
+Le run runtime rc32 `30429459757` est désormais entièrement vert, y compris Windows CUDA et Linux
+CUDA. Cela qualifie la construction des artefacts rc32, mais **rc32 n'a pas encore été installé et
+revalidé sur le Mac mini et le RTX** dans ce jalon.
+
+### Reprise exacte
+
+1. exposer l'émission de permit/capacité au Request Agent local avec ledger atomique et quotas ;
+2. exécuter le planner DHT et `RouteReservationCoordinator` dans le runtime local Fabi ;
+3. servir localement l'API OpenAI/OpenCode et le SSE commit-before-publish ;
+4. remplacer la pré-réservation de secours par replanification à froid, puis ajouter l'historique
+   d'activations borné pour le remplacement de span façon Petals ;
+5. conserver le gateway coordonné actuel comme fallback V3 explicite ;
+6. publier/installer un runtime contenant ce socle, puis qualifier Mac mini + RTX + troisième
+   worker, NAT, churn et kills prefill/decode ;
+7. seulement après, basculer l'IDE packagé sur le Request Agent local par défaut.

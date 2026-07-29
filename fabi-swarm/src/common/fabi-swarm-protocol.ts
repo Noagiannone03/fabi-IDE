@@ -118,6 +118,7 @@ export type ConnectionReason =
     | 'connecting'             // handshake / join / découverte
     | 'need-more-peers'        // pas assez de nœuds pour bootstrapper
     | 'insufficient-capacity'  // assez de nœuds mais pipeline impossible
+    | 'route-busy'             // pipeline chargé, capacité momentanément réservée
     | 'contribution-pending'   // pipeline prêt, admission du compte en confirmation
     | 'contribution-required'  // aucun worker prêt de ce compte n'est reconnu
     | 'loading-model';         // chargement des poids / peers en init

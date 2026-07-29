@@ -30,7 +30,8 @@ import {
 import { findFabiCode } from './fabi-code-runtime';
 import { startServer, ServerHandle } from './fabi-code-server';
 import {
-    buildFabiCodeConfig, FABI_CODE_DEFAULT_CONTEXT_TOKENS, positiveTokenLimit
+    buildFabiCodeConfig, FABI_CODE_DEFAULT_CONTEXT_TOKENS, positiveTokenLimit,
+    recommendedOutputTokens
 } from './fabi-code-config';
 import { FabiCodePartAccumulator } from './fabi-code-part-stream';
 
@@ -213,12 +214,15 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             baseURL = `${schedulerUrl.replace(/\/+$/, '')}/v1`;
         }
         this.modelId = model;
+        const configuredOutputTokens = process.env.FABI_CODE_MAX_OUTPUT_TOKENS;
         const built = buildFabiCodeConfig({
             baseURL,
             model,
             apiKey,
             maxContextTokens,
-            maxOutputTokens: positiveTokenLimit(process.env.FABI_CODE_MAX_OUTPUT_TOKENS, 4_096)
+            maxOutputTokens: configuredOutputTokens === undefined
+                ? undefined
+                : positiveTokenLimit(configuredOutputTokens, recommendedOutputTokens(maxContextTokens))
         });
         return { config: built.config, key: built.key };
     }

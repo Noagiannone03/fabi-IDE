@@ -86,6 +86,27 @@ Il transforme une demande exacte en route complète, réserve ses ressources, at
 tient le journal de tokens et clôture ou reprend la génération. Il est distribué entre plusieurs
 route planners, mais une requête donnée a un coordinateur et un epoch uniques.
 
+La cible produit place normalement ce coordinateur dans un **Fabi Request Agent local** embarqué
+dans l'IDE. Une gateway Fabi peut exercer exactement le même rôle pour un client sans transport
+P2P, mais elle n'est pas une autorité de placement permanente et ne doit pas être un passage
+obligatoire pour les prompts ou les tokens.
+
+Le coordinateur local n'est pas autorisé parce que son EndpointId figure dans une configuration
+statique du worker. Il présente une capacité Fabi courte, signée et liée à :
+
+```text
+account_id + permit_id
+request_id + model_swarm_id
+coordinator_endpoint_id
+route_plan_digest + epoch
+max_context_tokens + recovery_policy
+issued_at + expires_at
+```
+
+Chaque worker vérifie cette capacité hors ligne depuis une clé publique publiée sous le root TUF
+du produit. L'autorité Fabi conserve seulement l'état cohérent nécessaire à l'émission unique,
+au quota, à la révocation et au CAS d'epoch ; elle ne reçoit ni prompt, ni activation, ni token.
+
 ### 3.3 Plan de données
 
 Il transporte poids et activations :
@@ -358,12 +379,14 @@ espérant compléter la chaîne plus tard.
 La DHT est éventuellement cohérente ; elle ne peut donc pas empêcher deux planners de voir les
 mêmes octets KV libres. L'autorité est chaque worker.
 
-1. Le planner envoie `PREPARE(route, exact_kv_bytes, ttl)` en parallèle à tous les stages.
-2. Chaque worker sérialise localement l'admission et répond par un `ReservationLease` signé.
-3. Si tous répondent `PREPARED`, le planner envoie `COMMIT` à tous.
-4. Si un stage refuse ou expire, le planner envoie `RELEASE` aux autres et recalcule une route.
-5. Un worker ne lance aucun prefill avant le `COMMIT` de la même route et du même epoch.
-6. Les leases expirent automatiquement si le coordinateur meurt.
+1. Le planner obtient une capacité courte liée au digest exact du plan et à son identité Iroh.
+2. Il envoie `PREPARE(route, capability, exact_kv_bytes, ttl)` en parallèle à tous les stages.
+3. Chaque worker vérifie capacité, signature du plan, span, epoch et KV, sérialise localement
+   l'admission puis répond par un `ReservationLease` signé.
+4. Si tous répondent `PREPARED`, le planner envoie `COMMIT` à tous.
+5. Si un stage refuse ou expire, le planner envoie `RELEASE` aux autres et recalcule une route.
+6. Un worker ne lance aucun prefill avant le `COMMIT` de la même route et du même epoch.
+7. Les leases expirent automatiquement si le coordinateur meurt.
 
 Ce n'est pas une transaction distribuée générale : aucune donnée durable n'est modifiée. Les
 opérations sont idempotentes et les ressources provisoires ont un TTL borné. Le protocole évite
@@ -387,17 +410,25 @@ backend ne sait pas s'arrêter proprement à une frontière interne, il annonce
 ## 12. Chemin d'une génération OpenCode
 
 1. L'IDE choisit une variante de modèle et affiche la santé réelle de son swarm.
-2. Le client envoie le prompt au gateway Fabi avec la sortie maximale réservée.
-3. Le gateway vérifie le droit de consommation et tokenise selon le manifeste immuable.
-4. Un route planner construit puis réserve la route.
-5. Le premier stage reçoit les ids de tokens et le `RoutePlan` signé.
-6. Les activations passent stage par stage sur des streams Iroh authentifiés.
-7. Le head/tail commit chaque token dans le journal avant son émission SSE.
-8. Heartbeats de session, métriques et annulation utilisent des streams séparés ; une longue
+2. OpenCode appelle l'API OpenAI locale du Fabi Request Agent.
+3. Le Request Agent vérifie le budget avec le tokenizer du manifeste immuable, lit un snapshot
+   DHT borné au model swarm et construit une route principale.
+4. L'autorité Fabi vérifie le droit de consommation et délivre une capacité courte liée au digest
+   du plan ; elle ne reçoit pas le prompt.
+5. Le Request Agent réserve directement la route par `PREPARE/COMMIT`.
+6. Le premier stage reçoit les ids de tokens, le `RoutePlan` signé par le Request Agent et la
+   capacité Fabi correspondante.
+7. Les activations passent stage par stage sur des streams Iroh authentifiés.
+8. Le Request Agent commit chaque token exact dans son journal durable avant de l'émettre sur le
+   SSE local consommé par OpenCode.
+9. Heartbeats de session, métriques et annulation utilisent des streams séparés ; une longue
    génération ne bloque jamais la liveness.
-9. À la fin ou à l'abort, tous les stages libèrent leur KV et émettent leurs reçus de travail.
+10. À la fin ou à l'abort, tous les stages libèrent leur KV et émettent leurs reçus de travail.
 
-Le gateway peut rester le point d'entrée HTTP/OpenAI sans devenir le chemin des activations.
+Une gateway distante implémente la même interface de coordinateur en fallback pour les
+environnements où aucun client P2P local ne peut tourner. Le déploiement actuel utilise encore
+ce fallback comme chemin principal ; la migration ne sera activée qu'après équivalence stricte
+sur admission, SSE, abort, outils, reprise et contribution.
 
 ## 13. Pannes et churn
 
@@ -412,13 +443,28 @@ Le contrat de `SWARM-FAILOVER-DESIGN.md` reste applicable :
 
 - CAS vers un nouvel epoch ;
 - fencing des sorties tardives ;
-- recherche d'une couverture compatible ;
+- recherche d'une couverture compatible depuis le Request Agent ;
 - replay froid depuis les ids de tokens comme premier niveau correct ;
 - journal d'activations puis réplique chaude comme optimisations ;
 - erreur explicite si aucune route n'existe.
 
 Le comportement Petals de reconstruction des caches est la référence algorithmique. Fabi ajoute
 le commit-before-SSE, les epochs et les réservations explicites nécessaires à un service agentique.
+
+Une seconde route complète n'est plus réservée systématiquement. Quatre politiques explicites
+évitent de gaspiller la capacité communautaire :
+
+1. **best effort** : aucune réserve ; une panne termine proprement la requête ;
+2. **replan + replay froid** : la DHT prouve une couverture alternative au départ, mais le KV
+   n'est réservé qu'après la panne ; le prompt et les tokens commis sont rejoués ;
+3. **replay d'activations** : chaque frontière conserve un historique borné permettant de
+   remplacer uniquement le span fautif et de régénérer son KV, comme Petals ;
+4. **garantie réservée / réplique chaude** : une route ou un KV secondaire est maintenu pour les
+   swarms ayant assez de capacité et pour les niveaux de service qui justifient ce coût.
+
+Le planner annonce séparément la capacité structurelle de réparation et la garantie réellement
+réservée. Une route ne doit jamais être présentée comme garantie si elle dépend seulement d'une
+annonce DHT qui peut être occupée au moment de la panne.
 
 ### 13.3 Perte du route planner
 
@@ -533,6 +579,7 @@ ne suffit seul comme preuve produit.
 | Petals cache admission | Reprendre l'allocation exacte, ajouter `PREPARE/COMMIT` et blocs KV backend |
 | Petals replay après panne | Reprendre l'algorithme, ajouter journal, epochs et commit-before-SSE |
 | Petals PyTorch runtime | Ne pas reprendre |
+| Eclipse Biscuit | Utiliser pour les capacités de route courtes et vérifiables hors ligne ; conserver un ledger cohérent pour émission, révocation et double dépense |
 | Parallax MLX/vLLM/SGLang | Conserver et isoler derrière `ExecutionBackend` |
 | Parallax DP/water-filling | Réutiliser pour hints de placement et route planning, pas comme autorité globale |
 | Parallax scheduler monolithique | Décomposer puis retirer du chemin permanent |
@@ -758,6 +805,10 @@ Gate : tous les ordres d'arrivée, zéro oscillation, zéro trou volontaire de c
 - Ajouter les frontières dynamiques backend par backend.
 - Faire calculer les routes par plusieurs planners interchangeables.
 - Retirer l'autorité d'allocation permanente du scheduler historique.
+- Embarquer le planner, le journal token-exact et l'API OpenAI locale dans le Fabi Request Agent.
+- Remplacer la confiance dans un EndpointId de scheduler fixe par une capacité de route courte,
+  liée au digest du plan et vérifiée par chaque worker.
+- Conserver la gateway V3 comme coordinateur de fallback avec le même contrat.
 
 Gate : route identique à snapshot identique, réservations sûres sous planners concurrents.
 
@@ -830,6 +881,8 @@ Gate : route identique à snapshot identique, réservations sûres sous planners
 - [Petals — cache mémoire autoritaire](https://github.com/bigscience-workshop/petals/blob/22afba627a7eb4fcfe9418c49472c6a51334b8ac/src/petals/server/memory_cache.py)
 - [Petals — papier système](https://arxiv.org/abs/2209.01188)
 - [Petals — papier tolérance aux pannes et load balancing](https://arxiv.org/abs/2312.08361)
+- [Eclipse Biscuit — spécification](https://doc.biscuitsec.org/reference/specifications)
+- [Eclipse Biscuit — implémentation Rust](https://github.com/eclipse-biscuit/biscuit-rust)
 - [Hivemind — DHT pour volontaires](https://github.com/learning-at-home/hivemind)
 - [Hivemind — dictionnaires à sous-clés et expirations indépendantes](https://github.com/learning-at-home/hivemind/blob/4bd43b7/hivemind/dht/storage.py)
 - [Hivemind — fusion des sous-clés pendant une recherche](https://github.com/learning-at-home/hivemind/blob/4bd43b7/hivemind/dht/node.py)

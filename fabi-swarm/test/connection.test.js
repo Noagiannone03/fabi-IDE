@@ -50,6 +50,29 @@ test('becomes ready only with a routable pipeline and a running local worker', (
     assert.equal(state.layersAssigned, 26);
 });
 
+test('reports a loaded but saturated route without claiming model bootstrap', () => {
+    const state = deriveConnection(
+        swarm({
+            schedulerStatus: 'waiting',
+            pipelineReady: true,
+            routingReady: false,
+            nodesActive: 2
+        }),
+        { kind: 'running', stage: 'ready', startLayer: 25, endLayer: 30 }
+    );
+    assert.equal(state.reason, 'route-busy');
+    assert.equal(state.ready, false);
+    assert.match(state.headline, /occupé/);
+    assert.doesNotMatch(state.activity, /bootstrap|chargement/i);
+
+    const accountBusy = requireContribution(state, {
+        allowed: false,
+        reason: 'capacity_reached'
+    });
+    assert.equal(accountBusy.reason, 'contribution-pending');
+    assert.match(accountBusy.headline, /déjà utilisée/);
+});
+
 test('surfaces capacity, scheduler and worker failures instead of optimistic states', () => {
     assert.equal(
         deriveConnection(swarm({ lastBootstrapResult: 'failed_capacity' }), { kind: 'running', stage: 'loading-weights' }).reason,
