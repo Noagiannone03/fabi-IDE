@@ -4770,8 +4770,8 @@ autorisée une seule fois.
   `git diff --check` verts ;
 - seul warning : dépréciation externe Starlette/httpx déjà connue.
 
-Le workflow multi-OS de `7c68994` doit encore être observé avant de qualifier
-ce commit sur les trois OS. Aucun runtime de ce jalon n'est encore publié ni
+Le workflow multi-OS `30439601623` de `7c68994` est entièrement vert sur
+Ubuntu, macOS 15 et Windows. Aucun runtime de ce jalon n'est encore publié ni
 installé sur le VPS, le Mac mini ou la RTX.
 
 ### Reprise exacte
@@ -4786,3 +4786,84 @@ installé sur le VPS, le Mac mini ou la RTX.
 6. publier le runtime et provisionner clé TUF/relay sur installation neuve ;
 7. installer Mac mini + RTX, puis qualifier NAT, churn et kills
    prefill/decode avant toute promesse produit.
+
+## Frontend OpenAI local du Request Agent du 29 juillet 2026
+
+Le moteur `d2a5657d4405311b0057481d3b3ea5cd126f52aa`, poussé sur
+`codex/swarm-protocol-v3`, possède maintenant le premier chemin produit où le
+client local planifie et exécute réellement sa route V3. Le VPS reste
+l'autorité de contribution/capability ; il ne choisit pas la pipeline et ne
+transporte ni activations ni tokens.
+
+### Exécution locale
+
+Le nouveau binaire `fabi-request-agent` expose sur loopback :
+
+- `GET /health`, limité à `ready`/`waiting` ;
+- `GET /v1/models` ;
+- `GET /v1/request-agent/status` ;
+- `POST /v1/chat/completions`, streaming et non-streaming.
+
+Les routes OpenAI et le statut détaillé exigent le même Bearer de compte que
+l'autorité. Le CLI refuse toute adresse non-loopback. Le credential n'est
+jamais exposé par le statut.
+
+Le manager local réutilise `RequestHandler`,
+`TransformerConnectionHandler`, l'abort explicite et les enveloppes HTTP/SSE
+existantes. Pour une requête :
+
+1. il rend le chat avec le tokenizer local ;
+2. il demande au `RequestAgentRouteRuntime` une route exacte depuis le snapshot
+   DHT ;
+3. il réserve permit, capability et KV avec sa propre identité Iroh ;
+4. il transmet au head les fences route/epoch et la table complète ;
+5. le head retokenize avec le frontend vLLM réellement chargé ;
+6. un désaccord de tokens libère la route et force un nouveau plan avant
+   l'inférence ;
+7. chat et abort passent directement entre Request Agent et head Iroh ;
+8. la fin HTTP/SSE libère route et permit.
+
+La sélection du contexte n'utilise aucun palier configuré. Le runtime prend un
+seul snapshot DHT et effectue une recherche binaire avec `ExactRoutePlanner`
+sur les géométries KV live. Ce probe ne brûle ni epoch, ni permit, ni
+réservation. La limite haute provient de `config.json` signé.
+
+Le Request Agent ne télécharge pas les poids. Il matérialise seulement les
+artefacts architecture/tokenizer de la révision immuable, vérifie taille et
+SHA-256 de chacun contre l'index TUF, puis charge le tokenizer depuis ce
+snapshot local vérifié. Tous les chemins réseau de téléchargement utilisent
+donc le même contrat signé que les workers.
+
+### Validation exacte
+
+- suite moteur complète : `778 passed, 7 skipped` ;
+- tests frontend/Request Agent ciblés : `14 passed` ;
+- OpenAI non-streaming, SSE jusqu'à `[DONE]`, tokenisation head, fences,
+  libération, statut, modèles, JSON invalide, authentification et bind loopback
+  couverts ;
+- vérification positive puis corruption d'un artefact frontend TUF couverte ;
+- probe à `600 000` tokens sur la géométrie déterministe du test : limite
+  exacte `524 288`, sans permit ni route active ;
+- Ruff, format, `git diff --check`, syntaxe TOML/YAML et aide du CLI verts ;
+- le seul warning reste la dépréciation externe Starlette/httpx.
+
+Le workflow `30440691116` de `d2a5657` est en attente au moment de ce handoff.
+Le workflow inclut désormais explicitement le frontend Request Agent et
+installe `uvicorn` sur Ubuntu, macOS et Windows.
+
+### Limite honnête et reprise exacte
+
+Ce premier frontend laisse volontairement `should_capture_generation_tokens`
+à false. Il fournit donc aujourd'hui l'exécution V3 locale et l'abort, mais une
+perte de route renvoie encore une erreur propre ; elle ne déclenche pas encore
+le replay. Cette limite évite de déclarer une reprise sans journal durable.
+
+Prochaines étapes :
+
+1. ajouter le journal local durable commit-before-publish ;
+2. brancher `OpenAIRecoveryStream` et le contrat d'échantillonnage exact ;
+3. sur panne, libérer/fencer l'ancienne route, reprendre un nouvel epoch,
+   replanifier depuis la DHT puis appeler `chat-replay` avec prompt + tokens
+   commis ;
+4. intégrer les phases Request Agent dans l'IDE ;
+5. publier et qualifier le runtime au labo.
