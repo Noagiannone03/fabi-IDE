@@ -5130,3 +5130,102 @@ Validations locales actuelles :
    prefill/decode, replans successifs et absence de couverture ;
 8. seulement ensuite qualifier deux NAT indépendants et le gros contexte
    OpenCode d'environ 12 220 tokens + 4 096 réservés.
+
+## Installation IDE réelle, registre V3 et budget MLX stable du 30 juillet 2026
+
+L'intégration IDE décrite ci-dessus a été validée puis poussée sur `main` au
+commit `2bed2c84c9f4ddcf4310ac7b6b535c5f66acf914`. Le clone local complet, non
+dataless, a réellement installé `rc37` depuis les actifs GitHub publics avec le
+helper zstd autonome. Le manifeste installé annonce exactement OpenCode
+`b7ece1419fddb21226e9ca1107825265feed86b1`, moteur
+`4b4add07aab595eeb922b8705821d85d82b0b65e`, MLX et transport natif `0.1.0`.
+Le token de compte et la racine TUF ont survécu à la transaction.
+
+### Contrat registre observé par la vraie application
+
+Le premier démarrage Electron a révélé une boucle de redémarrage du Request
+Agent avant même sa création. Le registre public publiait légitimement
+`data.swarm_v3_shadow.catalog.model_swarm_id`, mais le scanner lisait
+`data.swarm_v3_shadow.model_swarm_id`. Il renvoyait donc `null` à l'IDE.
+
+Le runtime/registre au commit
+`82a52f3a6a9bf130141abfc9bc6855d3c47877f0` lit maintenant d'abord le contrat
+imbriqué réel et conserve le chemin racine uniquement comme compatibilité de
+rolling upgrade. Les 27 tests registre et le typecheck sont verts. Le binaire
+Linux a été reconstruit, déployé atomiquement sur le VPS et le service est
+actif. Le registre public renvoie désormais l'identité exacte
+`46e338001cbca3a457b8e513950d62cc10fc7866226529e7b27825a737797b57`.
+Après ce déploiement, un second démarrage Electron a gardé un seul Request
+Agent stable et `ready` sur loopback, séparé du worker.
+
+Les anciens binaires de registre compilés sur le VPS ont été bornés au binaire
+actif et à un seul rollback `pre-82a52f3`, ce qui a récupéré environ 974 Mio.
+Les états, clés et volumes du scheduler n'ont pas été supprimés.
+
+### Défaut de budget MLX découvert sur le Mac 16 Gio
+
+Le worker autonome du Mac courant choisissait correctement `[0,4)`, puis
+refusait tout KV après avoir chargé ses poids. Le budget initial lui accordait
+environ 2 Gio. Une fois 1,48 Gio de poids Metal chargés, la baisse de
+`psutil.available` franchissait un palier de réserve adaptative ; le
+`CacheManager` recalculait alors la réserve OS et interprétait les propres
+poids du worker comme une nouvelle pression externe. La limite processus se
+réduisait rétroactivement à la mémoire active et la capacité KV tombait à
+zéro.
+
+Le moteur `c261ecb0592e799b93226c6817d0f2260131e1ab`, poussé sur
+`codex/swarm-protocol-v3`, fixe la réserve système choisie au démarrage d'une
+génération de worker. La disponibilité live continue de borner la marge : une
+vraie pression externe réduit donc toujours la capacité, mais le chargement
+des propres poids ne change plus de palier de réserve.
+
+Validation :
+
+- suite moteur complète : `802 passed, 7 skipped` ;
+- Ruff ciblé et `git diff --check` verts ;
+- test déterministe 16 Gio : réserve initiale 2,5 Gio, limite 2 Gio, poids
+  1,5 Gio puis marge KV correcte de 0,5 Gio ;
+- vrai démarrage Electron avec ce moteur : placement autonome `[0,4)`, limite
+  MLX 2,22 Gio, poids 1,48 Gio, allocation KV 0,60 Gio, 1 222 blocs et contexte
+  maximal annoncé 39 104 tokens ; l'exécuteur est devenu `READY` ;
+- l'application de test a ensuite été arrêtée proprement pour rendre sa
+  mémoire au poste de travail.
+
+OpenCode/Fabi CLI `10c110c3d07f7039b7afb91ca67fc815ab2458bc`,
+poussé sur `dev`, épingle ce nouveau moteur pour que le chemin de réparation ne
+réinstalle pas silencieusement l'ancien commit. Son test d'installateur et le
+typecheck complet monorepo sont verts.
+
+### État honnête de `rc37` et correction Windows
+
+`rc37` ne doit pas être qualifiée comme release multi-OS complète. Le run
+`30546072051` a publié les actifs CPU/MLX, mais le build Windows CUDA a échoué
+après avoir correctement construit le runtime, le wheel réseau natif et le
+tarball de 2,0 Gio. La faute était dans la construction du helper zstd :
+Git Bash invoquait GNU tar sur le ZIP officiel Windows, format que ce tar ne
+sait pas extraire.
+
+Le runtime `46c44ebdabeb34634a0e5ece60c6e3c93ec26fd6`, poussé sur `main`,
+utilise désormais `Expand-Archive`/`System.IO.Compression`, l'implémentation
+ZIP native documentée par Microsoft, après conversion explicite des chemins
+MSYS. Le SHA-256 de l'actif zstd officiel reste vérifié avant extraction. Un
+test Windows court construit et exécute maintenant ce helper à chaque push
+avant les builds de release. Le même commit verrouille exactement le CLI
+`10c110c3d` et le moteur `c261ecb`.
+
+Le run de branche `30550310129` est entièrement vert, y compris la construction
+et l'exécution du helper sur `windows-latest`. Le tag `v2.7.0-rc38` pointe
+exactement sur `46c44eb`; son run release `30550407042` est encore en cours.
+Ne pas qualifier `rc38` avant le succès et la publication de ses six actifs.
+Ensuite :
+
+1. attendre les six actifs de `rc38`, surtout Windows et Linux CUDA ;
+2. forcer sur la RTX Windows l'installation publique sans zstd WinGet dans le
+   `PATH`, puis vérifier manifeste, helper, TUF et identité persistante ;
+3. installer le même runtime sur le Mac mini ;
+4. démarrer RTX puis Mac pour tester l'ordre inverse, la sélection autonome
+   des spans et la route complète ;
+5. refaire Request Agent, SSE, abort et gros contexte depuis les runtimes
+   publiés ;
+6. ajouter l'A40 RunPod seulement après cette baseline afin de prouver une
+   seconde couverture et le relay TCP-only, puis exécuter churn et kills.
