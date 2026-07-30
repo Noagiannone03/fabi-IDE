@@ -166,6 +166,7 @@ export function buildWorkerEnv(
     env.FABI_CATALOG_DHT_LISTEN_ADDRESS = '/ip4/127.0.0.1/tcp/0';
     env.FABI_SWARM_V3_MODE = 'active';
     env.FABI_SWARM_V3_PLACEMENT = 'autonomous';
+    env.FABI_SWARM_V3_COORDINATION_MODE = 'client';
     env.FABI_SWARM_V3_STATE_DIR = join(stateRoot, 'registry');
     env.FABI_SWARM_V3_FENCE_DB = join(stateRoot, 'fencing.sqlite3');
     env.FABI_MODEL_REGISTRY_ROOT = bootstrap.rootPath;

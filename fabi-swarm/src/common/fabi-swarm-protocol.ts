@@ -50,6 +50,8 @@ export interface SwarmEntry {
     schedulerUrl: string;
     /** EndpointId Iroh V3 (ou PeerID Lattica historique pour lecture seulement). */
     schedulerPeer: string | null;
+    /** Identité SHA-256 canonique du manifeste servi par ce swarm V3. */
+    modelSwarmId?: string;
     /** Transport réellement annoncé par le scheduler. */
     networkTransport?: 'iroh' | 'lattica';
     /** Profil V3 public complet ; il ne contient aucun token relais. */
@@ -104,6 +106,39 @@ export interface WorkerState {
     weightsFilesDone?: number;
     weightsFilesTotal?: number;
     weightsCurrentFile?: string;
+}
+
+export type RequestAgentKind = 'stopped' | 'starting' | 'ready' | 'error';
+
+/** Frontend OpenAI local : le client choisit sa route depuis la DHT V3. */
+export interface RequestAgentState {
+    kind: RequestAgentKind;
+    swarmId?: string;
+    pid?: number;
+    /** Origine loopback, sans suffixe `/v1`. */
+    baseUrl?: string;
+    message?: string;
+}
+
+export type RequestAgentPhase =
+    | 'planning' | 'authorizing' | 'reserving' | 'prefilling' | 'decoding'
+    | 'recovering' | 'replaying' | 'completed' | 'failed' | 'aborted' | 'released';
+
+export interface RequestAgentPhaseEvent {
+    eventId: number;
+    requestId: string;
+    phase: RequestAgentPhase;
+    occurredAtMs: number;
+    epoch?: number;
+    routeId?: string;
+    detail?: string;
+}
+
+/** Snapshot reconnectable du journal de phases local. */
+export interface RequestAgentActivity {
+    lastEventId: number;
+    activeRequests: RequestAgentPhaseEvent[];
+    latest?: RequestAgentPhaseEvent;
 }
 
 /** État de connexion dérivé (worker + état swarm du registry) — pilote l'écran de connexion. */
@@ -173,6 +208,10 @@ export interface FabiSwarmClient {
     onSwarmsChanged(swarms: SwarmEntry[]): void;
     /** Le worker local a changé d'état/étape. */
     onWorkerStateChanged(state: WorkerState): void;
+    /** Le Request Agent local a changé de cycle de vie. */
+    onRequestAgentStateChanged(state: RequestAgentState): void;
+    /** Les phases de requête locales ont changé. */
+    onRequestAgentActivityChanged(activity: RequestAgentActivity): void;
     /** Le swarm actif (celui qu'on consomme) a changé → re-câbler le provider. */
     onActiveSwarmChanged(swarm: SwarmEntry | undefined): void;
     /** Progression de l'install du runtime. */
@@ -266,6 +305,12 @@ export interface FabiSwarmService {
 
     /** État courant du worker. */
     getWorkerState(): Promise<WorkerState>;
+    /** État courant du frontend OpenAI local. */
+    getRequestAgentState(): Promise<RequestAgentState>;
+    /** Attend l'écoute réelle du Request Agent (réveillé par son fichier atomique). */
+    waitForRequestAgent(): Promise<RequestAgentState>;
+    /** Dernier snapshot reconnectable des phases du Request Agent. */
+    getRequestAgentActivity(): Promise<RequestAgentActivity>;
     /** État de connexion dérivé courant (worker + scheduler). */
     getConnection(): Promise<ConnectionInfo>;
     /**

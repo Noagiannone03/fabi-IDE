@@ -3,7 +3,8 @@ import { Emitter, Event } from '@theia/core';
 import { RemoteConnectionProvider, ServiceConnectionProvider } from '@theia/core/lib/browser';
 import {
     FabiSwarmService, FabiSwarmClient, FABI_SWARM_SERVICE_PATH,
-    SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo, FabiMetrics
+    SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo, FabiMetrics,
+    RequestAgentActivity, RequestAgentState
 } from '../common/fabi-swarm-protocol';
 
 /**
@@ -19,6 +20,8 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
 
     protected readonly swarmsEmitter = new Emitter<SwarmEntry[]>();
     protected readonly workerEmitter = new Emitter<WorkerState>();
+    protected readonly requestAgentEmitter = new Emitter<RequestAgentState>();
+    protected readonly requestAgentActivityEmitter = new Emitter<RequestAgentActivity>();
     protected readonly activeEmitter = new Emitter<SwarmEntry | undefined>();
     protected readonly runtimeEmitter = new Emitter<RuntimeStatus>();
     protected readonly connectionEmitter = new Emitter<ConnectionInfo>();
@@ -27,6 +30,8 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     /** Dernières valeurs poussées (pour un rendu immédiat à l'attache). */
     swarms: SwarmEntry[] = [];
     worker: WorkerState = { kind: 'stopped' };
+    requestAgent: RequestAgentState = { kind: 'stopped' };
+    requestAgentActivity: RequestAgentActivity = { lastEventId: 0, activeRequests: [] };
     active: SwarmEntry | undefined;
     runtime: RuntimeStatus | undefined;
     connection: ConnectionInfo | undefined;
@@ -34,6 +39,9 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
 
     readonly onSwarmsChangedEvent: Event<SwarmEntry[]> = this.swarmsEmitter.event;
     readonly onWorkerChangedEvent: Event<WorkerState> = this.workerEmitter.event;
+    readonly onRequestAgentChangedEvent: Event<RequestAgentState> = this.requestAgentEmitter.event;
+    readonly onRequestAgentActivityChangedEvent: Event<RequestAgentActivity> =
+        this.requestAgentActivityEmitter.event;
     readonly onActiveChangedEvent: Event<SwarmEntry | undefined> = this.activeEmitter.event;
     readonly onRuntimeChangedEvent: Event<RuntimeStatus> = this.runtimeEmitter.event;
     readonly onConnectionChangedEvent: Event<ConnectionInfo> = this.connectionEmitter.event;
@@ -54,6 +62,14 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     onWorkerStateChanged(state: WorkerState): void {
         this.worker = state;
         this.workerEmitter.fire(state);
+    }
+    onRequestAgentStateChanged(state: RequestAgentState): void {
+        this.requestAgent = state;
+        this.requestAgentEmitter.fire(state);
+    }
+    onRequestAgentActivityChanged(activity: RequestAgentActivity): void {
+        this.requestAgentActivity = activity;
+        this.requestAgentActivityEmitter.fire(activity);
     }
     onActiveSwarmChanged(swarm: SwarmEntry | undefined): void {
         this.active = swarm;

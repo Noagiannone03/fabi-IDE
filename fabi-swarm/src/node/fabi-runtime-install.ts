@@ -10,28 +10,31 @@
 //   4. Vérif SHA-256 (`.sha256`).
 //   5. Extraction `--strip-components=1` → bin/ + runtime/ sous l'install root.
 //   6. Relocalisation : `__FABI_INSTALL_ROOT__` → vrai chemin dans runtime/.
-//   7. Le binaire parallax vit dans `runtime/parallax-venv/bin/parallax`
-//      (`Scripts/parallax.exe` sur Windows).
+//   7. Sur POSIX, les entrypoints du venv sont exécutés directement. Sous
+//      Windows, le Python embarqué exécute les modules avec `-m` : les launchers
+//      distlib `.exe` mémorisent le chemin de build et ne sont pas relocalisables.
 //
 // Module PLAIN (sans inversify) → réutilisable depuis electron-main (launcher)
 // comme depuis le service backend (bouton « Installer le moteur »).
 
 import { spawn } from 'child_process';
+import { once } from 'events';
 import {
-    createReadStream, createWriteStream, existsSync, mkdirSync,
+    chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync,
     readFileSync, renameSync, rmSync, statSync, writeFileSync
 } from 'fs';
 import { createHash } from 'crypto';
 import { homedir, platform as osPlatform, arch as osArch, tmpdir } from 'os';
 import { isAbsolute, join } from 'path';
+import { Writable } from 'stream';
 
 export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
-export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc32';
-export const QUALIFIED_OPENCODE_COMMIT = 'c1406947c364d0cbd39b17177342408d674cb1a4';
-export const QUALIFIED_PARALLAX_COMMIT = '591cc3b8f338a763fb0540cc4d5be36097c484be';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc37';
+export const QUALIFIED_OPENCODE_COMMIT = 'b7ece1419fddb21226e9ca1107825265feed86b1';
+export const QUALIFIED_PARALLAX_COMMIT = '4b4add07aab595eeb922b8705821d85d82b0b65e';
 export const QUALIFIED_NATIVE_NETWORK_VERSION = '0.1.0';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
 
@@ -59,11 +62,44 @@ export interface PlatformInfo {
     artifact: string;
 }
 
+/** Petit actif autonome publié à côté du tarball pour les machines sans zstd. */
+export function zstdHelperArtifactFor(platform: PlatformInfo): string {
+    const suffix = platform.os === 'windows' ? '.exe' : '';
+    return `fabi-unzstd-${platform.tag}${suffix}`;
+}
+
 export interface InstallProgress {
     phase: 'download' | 'verify' | 'extract' | 'done';
     /** 0-100 pour la phase download, sinon indicatif. */
     percent: number;
     message?: string;
+}
+
+/** Déduplique les callbacks réseau : au plus un événement par pourcentage/message. */
+export function createDownloadProgressReporter(
+    onProgress: (progress: InstallProgress) => void
+): (percent: number, message?: string) => void {
+    let lastPercent = -1;
+    let lastMessage: string | undefined;
+    return (percent: number, message?: string): void => {
+        const bounded = Math.max(0, Math.min(100, Math.round(percent)));
+        if (bounded === lastPercent && message === lastMessage) {
+            return;
+        }
+        lastPercent = bounded;
+        lastMessage = message;
+        onProgress({ phase: 'download', percent: bounded, message });
+    };
+}
+
+/** Commande exécutable du runtime, indépendante du type d'entrypoint de l'OS. */
+export interface RuntimeCommand {
+    binary: string;
+    argsPrefix: string[];
+}
+
+export interface LocatedRuntimeCommand extends RuntimeCommand {
+    location: 'bundled' | 'cached';
 }
 
 /** Version choisie par le produit. Une surcharge explicite reste disponible en labo. */
@@ -176,12 +212,172 @@ export function installRoot(): string {
     return join(homedir(), '.local', 'share', 'fabi');
 }
 
-/** Chemin du binaire parallax dans une racine d'install (layout venv). */
+function runtimePythonIn(
+    root: string,
+    runtimePlatform: NodeJS.Platform = osPlatform()
+): string | undefined {
+    const candidate = runtimePlatform === 'win32'
+        ? join(root, 'runtime', 'parallax-venv', 'Scripts', 'python.exe')
+        : join(root, 'runtime', 'parallax-venv', 'bin', 'python');
+    return existsSync(candidate) ? candidate : undefined;
+}
+
+/** Commande Parallax relocalisable dans une racine d'installation. */
+export function parallaxCommandIn(
+    root: string,
+    runtimePlatform: NodeJS.Platform = osPlatform()
+): RuntimeCommand | undefined {
+    if (runtimePlatform === 'win32') {
+        const python = runtimePythonIn(root, runtimePlatform);
+        return python ? { binary: python, argsPrefix: ['-m', 'parallax.cli'] } : undefined;
+    }
+    const entrypoint = join(root, 'runtime', 'parallax-venv', 'bin', 'parallax');
+    return existsSync(entrypoint) ? { binary: entrypoint, argsPrefix: [] } : undefined;
+}
+
+/** Commande du frontend OpenAI local, relocalisable sous Windows. */
+export function requestAgentCommandIn(
+    root: string,
+    runtimePlatform: NodeJS.Platform = osPlatform()
+): RuntimeCommand | undefined {
+    if (runtimePlatform === 'win32') {
+        const python = runtimePythonIn(root, runtimePlatform);
+        return python
+            ? {
+                binary: python,
+                argsPrefix: ['-m', 'backend.server.request_agent_frontend']
+            }
+            : undefined;
+    }
+    const entrypoint = join(root, 'runtime', 'parallax-venv', 'bin', 'fabi-request-agent');
+    return existsSync(entrypoint) ? { binary: entrypoint, argsPrefix: [] } : undefined;
+}
+
+/** Compatibilité API : renvoie l'exécutable réel, Python sous Windows. */
 export function parallaxBinaryIn(root: string): string | undefined {
-    const candidates = osPlatform() === 'win32'
-        ? [join(root, 'runtime', 'parallax-venv', 'Scripts', 'parallax.exe')]
-        : [join(root, 'runtime', 'parallax-venv', 'bin', 'parallax')];
-    return candidates.find(existsSync);
+    return parallaxCommandIn(root)?.binary;
+}
+
+/** Compatibilité API : renvoie l'exécutable réel, Python sous Windows. */
+export function requestAgentBinaryIn(root: string): string | undefined {
+    return requestAgentCommandIn(root)?.binary;
+}
+
+const MANAGED_RUNTIME_PATHS = ['bin', 'runtime', 'MANIFEST', '.fabi-managed-paths'];
+
+/** Valide le contrat de mise à jour : aucun état utilisateur ne peut devenir géré. */
+export function managedRuntimePathsIn(stagingRoot: string): string[] {
+    const manifest = join(stagingRoot, '.fabi-managed-paths');
+    if (!existsSync(manifest) || !statSync(manifest).isFile()) {
+        throw new Error('manifeste des chemins runtime gérés absent');
+    }
+    const paths = readFileSync(manifest, 'utf8')
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean);
+    if (
+        paths.length !== MANAGED_RUNTIME_PATHS.length
+        || new Set(paths).size !== paths.length
+        || MANAGED_RUNTIME_PATHS.some(required => !paths.includes(required))
+    ) {
+        throw new Error(
+            `chemins runtime gérés invalides : attendu ${MANAGED_RUNTIME_PATHS.join(', ')}`
+        );
+    }
+    for (const relative of paths) {
+        if (
+            isAbsolute(relative)
+            || relative === '.'
+            || relative === '..'
+            || relative.includes('/')
+            || relative.includes('\\')
+            || !existsSync(join(stagingRoot, relative))
+        ) {
+            throw new Error(`chemin runtime géré invalide : ${relative}`);
+        }
+    }
+    return paths;
+}
+
+/**
+ * Active uniquement les fichiers possédés par une release. Les identités
+ * réseau, racines TUF, bases DHT/fencing et journaux locaux restent dans la
+ * racine d'installation. Toute faute restaure les anciens chemins gérés.
+ */
+export async function activateManagedRuntime(
+    stagingRoot: string,
+    finalRoot: string,
+    validate: (root: string) => Promise<void> = validateRuntimeModules
+): Promise<string | undefined> {
+    const managedPaths = managedRuntimePathsIn(stagingRoot);
+    mkdirSync(finalRoot, { recursive: true });
+    const backup = `${finalRoot}.backup-${Date.now()}-${process.pid}`;
+    mkdirSync(backup, { recursive: true });
+    const previous: string[] = [];
+    const activated: string[] = [];
+    try {
+        for (const relative of managedPaths) {
+            const current = join(finalRoot, relative);
+            if (existsSync(current)) {
+                renameSync(current, join(backup, relative));
+                previous.push(relative);
+            }
+        }
+        for (const relative of managedPaths) {
+            renameSync(join(stagingRoot, relative), join(finalRoot, relative));
+            activated.push(relative);
+        }
+        await validate(finalRoot);
+    } catch (error) {
+        for (const relative of activated) {
+            rmSync(join(finalRoot, relative), { recursive: true, force: true });
+        }
+        for (const relative of previous) {
+            renameSync(join(backup, relative), join(finalRoot, relative));
+        }
+        rmSync(backup, { recursive: true, force: true });
+        throw error;
+    }
+    if (previous.length === 0) {
+        rmSync(backup, { recursive: true, force: true });
+        return undefined;
+    }
+    return backup;
+}
+
+/** Vérifie les deux modules réellement lancés par le produit après activation. */
+async function validateRuntimeModules(root: string): Promise<void> {
+    const python = runtimePythonIn(root);
+    if (!python) {
+        throw new Error('Python du runtime relocalisé absent');
+    }
+    const source = [
+        'from parallax.cli import main as parallax_main',
+        'from backend.server.request_agent_frontend import main as request_agent_main'
+    ].join('; ');
+    await new Promise<void>((resolve, reject) => {
+        const child = spawn(python, ['-c', source], {
+            stdio: ['ignore', 'ignore', 'pipe'],
+            windowsHide: true
+        });
+        let stderr = '';
+        child.stderr?.on('data', chunk => {
+            if (stderr.length < 4096) {
+                stderr += chunk.toString('utf8');
+            }
+        });
+        child.once('error', reject);
+        child.once('close', code => {
+            if (code === 0) {
+                resolve();
+            } else {
+                reject(new Error(
+                    `modules runtime impossibles à importer (code ${code})`
+                    + (stderr.trim() ? ` : ${stderr.trim().slice(-2048)}` : '')
+                ));
+            }
+        });
+    });
 }
 
 /** Chemin du binaire OpenCode/Fabi dans le layout exact d'une release. */
@@ -192,26 +388,51 @@ export function fabiCodeBinaryIn(root: string): string | undefined {
 }
 
 /** Localise parallax sans rien télécharger : override env > bundlé > install partagé. */
-export function findParallax(): { binary: string; location: 'bundled' | 'cached' } | undefined {
+export function findParallax(): LocatedRuntimeCommand | undefined {
     // Un chemin explicite est un override développeur : il peut pointer vers un
     // checkout local sans MANIFEST de release.
     if (process.env.FABI_RUNTIME_DIR) {
-        const bin = parallaxBinaryIn(process.env.FABI_RUNTIME_DIR);
-        if (bin) {
-            return { binary: bin, location: 'cached' };
+        const command = parallaxCommandIn(process.env.FABI_RUNTIME_DIR);
+        if (command) {
+            return { ...command, location: 'cached' };
         }
     }
     const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
     if (resourcesPath) {
         const root = join(resourcesPath, 'runtime');
-        const bin = parallaxBinaryIn(root);
-        if (bin && runtimeManifestIsQualified(root)) {
-            return { binary: bin, location: 'bundled' };
+        const command = parallaxCommandIn(root);
+        if (command && runtimeManifestIsQualified(root)) {
+            return { ...command, location: 'bundled' };
         }
     }
     const root = installRoot();
-    const bin = parallaxBinaryIn(root);
-    return bin && runtimeManifestIsQualified(root) ? { binary: bin, location: 'cached' } : undefined;
+    const command = parallaxCommandIn(root);
+    return command && runtimeManifestIsQualified(root)
+        ? { ...command, location: 'cached' }
+        : undefined;
+}
+
+/** Localise le Request Agent dans le même runtime qualifié que le worker. */
+export function findRequestAgent(): LocatedRuntimeCommand | undefined {
+    if (process.env.FABI_RUNTIME_DIR) {
+        const command = requestAgentCommandIn(process.env.FABI_RUNTIME_DIR);
+        if (command) {
+            return { ...command, location: 'cached' };
+        }
+    }
+    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+    if (resourcesPath) {
+        const root = join(resourcesPath, 'runtime');
+        const command = requestAgentCommandIn(root);
+        if (command && runtimeManifestIsQualified(root)) {
+            return { ...command, location: 'bundled' };
+        }
+    }
+    const root = installRoot();
+    const command = requestAgentCommandIn(root);
+    return command && runtimeManifestIsQualified(root)
+        ? { ...command, location: 'cached' }
+        : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,58 +444,168 @@ export async function resolveVersion(): Promise<string> {
     return configuredRuntimeVersion();
 }
 
+export interface DownloadRetryPolicy {
+    attempts?: number;
+    delayMs?: (failedAttempt: number) => number;
+}
+
+class NonRetryableDownloadError extends Error {
+}
+
 /**
- * Télécharge `url` vers `dest` avec REPRISE (HTTP Range) : si un `.part` existe
- * déjà, on reprend à partir de sa taille. `If-Range` (via ETag) garantit qu'on
- * ne concatène pas deux versions différentes.
+ * Télécharge `url` vers `dest` avec retries bornés et reprise RFC 9110.
+ * Une portion n'est réutilisée qu'avec un ETag fort envoyé dans `If-Range`.
+ * Sans validateur, ou si le serveur renvoie 200, le fichier est réécrit.
  */
-async function downloadResumable(
+export async function downloadResumable(
+    url: string,
+    dest: string,
+    onBytes: (received: number, total: number) => void,
+    retryPolicy: DownloadRetryPolicy = {}
+): Promise<void> {
+    const attempts = Math.max(1, Math.floor(retryPolicy.attempts ?? 6));
+    const delayMs = retryPolicy.delayMs ?? (attempt => Math.min(10_000, attempt * 2_000));
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            await downloadAttempt(url, dest, onBytes);
+            return;
+        } catch (error) {
+            lastError = error;
+            if (error instanceof NonRetryableDownloadError || attempt === attempts) {
+                break;
+            }
+            const delay = Math.max(0, Math.floor(delayMs(attempt)));
+            if (delay > 0) {
+                await new Promise<void>(resolve => setTimeout(resolve, delay));
+            }
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+async function downloadAttempt(
     url: string,
     dest: string,
     onBytes: (received: number, total: number) => void
 ): Promise<void> {
     const partFile = dest + '.part';
+    const etagFile = partFile + '.etag';
     let existing = 0;
     if (existsSync(partFile)) {
         try { existing = statSync(partFile).size; } catch { existing = 0; }
     }
+    let etag: string | undefined;
+    if (existing > 0 && existsSync(etagFile)) {
+        try {
+            const candidate = readFileSync(etagFile, 'utf8').trim();
+            if (candidate && !candidate.startsWith('W/')) {
+                etag = candidate;
+            }
+        } catch {
+            etag = undefined;
+        }
+    }
+    // RFC 9110 exige un validateur fort pour If-Range. Sans lui, ne jamais
+    // concaténer une ancienne portion avec une représentation potentiellement
+    // différente.
+    if (existing > 0 && !etag) {
+        rmSync(partFile, { force: true });
+        existing = 0;
+    }
     const headers: Record<string, string> = {};
-    if (existing > 0) {
+    if (existing > 0 && etag) {
         headers['Range'] = `bytes=${existing}-`;
+        headers['If-Range'] = etag;
     }
     const res = await fetch(url, { headers });
     // 200 = pas de reprise (on repart de zéro) ; 206 = reprise acceptée.
     if (res.status === 200 && existing > 0) {
-        existing = 0; // le serveur ignore Range → on réécrit tout
+        existing = 0;
     } else if (res.status !== 200 && res.status !== 206) {
-        throw new Error(`téléchargement échoué (${res.status}) : ${url}`);
+        await res.body?.cancel().catch(() => undefined);
+        const ErrorType = res.status >= 400
+            && res.status < 500
+            && res.status !== 408
+            && res.status !== 429
+            ? NonRetryableDownloadError
+            : Error;
+        throw new ErrorType(`téléchargement échoué (${res.status}) : ${url}`);
+    }
+    if (res.status === 206) {
+        const contentRange = res.headers.get('content-range') ?? '';
+        if (!contentRange.startsWith(`bytes ${existing}-`)) {
+            await res.body?.cancel().catch(() => undefined);
+            rmSync(partFile, { force: true });
+            rmSync(etagFile, { force: true });
+            throw new Error(`Content-Range incohérent pour ${url}`);
+        }
     }
     if (!res.body) {
         throw new Error('réponse sans corps : ' + url);
+    }
+    if (res.status === 200) {
+        const responseEtag = res.headers.get('etag')?.trim();
+        if (responseEtag && !responseEtag.startsWith('W/')) {
+            writeFileSync(etagFile, responseEtag, 'utf8');
+        } else {
+            rmSync(etagFile, { force: true });
+        }
     }
     const lenHeader = Number(res.headers.get('content-length') ?? 0);
     const total = existing + lenHeader;
     let received = existing;
     const out = createWriteStream(partFile, { flags: existing > 0 ? 'a' : 'w' });
+    let outputError: Error | undefined;
+    out.on('error', error => {
+        outputError = error;
+    });
     const reader = res.body.getReader();
     try {
         for (;;) {
             const { done, value } = await reader.read();
+            if (outputError) {
+                throw outputError;
+            }
             if (done) {
                 break;
             }
-            out.write(Buffer.from(value));
+            await writeWithBackpressure(out, Buffer.from(value));
             received += value.length;
             onBytes(received, total);
         }
-    } finally {
-        out.end();
+        if (outputError) {
+            throw outputError;
+        }
+    } catch (error) {
+        await reader.cancel().catch(() => undefined);
+        out.destroy();
+        if (!out.closed) {
+            await once(out, 'close').catch(() => undefined);
+        }
+        throw error;
     }
-    await new Promise<void>((resolve, reject) => {
-        out.on('finish', () => resolve());
-        out.on('error', reject);
-    });
+    const finished = once(out, 'finish');
+    try {
+        out.end();
+        await finished;
+    } catch (error) {
+        out.destroy();
+        throw error;
+    }
     renameSync(partFile, dest);
+    rmSync(etagFile, { force: true });
+}
+
+/**
+ * Respecte le contrat Writable de Node : après `write() === false`, attendre
+ * `drain` avant de lire le prochain chunk évite de bufferiser une archive de
+ * plusieurs Gio en RAM.
+ */
+export async function writeWithBackpressure(destination: Writable, chunk: Buffer): Promise<void> {
+    if (!destination.write(chunk)) {
+        await once(destination, 'drain');
+    }
 }
 
 /** Concatène plusieurs fichiers en un seul (réassemblage des parts). */
@@ -306,25 +637,20 @@ function sha256File(path: string): Promise<string> {
 }
 
 /** Extraction tar.zst SANS shell (arg arrays) — réplique install.sh/.ps1. */
-function extractTarZst(archive: string, destDir: string): Promise<void> {
+function extractTarZst(archive: string, destDir: string, zstdBinary: string): Promise<void> {
     return new Promise<void>((resolve, reject) => {
         const run = (cmd: string, args: string[], next: () => void) => {
             const child = spawn(cmd, args, { stdio: 'ignore' });
             child.on('error', reject);
             child.on('close', code => code === 0 ? next() : reject(new Error(`${cmd} a échoué (code ${code})`)));
         };
-        if (osPlatform() === 'win32') {
-            // zstd -d → .tar puis tar -xf (zstd.exe requis, cf. install.ps1).
-            const tarPath = archive.replace(/\.zst$/, '');
-            run('zstd', ['-d', archive, '-o', tarPath], () => {
-                run('tar', ['-xf', tarPath, '-C', destDir, '--strip-components=1'], () => {
-                    try { rmSync(tarPath, { force: true }); } catch { /* ignore */ }
-                    resolve();
-                });
+        const tarPath = archive.replace(/\.zst$/, '');
+        run(zstdBinary, ['-q', '-f', '-d', archive, '-o', tarPath], () => {
+            run('tar', ['-xf', tarPath, '-C', destDir, '--strip-components=1'], () => {
+                try { rmSync(tarPath, { force: true }); } catch { /* ignore */ }
+                resolve();
             });
-        } else {
-            run('tar', ['--use-compress-program=unzstd', '-xf', archive, '-C', destDir, '--strip-components=1'], resolve);
-        }
+        });
     });
 }
 
@@ -388,10 +714,11 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
     rmSync(work, { recursive: true, force: true });
     mkdirSync(work, { recursive: true });
     const archive = join(work, plat.artifact);
+    const reportDownload = createDownloadProgressReporter(onProgress);
 
     try {
         // 1. Asset splitté ? (manifeste .parts) → parties + réassemblage.
-        onProgress({ phase: 'download', percent: 0, message: 'téléchargement du moteur…' });
+        reportDownload(0, 'téléchargement du moteur…');
         const partsRes = await fetch(`${tarballUrl}.parts`);
         if (partsRes.ok) {
             const list = (await partsRes.text()).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
@@ -401,11 +728,10 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
                 const partPath = join(work, list[i]);
                 await downloadResumable(`${base}/${list[i]}`, partPath, (recv, tot) => {
                     const within = tot > 0 ? recv / tot : 0;
-                    onProgress({
-                        phase: 'download',
-                        percent: Math.round(((i + within) / list.length) * 100),
-                        message: `partie ${i + 1}/${list.length}`
-                    });
+                    reportDownload(
+                        ((i + within) / list.length) * 100,
+                        `partie ${i + 1}/${list.length}`
+                    );
                 });
                 partPaths.push(partPath);
             }
@@ -413,7 +739,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
             partPaths.forEach(p => { try { rmSync(p, { force: true }); } catch { /* ignore */ } });
         } else {
             await downloadResumable(tarballUrl, archive, (recv, tot) => {
-                onProgress({ phase: 'download', percent: tot > 0 ? Math.round((recv / tot) * 100) : 0 });
+                reportDownload(tot > 0 ? (recv / tot) * 100 : 0);
             });
         }
 
@@ -432,11 +758,37 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
             throw new Error(`SHA256 incohérent — fichier corrompu ou altéré (attendu ${expectedSha}, reçu ${actualSha})`);
         }
 
-        // 3. Extraction atomique : staging → rename.
+        // 3. Décompresseur autonome : zstd n'est pas présent sur un macOS neuf
+        // et ne doit jamais nécessiter Homebrew/apt/winget. Comme le tarball,
+        // ce petit actif est refusé si son sidecar SHA256 manque ou diverge.
+        const helperArtifact = zstdHelperArtifactFor(plat);
+        const helperUrl = `${base}/${helperArtifact}`;
+        const helperPath = join(work, helperArtifact);
+        reportDownload(100, 'préparation du décompresseur…');
+        await downloadResumable(helperUrl, helperPath, () => undefined);
+        const helperShaRes = await fetch(`${helperUrl}.sha256`);
+        if (!helperShaRes.ok) {
+            throw new Error(`somme SHA256 absente pour ${helperArtifact} (${helperShaRes.status})`);
+        }
+        const expectedHelperSha = (await helperShaRes.text()).trim().split(/\s+/)[0]?.toLowerCase();
+        if (!expectedHelperSha || !/^[0-9a-f]{64}$/.test(expectedHelperSha)) {
+            throw new Error(`somme SHA256 invalide pour ${helperArtifact}`);
+        }
+        const actualHelperSha = (await sha256File(helperPath)).toLowerCase();
+        if (expectedHelperSha !== actualHelperSha) {
+            throw new Error(
+                `SHA256 du décompresseur incohérent (attendu ${expectedHelperSha}, reçu ${actualHelperSha})`
+            );
+        }
+        if (plat.os !== 'windows') {
+            chmodSync(helperPath, 0o700);
+        }
+
+        // 4. Extraction atomique : staging → rename.
         onProgress({ phase: 'extract', percent: 100, message: 'extraction…' });
         rmSync(staging, { recursive: true, force: true });
         mkdirSync(staging, { recursive: true });
-        await extractTarZst(archive, staging);
+        await extractTarZst(archive, staging, helperPath);
 
         const binName = osPlatform() === 'win32' ? join('bin', 'fabi.exe') : join('bin', 'fabi');
         if (!existsSync(join(staging, binName))) {
@@ -452,26 +804,16 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
             accel: plat.accel
         });
         relocateBundledRuntime(staging, root);
-        if (!parallaxBinaryIn(staging)) {
-            throw new Error('binaire parallax introuvable après extraction — layout inattendu');
+        if (!parallaxCommandIn(staging)) {
+            throw new Error('commande parallax introuvable après extraction — layout inattendu');
+        }
+        if (!requestAgentCommandIn(staging)) {
+            throw new Error('commande fabi-request-agent introuvable après extraction — layout inattendu');
         }
 
-        if (existsSync(root)) {
-            const backup = root + '.backup-' + process.pid;
-            rmSync(backup, { recursive: true, force: true });
-            renameSync(root, backup);
-            try {
-                renameSync(staging, root);
-            } catch (error) {
-                renameSync(backup, root);
-                throw error;
-            }
-            rmSync(backup, { recursive: true, force: true });
-        } else {
-            renameSync(staging, root);
-        }
+        await activateManagedRuntime(staging, root);
 
-        const bin = parallaxBinaryIn(root)!;
+        const bin = parallaxCommandIn(root)!.binary;
         onProgress({ phase: 'done', percent: 100, message: 'moteur prêt' });
         return bin;
     } finally {

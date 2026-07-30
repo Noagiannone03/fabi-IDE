@@ -4867,3 +4867,266 @@ Prochaines étapes :
    commis ;
 4. intégrer les phases Request Agent dans l'IDE ;
 5. publier et qualifier le runtime au labo.
+
+## Replanification froide exacte et journal durable du 29 juillet 2026
+
+Le moteur `853a3db411e3c76f8e71ae227fba53760302a3fe`, poussé sur
+`codex/swarm-protocol-v3`, ferme localement la boucle de reprise du Request Agent. Il n'utilise
+plus la route worker-disjointe pré-réservée de l'ancien chemin centralisé : après une panne, le
+client local reconstruit une nouvelle route complète à partir d'un snapshot DHT frais.
+
+### Ce qui est réellement implémenté
+
+Le nouveau `SqliteRecoveryJournal` est un journal local borné :
+
+- transactions `BEGIN IMMEDIATE`, mode WAL et `synchronous=FULL` ;
+- fichier owner-only sur POSIX ;
+- IDs exacts du prompt et de chaque token de sortie, positions et checksums ;
+- commit d'un lot de tokens avant sa publication dans le flux SSE ;
+- réouverture après redémarrage, détection de corruption, limites de requêtes et de tokens ;
+- abandon explicite des générations inachevées trouvées au démarrage.
+
+Le chemin de génération capture le prompt depuis le RPC de tokenisation authentifié de la vraie
+tête avant de lancer l'inférence. Une mort pendant le prefill, avant le premier token, laisse donc
+déjà assez d'état durable pour reconstruire la requête.
+
+`RequestAgentRouteRuntime.replan_cold()` réalise ensuite :
+
+1. conservation du même permit de contribution et keepalive explicite de ce permit ;
+2. exclusion cumulative de tous les workers de la route défaillante ;
+3. nouvelle lecture DHT, toujours vérifiée contre le bundle TUF signé ;
+4. allocation d'un nouvel epoch ;
+5. planification et réservation d'une nouvelle couverture complète ;
+6. release et fencing best effort de l'ancienne route ;
+7. replay de `prompt original || tokens de sortie commis` via
+   `/inference/v1/chat-replay`.
+
+Une seconde panne pendant le replay peut déclencher un nouveau replan : il n'existe plus de
+backup unique consommable. Si le réseau ne possède aucune autre couverture complète, le client
+reçoit une erreur typée et les ressources sont libérées ; Fabi ne fabrique jamais une
+continuation depuis du texte re-tokenisé ou un KV partiel.
+
+La garantie exacte reste limitée aux contrats déterministes actuellement qualifiés
+(`temperature=0`, ou contrat exact équivalent). Les requêtes échantillonnées restent
+`RESTARTABLE` tant qu'un état RNG portable entre vLLM, MLX et SGLang n'est pas défini.
+
+### Rapport avec Petals
+
+Le code officiel Petals au commit `22afba6` a été relu, en particulier
+`petals/client/inference_session.py`. Petals garde chez le client les hidden states d'entrée de
+chaque span ; lors d'une panne, il bannit le peer, reconstruit le chemin depuis la DHT et renvoie
+l'historique au premier span remplacé afin de régénérer son cache d'attention. Il ne copie donc
+pas directement un KV privé depuis le serveur mort.
+
+Fabi adopte immédiatement la propriété la plus importante de ce design — replanification côté
+client sans backup réservé — mais conserve les tokens comme journal universel. Cette base
+fonctionne entre workers hétérogènes et ne suppose pas que vLLM/CUDA et MLX partagent leurs
+layouts KV. Un futur chemin rapide pourra négocier un replay d'activations ou un connecteur KV
+seulement lorsque modèle, révision, plage de couches, dtype, backend et format sont compatibles.
+L'interface officielle KV Connector V1 de vLLM, NIXL et LMCache sont des bases pertinentes pour
+RTX vers RTX ; elles ne sont pas considérées comme une solution validée pour RTX vers MLX.
+
+### Validation exacte
+
+- suite Python complète : `788 passed, 7 skipped` ;
+- sous-ensemble exact du workflow natif : `232 passed` ;
+- Ruff sur tous les fichiers modifiés et `git diff --check` verts ;
+- E2E local decode : A publie un token puis tombe, B rejoue et continue sans doublon ;
+- E2E local prefill : A tombe sans publier de token, B reconstruit puis termine ;
+- persistance SQLite, corruption, capacité, reprise après réouverture et replans successifs
+  couverts ;
+- le workflow natif multi-OS `30442659106` est encore en cours au moment de cette écriture.
+
+Les deux workflows en échec précédents ont identifié des dépendances hermétiques réelles :
+`30440691116` manquait `aiohttp`, puis `30441095223` déclenchait l'import eager de ModelScope.
+Le workflow installe désormais la dépendance requise et ModelScope n'est importé que si ce
+backend optionnel est sélectionné. Les étapes Rust, DHT native et wheels des runs précédents
+étaient déjà vertes.
+
+### Limites et reprise exacte
+
+Ce jalon n'est pas encore publié ni déployé. Le Mac mini et la RTX forment actuellement une seule
+pipeline complète ; leur duo ne peut pas prouver un failover. La prochaine qualification doit
+ajouter un troisième worker ou une seconde couverture complète, éventuellement via RunPod avec
+un coût inférieur à 1 EUR/h, puis tester :
+
+1. exposition dans l'IDE des phases `planning`, `reserving`, `prefilling`, `recovering`,
+   `replaying`, `ready` et des erreurs typées ;
+2. publication du runtime, clé opérateur TUF et provisioning relay sur installation neuve ;
+3. installation Mac mini + RTX et confirmation des versions exactes ;
+4. NAT sans route Tailscale produit, chemin direct/relay et mesures ;
+5. kill réel de la tête, d'un worker milieu et de la queue pendant prefill puis decode ;
+6. pannes successives, retour tardif de l'ancienne epoch, abort et absence de couverture ;
+7. contexte OpenCode d'environ 12 220 tokens d'entrée + 4 096 réservés, avec TTFT, débit,
+   mémoire et KV.
+
+Le replay d'activations façon Petals est désormais une optimisation planifiée, pas une condition
+de correction. Il ne doit être ajouté qu'après cette qualification matérielle, avec négociation
+de compatibilité, quotas mémoire et fallback obligatoire vers le replay de tokens.
+
+## Request Agent réel, runtime autonome et intégration IDE du 30 juillet 2026
+
+Le moteur V3 final de ce jalon est
+`4b4add07aab595eeb922b8705821d85d82b0b65e`, poussé sur
+`codex/swarm-protocol-v3`. Le workflow natif multi-OS `30531028011` est
+entièrement vert sur Ubuntu, macOS et Windows.
+
+### Deux fautes détectées uniquement par le vrai chemin HTTP
+
+Le premier lancement Windows par module quittait immédiatement avec code zéro :
+`backend.server.request_agent_frontend` définissait `main()` mais ne l'appelait
+pas sous `python -m`. Le commit `55323c3` ajoute le contrat `__main__` et un test
+subprocess réel de `python -m ... --help`, au lieu de vérifier seulement la
+forme de la commande.
+
+La première réservation HTTP réelle échouait ensuite avant le prepare avec un
+`UnicodeDecodeError`. `SignedControlMessage.model_dump(mode="json")` tentait de
+décoder comme UTF-8 les octets arbitraires d'une signature Biscuit. Le commit
+final `4b4add0` configure Pydantic avec `ser_json_bytes="base64"` et
+`val_json_bytes="base64"`. Le test HTTP utilise maintenant une signature
+contenant volontairement des octets non UTF-8 et vérifie son round-trip.
+
+Enfin, le worker produit doit annoncer
+`FABI_SWARM_V3_COORDINATION_MODE=client`. Le mode par défaut `fixed` est réservé
+au coordinateur de migration et refuse correctement une capability dynamique.
+L'IDE et le helper de labo provisionnent désormais explicitement le mode
+client ; Mac et Windows ont été observés avec cette valeur dans leur
+environnement effectif.
+
+### Preuve de génération réelle avant publication
+
+Le scheduler VPS actif a été reconstruit depuis l'exact commit `4b4add0` dans
+l'image `local/parallax-scheduler:swarm-v3-4b4add0`. Il conserve ses volumes
+catalogue/état, sa clé d'autorité, son token relay et sa racine TUF. Le probe
+correct de déploiement est `/cluster/status_json`, pas l'ancien
+`/cluster/status`.
+
+Avec les candidats exacts `4b4add0` sur les deux machines, la DHT a formé la
+route Mac `[0,21)` puis RTX `[21,36)`, les deux workers `READY`, admission
+active, lien de données direct et contexte live maximal `39 264` tokens.
+
+Deux générations ont traversé le Request Agent local, sans proxy d'inférence
+sur le VPS :
+
+- essai court : HTTP 200, 18 chunks SSE, `[DONE]`, TTFT `18,517 s` ; les 16
+  tokens ont été consommés par le raisonnement Qwen, donc aucun texte final ;
+- essai qualifié `/no_think`, `max_tokens=128` : HTTP 200, TTFT `14,321 s`,
+  durée `15,248 s`, 9 chunks, `finish_reason=stop`, contenu `OK.`.
+
+Un flux long a ensuite été fermé dès le premier contenu. L'abort a libéré la
+route : `active_routes=0`. Le journal durable contenait alors 3 entrées, dont
+2 complétées et 1 abortée, aucune échouée, avec 102 IDs de tokens résidents.
+Cette preuve couvre le streaming SSE réel, l'abort, permit/capability, la route
+Mac vers RTX et le data plane hors VPS. Elle ne couvre pas encore une panne
+matérielle avec route de remplacement.
+
+### Release rc36 et défaut d'installation neuve
+
+Le runtime `82698d9d30ebcf284f07273c46bd488898b8a7a9`, tag
+`v2.7.0-rc36`, embarque exactement :
+
+- OpenCode/Fabi CLI `b7ece1419fddb21226e9ca1107825265feed86b1` ;
+- moteur `4b4add07aab595eeb922b8705821d85d82b0b65e` ;
+- transport natif `0.1.0`.
+
+Le workflow release `30531991673` est entièrement vert, y compris Windows
+CUDA et les six actifs. Mais l'installation publique sur un Mac mini sans
+Homebrew a honnêtement échoué avant téléchargement : `zstd n'est pas
+installé`. La release est donc construite, mais pas qualifiée comme
+installation neuve autonome.
+
+La solution ne télécharge ni Homebrew ni un script tiers. Le runtime au commit
+`70af7a528d27396811c140df5bff7ec127f5fa5e` construit un petit actif
+`fabi-unzstd-<plateforme>` depuis le target officiel
+`facebook/zstd@v1.5.7` `zstd-decompress` :
+
+- source officielle épinglée et vérifiée par SHA-256 ;
+- binaire macOS de 226 Kio dépendant seulement de `libSystem` ;
+- binaire Linux statique musl, indépendant de la version glibc de la machine ;
+- binaire Windows provenant de l'actif win64 officiel épinglé ;
+- sidecar SHA-256 obligatoire et attestation GitHub de chaque helper ;
+- préférence pour un zstd système déjà présent, sinon téléchargement et
+  vérification du helper sans privilèges administrateur.
+
+Les tests transactionnels Ubuntu et Windows forcent ce chemin local qualifié,
+refusent un helper altéré avant toute mutation, et vérifient que les identités,
+racines et états V3 survivent à l'upgrade. Le run de branche `30545840720` est
+vert.
+
+Le vrai Mac mini a ensuite été installé directement depuis les actifs publics
+`rc37`, sans `zstd` système et sans `FABI_ZSTD_PATH`. L'installateur a
+téléchargé et vérifié le helper autonome, vérifié le SHA du tarball, relocalisé
+56 fichiers, sauvegardé l'ancien runtime puis activé le nouveau. Le manifeste
+installé annonce exactement `v2.7.0-rc37`, OpenCode `b7ece14`, moteur
+`4b4add0`, MLX et transport `0.1.0`. L'identité worker et la racine TUF sont
+restées présentes, et
+`python -m backend.server.request_agent_frontend --help` retourne zéro.
+
+Le tag `v2.7.0-rc37` pointe sur `70af7a5`. Son workflow release
+`30546072051` est encore en cours au moment de cette écriture ; ne pas déclarer
+ses six actifs qualifiés avant sa fin.
+
+### IDE V3 local
+
+Les modifications IDE non encore poussées au moment de cette note remplacent
+le data plane scheduler par le Request Agent loopback :
+
+- processus supervisé séparément du worker, identités Iroh/DHT persistantes
+  distinctes et readiness publiée par rename atomique ;
+- bind loopback strict, Bearer de compte, restart seulement après preuve
+  `close` du process et backoff borné ; après SIGKILL, un garde-fou testé
+  libère réellement la fermeture de l'IDE même si Node/OS omet `close` ;
+- flux de phases reconnectable par SSE/`Last-Event-ID` :
+  `planning`, `authorizing`, `reserving`, `prefilling`, `decoding`,
+  `recovering`, `replaying` et états terminaux ;
+- OpenAI Theia et OpenCode utilisent l'URL locale du Request Agent, plus l'URL
+  scheduler VPS ;
+- les changements async de modèle/endpoint sont protégés par génération ;
+- Windows exécute les deux outils via le Python relocalisé et `-m` ;
+- le runtime qualifié attendu devient `v2.7.0-rc37`.
+
+L'installeur intégré télécharge lui aussi le helper zstd de la release et refuse
+un SHA absent ou divergent. Son téléchargement respecte maintenant la
+backpressure officielle des `Writable` Node : quand `write()` renvoie false,
+il attend `drain` avant de lire le chunk suivant. Un disque lent ne peut donc
+plus transformer le téléchargement multi-Gio en tampon RAM non borné ; une
+erreur d'écriture telle qu'un disque plein est propagée. Le premier test public
+de ce chemin a aussi révélé des milliers de callbacks de progression
+dupliqués ; ils sont maintenant bornés à un changement de pourcentage ou de
+message, sans timer de polling.
+
+Les coupures transitoires utilisent maintenant une reprise HTTP bornée conforme
+à RFC 9110. Une portion n'est concaténée que si le serveur a d'abord fourni un
+ETag fort, puis accepte `Range` avec le même validateur dans `If-Range`. Sans
+validateur ou après une réponse `200`, le fichier est réécrit ; les erreurs
+client déterministes telles que `404` ne sont pas retentées. Le test coupe une
+vraie réponse HTTP locale après 64 Kio, observe le second échange `206`, puis
+compare l'archive finale octet par octet.
+
+Le chemin intégré complet a aussi installé `rc37` dans une racine temporaire
+depuis GitHub : tarball et helper publics, deux SHA, extraction, relocalisation,
+imports des modules puis manifeste exact. La racine temporaire de 982 Mio a été
+supprimée après le test.
+
+Validations locales actuelles :
+
+- `fabi-swarm`: 49 tests sur 49 ;
+- build TypeScript `fabi-swarm` vert ;
+- build Electron complet vert, zéro erreur browser/node/electron ;
+- `git diff --check` vert.
+
+### Reprise exacte après rc37
+
+1. attendre les six builds et la publication des helpers de `rc37` ;
+2. installer `rc37` depuis les actifs publics, sans zstd préinstallé ni
+   `FABI_ZSTD_PATH`, sur Mac mini et RTX ;
+3. vérifier les MANIFEST exacts et la conservation des états persistants ;
+4. relancer les deux workers depuis le runtime installé, sans source candidate,
+   puis reformer la route DHT ;
+5. refaire Request Agent, génération SSE et abort depuis le runtime public ;
+6. lancer le vrai E2E UI et vérifier statuts/phases, outils, permissions,
+   abort et changement de modèle ;
+7. ajouter une couverture complète supplémentaire puis qualifier kills
+   prefill/decode, replans successifs et absence de couverture ;
+8. seulement ensuite qualifier deux NAT indépendants et le gros contexte
+   OpenCode d'environ 12 220 tokens + 4 096 réservés.

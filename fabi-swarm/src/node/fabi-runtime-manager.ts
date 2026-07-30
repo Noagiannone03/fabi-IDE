@@ -7,7 +7,8 @@
 // Source unique d'install = fabi-runtime-install.ts (réplique de install.sh).
 
 import {
-    configuredRuntimeVersion, detectPlatform, findParallax, installRuntime, InstallProgress
+    configuredRuntimeVersion, detectPlatform, findParallax, findRequestAgent,
+    installRuntime, InstallProgress, LocatedRuntimeCommand
 } from './fabi-runtime-install';
 import { RuntimeStatus } from '../common/fabi-swarm-protocol';
 
@@ -19,24 +20,32 @@ export class FabiRuntimeManager {
     private lastMessage: string | undefined;
 
     /** Localise le binaire parallax sur la machine (sans rien télécharger). */
-    findParallax(): { binary: string; location: 'bundled' | 'cached' } | undefined {
+    findParallax(): LocatedRuntimeCommand | undefined {
         return findParallax();
+    }
+
+    /** Localise le frontend OpenAI local du runtime qualifié. */
+    findRequestAgent(): LocatedRuntimeCommand | undefined {
+        return findRequestAgent();
     }
 
     status(): RuntimeStatus {
         const plat = detectPlatform();
         const found = findParallax();
+        const requestAgent = findRequestAgent();
         return {
-            installed: !!found,
+            installed: !!found && !!requestAgent,
             downloading: this.downloading,
             progress: this.downloading ? this.progress : undefined,
             phase: this.downloading ? this.phase : undefined,
-            location: found?.location ?? 'none',
+            location: found && requestAgent ? found.location : 'none',
             platform: plat.tag,
             accel: plat.accel,
             version: configuredRuntimeVersion(),
-            binary: found?.binary,
-            message: this.lastMessage
+            binary: found && requestAgent ? found.binary : undefined,
+            message: this.lastMessage ?? (found && !requestAgent
+                ? 'runtime incomplet : Request Agent V3 absent'
+                : undefined)
         };
     }
 
@@ -45,7 +54,7 @@ export class FabiRuntimeManager {
      * le statut sans rien faire. `onStatus` est appelé à chaque progression.
      */
     async ensureRuntime(onStatus?: (s: RuntimeStatus) => void): Promise<RuntimeStatus> {
-        if (findParallax()) {
+        if (findParallax() && findRequestAgent()) {
             return this.status();
         }
         if (this.downloading) {

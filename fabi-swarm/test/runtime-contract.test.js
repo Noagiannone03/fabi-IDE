@@ -1,17 +1,28 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const { once } = require('node:events');
 const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const http = require('node:http');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
+const { Writable } = require('node:stream');
 const test = require('node:test');
 const {
     QUALIFIED_NATIVE_NETWORK_VERSION,
     QUALIFIED_OPENCODE_COMMIT,
     QUALIFIED_PARALLAX_COMMIT,
     QUALIFIED_RUNTIME_VERSION,
+    activateManagedRuntime,
+    createDownloadProgressReporter,
+    downloadResumable,
+    managedRuntimePathsIn,
+    parallaxCommandIn,
     parseRuntimeManifest,
     relocateBundledRuntime,
+    requestAgentCommandIn,
+    writeWithBackpressure,
+    zstdHelperArtifactFor,
     validateRuntimeManifest
 } = require('../lib/node/fabi-runtime-install');
 const {
@@ -60,6 +71,146 @@ test('accepts only the exact qualified release manifest', () => {
     assert.equal(parsed.version, QUALIFIED_RUNTIME_VERSION);
     assert.equal(parsed.values.parallax_revision, QUALIFIED_PARALLAX_COMMIT);
     assert.equal(parsed.values.native_network_version, QUALIFIED_NATIVE_NETWORK_VERSION);
+});
+
+test('selects the release-scoped standalone decompressor for every OS', () => {
+    assert.equal(zstdHelperArtifactFor({
+        os: 'darwin',
+        arch: 'arm64',
+        accel: 'mlx',
+        tag: 'darwin-arm64-mlx',
+        artifact: 'fabi-darwin-arm64-mlx.tar.zst'
+    }), 'fabi-unzstd-darwin-arm64-mlx');
+    assert.equal(zstdHelperArtifactFor({
+        os: 'windows',
+        arch: 'x64',
+        accel: 'cuda',
+        tag: 'windows-x64-cuda',
+        artifact: 'fabi-windows-x64-cuda.tar.zst'
+    }), 'fabi-unzstd-windows-x64-cuda.exe');
+});
+
+test('bounds runtime download memory with Node writable backpressure', async () => {
+    let flushed = false;
+    const destination = new Writable({
+        highWaterMark: 1,
+        write(_chunk, _encoding, callback) {
+            setTimeout(() => {
+                flushed = true;
+                callback();
+            }, 5);
+        }
+    });
+    await writeWithBackpressure(destination, Buffer.alloc(64 * 1024));
+    assert.equal(flushed, true);
+    destination.end();
+
+    const broken = new Writable({
+        highWaterMark: 1,
+        write(_chunk, _encoding, callback) {
+            callback(new Error('disk full'));
+        }
+    });
+    await assert.rejects(
+        writeWithBackpressure(broken, Buffer.alloc(64 * 1024)),
+        /disk full/
+    );
+});
+
+test('deduplicates runtime download progress without a polling timer', () => {
+    const updates = [];
+    const report = createDownloadProgressReporter(update => updates.push(update));
+    report(0.1);
+    report(0.2);
+    report(0.9);
+    report(1.1);
+    report(1.4);
+    report(100, 'préparation');
+    report(100, 'préparation');
+    assert.deepEqual(updates, [
+        { phase: 'download', percent: 0, message: undefined },
+        { phase: 'download', percent: 1, message: undefined },
+        { phase: 'download', percent: 100, message: 'préparation' }
+    ]);
+});
+
+test('resumes an interrupted runtime download only with the same strong ETag', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fabi-runtime-download-'));
+    const destination = join(root, 'runtime.tar.zst');
+    const payload = Buffer.alloc(256 * 1024, 0x5a);
+    const requests = [];
+    const server = http.createServer((request, response) => {
+        requests.push({
+            range: request.headers.range,
+            ifRange: request.headers['if-range']
+        });
+        if (requests.length === 1) {
+            response.writeHead(200, {
+                ETag: '"release-v1"',
+                'Content-Length': String(payload.length)
+            });
+            response.write(payload.subarray(0, 64 * 1024));
+            setTimeout(() => response.destroy(), 5);
+            return;
+        }
+        const match = /^bytes=([0-9]+)-$/.exec(request.headers.range ?? '');
+        const start = Number(match?.[1] ?? -1);
+        assert.ok(start > 0 && start < payload.length);
+        assert.equal(request.headers['if-range'], '"release-v1"');
+        response.writeHead(206, {
+            ETag: '"release-v1"',
+            'Content-Length': String(payload.length - start),
+            'Content-Range': `bytes ${start}-${payload.length - 1}/${payload.length}`
+        });
+        response.end(payload.subarray(start));
+    });
+    try {
+        server.listen(0, '127.0.0.1');
+        await once(server, 'listening');
+        const address = server.address();
+        assert.ok(address && typeof address !== 'string');
+        await downloadResumable(
+            `http://127.0.0.1:${address.port}/runtime`,
+            destination,
+            () => undefined,
+            { attempts: 2, delayMs: () => 0 }
+        );
+        assert.deepEqual(readFileSync(destination), payload);
+        assert.equal(requests.length, 2);
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('does not retry a deterministic runtime download failure', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fabi-runtime-download-'));
+    const destination = join(root, 'runtime.tar.zst');
+    let requests = 0;
+    const server = http.createServer((_request, response) => {
+        requests++;
+        response.writeHead(404);
+        response.end('missing');
+    });
+    try {
+        server.listen(0, '127.0.0.1');
+        await once(server, 'listening');
+        const address = server.address();
+        assert.ok(address && typeof address !== 'string');
+        await assert.rejects(
+            downloadResumable(
+                `http://127.0.0.1:${address.port}/runtime`,
+                destination,
+                () => undefined,
+                { attempts: 3, delayMs: () => 0 }
+            ),
+            /404/
+        );
+        assert.equal(requests, 1);
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+        rmSync(root, { recursive: true, force: true });
+    }
 });
 
 test('rejects a runtime built from a different engine revision', () => {
@@ -113,6 +264,75 @@ test('rejects traversal and undeclared relocation inputs', () => {
 
         writeFileSync(join(runtime, 'relocation-manifest.txt'), 'runtime/missing.txt\n');
         assert.throws(() => relocateBundledRuntime(root, '/opt/fabi'), /absent/);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('uses relocatable Python module commands on Windows', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fabi-runtime-command-'));
+    try {
+        const scripts = join(root, 'runtime', 'parallax-venv', 'Scripts');
+        mkdirSync(scripts, { recursive: true });
+        writeFileSync(join(scripts, 'python.exe'), '');
+        assert.deepEqual(parallaxCommandIn(root, 'win32'), {
+            binary: join(scripts, 'python.exe'),
+            argsPrefix: ['-m', 'parallax.cli']
+        });
+        assert.deepEqual(requestAgentCommandIn(root, 'win32'), {
+            binary: join(scripts, 'python.exe'),
+            argsPrefix: ['-m', 'backend.server.request_agent_frontend']
+        });
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
+test('activates only managed runtime paths and rolls back atomically', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fabi-runtime-activation-'));
+    const install = join(root, 'install');
+    const makeStaging = version => {
+        const staging = join(root, `staging-${version}`);
+        mkdirSync(join(staging, 'bin'), { recursive: true });
+        mkdirSync(join(staging, 'runtime'), { recursive: true });
+        writeFileSync(join(staging, 'bin', 'fabi'), version);
+        writeFileSync(join(staging, 'runtime', 'version'), version);
+        writeFileSync(join(staging, 'MANIFEST'), `fabi ${version}\n`);
+        writeFileSync(
+            join(staging, '.fabi-managed-paths'),
+            'bin\nruntime\nMANIFEST\n.fabi-managed-paths\n'
+        );
+        return staging;
+    };
+    try {
+        const first = makeStaging('first');
+        assert.deepEqual(managedRuntimePathsIn(first), [
+            'bin', 'runtime', 'MANIFEST', '.fabi-managed-paths'
+        ]);
+        await activateManagedRuntime(first, install, async () => undefined);
+        mkdirSync(join(install, 'network'), { recursive: true });
+        writeFileSync(join(install, 'network', 'identity.key'), 'persistent');
+
+        const second = makeStaging('second');
+        await activateManagedRuntime(second, install, async () => undefined);
+        assert.equal(readFileSync(join(install, 'runtime', 'version'), 'utf8'), 'second');
+        assert.equal(
+            readFileSync(join(install, 'network', 'identity.key'), 'utf8'),
+            'persistent'
+        );
+
+        const broken = makeStaging('broken');
+        await assert.rejects(
+            activateManagedRuntime(broken, install, async () => {
+                throw new Error('import failed');
+            }),
+            /import failed/
+        );
+        assert.equal(readFileSync(join(install, 'runtime', 'version'), 'utf8'), 'second');
+        assert.equal(
+            readFileSync(join(install, 'network', 'identity.key'), 'utf8'),
+            'persistent'
+        );
     } finally {
         rmSync(root, { recursive: true, force: true });
     }

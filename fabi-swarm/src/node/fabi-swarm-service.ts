@@ -5,7 +5,7 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import {
     FabiSwarmService, FabiSwarmClient, SwarmEntry, WorkerState, RuntimeStatus,
-    ConnectionInfo, FABI_REGISTRY_URL
+    ConnectionInfo, FABI_REGISTRY_URL, RequestAgentActivity, RequestAgentState
 } from '../common/fabi-swarm-protocol';
 import { spawnWorker, fetchSchedulerPeer, WorkerHandle } from './fabi-swarm-worker';
 import { FabiRuntimeManager } from './fabi-runtime-manager';
@@ -14,7 +14,11 @@ import { deriveConnection, requireContribution } from './fabi-connection';
 import { getAccountToken } from './fabi-account-token';
 import { FabiMetricsCollector } from './fabi-metrics';
 import { FabiMetrics } from '../common/fabi-swarm-protocol';
-import { prepareWorkerBootstrap } from './fabi-worker-bootstrap';
+import { PreparedWorkerBootstrap, prepareWorkerBootstrap } from './fabi-worker-bootstrap';
+import {
+    RequestAgentHandle, requestAgentRestartDelay, spawnRequestAgent
+} from './fabi-request-agent';
+import type { RuntimeCommand } from './fabi-runtime-install';
 
 const SWARM_STATE_PATH = join(homedir(), '.config', 'fabi', 'swarm-state.json');
 
@@ -74,7 +78,16 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected feed: RegistryFeed | undefined;
 
     protected handle: WorkerHandle | undefined;
+    protected requestAgentHandle: RequestAgentHandle | undefined;
+    protected requestAgentGeneration = 0;
+    protected requestAgentRestartAttempt = 0;
+    protected requestAgentRestart: ReturnType<typeof setTimeout> | undefined;
     protected workerState: WorkerState = { kind: 'stopped' };
+    protected requestAgentState: RequestAgentState = { kind: 'stopped' };
+    protected requestAgentActivity: RequestAgentActivity = {
+        lastEventId: 0,
+        activeRequests: []
+    };
     protected activeSwarm: SwarmEntry | undefined;
     protected switching = false;
     protected autoReconnectInFlight = false;
@@ -96,6 +109,8 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             this.ensureMetrics();
             client.onSwarmsChanged(this.feed?.snapshot() ?? []);
             client.onWorkerStateChanged(this.workerState);
+            client.onRequestAgentStateChanged(this.requestAgentState);
+            client.onRequestAgentActivityChanged(this.requestAgentActivity);
             client.onActiveSwarmChanged(this.activeSwarm);
             client.onRuntimeStatusChanged(this.runtime.status());
             client.onConnectionChanged(this.connection);
@@ -159,6 +174,27 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
 
     async getWorkerState(): Promise<WorkerState> {
         return this.workerState;
+    }
+
+    async getRequestAgentState(): Promise<RequestAgentState> {
+        return this.requestAgentState;
+    }
+
+    async waitForRequestAgent(): Promise<RequestAgentState> {
+        if (this.requestAgentState.kind === 'ready' && this.requestAgentState.baseUrl) {
+            return this.requestAgentState;
+        }
+        if (this.requestAgentState.kind === 'error') {
+            throw new Error(this.requestAgentState.message ?? 'le Request Agent local est en erreur');
+        }
+        if (!this.requestAgentHandle) {
+            throw new Error('le Request Agent local n’est pas démarré');
+        }
+        return this.requestAgentHandle.ready;
+    }
+
+    async getRequestAgentActivity(): Promise<RequestAgentActivity> {
+        return this.requestAgentActivity;
     }
 
     async getConnection(): Promise<ConnectionInfo> {
@@ -335,6 +371,149 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         this.recomputeConnection();
     }
 
+    protected setRequestAgentState(state: RequestAgentState): void {
+        this.requestAgentState = state;
+        this.client?.onRequestAgentStateChanged(state);
+    }
+
+    protected setRequestAgentActivity(activity: RequestAgentActivity): void {
+        this.requestAgentActivity = activity;
+        this.client?.onRequestAgentActivityChanged(activity);
+    }
+
+    protected resetRequestAgentActivity(): void {
+        this.setRequestAgentActivity({ lastEventId: 0, activeRequests: [] });
+    }
+
+    protected clearRequestAgentRestart(resetAttempts: boolean): void {
+        if (this.requestAgentRestart) {
+            clearTimeout(this.requestAgentRestart);
+            this.requestAgentRestart = undefined;
+        }
+        if (resetAttempts) {
+            this.requestAgentRestartAttempt = 0;
+        }
+    }
+
+    protected launchRequestAgent(
+        command: RuntimeCommand,
+        swarm: SwarmEntry,
+        bootstrap: PreparedWorkerBootstrap
+    ): void {
+        if (!swarm.workerConnection) {
+            throw new Error('ce swarm ne publie pas le profil automatique V3 requis');
+        }
+        this.clearRequestAgentRestart(false);
+        const generation = ++this.requestAgentGeneration;
+        const handle = spawnRequestAgent(
+            command,
+            swarm,
+            swarm.workerConnection,
+            bootstrap,
+            state => {
+                if (generation !== this.requestAgentGeneration) {
+                    return;
+                }
+                if (state.kind === 'ready') {
+                    this.requestAgentRestartAttempt = 0;
+                }
+                this.setRequestAgentState(state);
+                if (state.kind === 'error') {
+                    this.resetRequestAgentActivity();
+                }
+            },
+            activity => {
+                if (generation === this.requestAgentGeneration) {
+                    this.setRequestAgentActivity(activity);
+                }
+            }
+        );
+        this.requestAgentHandle = handle;
+        // `close`, et non un délai d'activité, prouve la mort du sidecar.
+        // Node garantit cet événement après `exit` ou un échec de spawn.
+        void handle.closed.then(() => {
+            if (this.requestAgentHandle === handle) {
+                this.requestAgentHandle = undefined;
+            }
+            if (
+                generation === this.requestAgentGeneration
+                && this.activeSwarm?.id === swarm.id
+                && this.requestAgentState.kind === 'error'
+            ) {
+                this.scheduleRequestAgentRestart(swarm, generation);
+            }
+        });
+        // Évite une rejection non observée si aucun chat n'attend encore.
+        void handle.ready.catch(() => undefined);
+    }
+
+    protected scheduleRequestAgentRestart(swarm: SwarmEntry, generation: number): void {
+        if (this.requestAgentRestart || generation !== this.requestAgentGeneration) {
+            return;
+        }
+        const delay = requestAgentRestartDelay(++this.requestAgentRestartAttempt);
+        this.requestAgentRestart = setTimeout(() => {
+            this.requestAgentRestart = undefined;
+            void this.restartRequestAgent(swarm, generation);
+        }, delay);
+        this.requestAgentRestart.unref?.();
+    }
+
+    protected async restartRequestAgent(swarm: SwarmEntry, generation: number): Promise<void> {
+        if (
+            generation !== this.requestAgentGeneration
+            || this.activeSwarm?.id !== swarm.id
+            || !swarm.workerConnection
+        ) {
+            return;
+        }
+        const previous = this.requestAgentHandle;
+        if (previous) {
+            await previous.stop().catch(() => undefined);
+            if (this.requestAgentHandle === previous) {
+                this.requestAgentHandle = undefined;
+            }
+        }
+        if (generation !== this.requestAgentGeneration || this.activeSwarm?.id !== swarm.id) {
+            return;
+        }
+        const requestAgent = this.runtime.findRequestAgent();
+        if (!requestAgent) {
+            this.setRequestAgentState({
+                kind: 'error',
+                swarmId: swarm.id,
+                message: 'Runtime Fabi incomplet : Request Agent V3 absent.'
+            });
+            return;
+        }
+        try {
+            const bootstrap = await prepareWorkerBootstrap(swarm.workerConnection);
+            if (generation !== this.requestAgentGeneration || this.activeSwarm?.id !== swarm.id) {
+                return;
+            }
+            this.launchRequestAgent(requestAgent, swarm, bootstrap);
+        } catch (error) {
+            this.setRequestAgentState({
+                kind: 'error',
+                swarmId: swarm.id,
+                message: `Redémarrage Request Agent impossible: ${
+                    error instanceof Error ? error.message : String(error)
+                }`
+            });
+            this.scheduleRequestAgentRestart(swarm, generation);
+        }
+    }
+
+    protected async stopRequestAgent(): Promise<void> {
+        this.clearRequestAgentRestart(true);
+        ++this.requestAgentGeneration;
+        const handle = this.requestAgentHandle;
+        this.requestAgentHandle = undefined;
+        await handle?.stop().catch(() => undefined);
+        this.setRequestAgentState({ kind: 'stopped' });
+        this.resetRequestAgentActivity();
+    }
+
     protected setActiveSwarm(swarm: SwarmEntry | undefined): void {
         if (swarm?.id !== this.activeSwarm?.id) {
             this.cancelContributionCheck(true);
@@ -413,6 +592,32 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             && (this.workerState.kind === 'running' || this.workerState.kind === 'starting')) {
             this.persistSwarmId(swarmId);
             this.autoReconnectSettled = true;
+            if (!this.requestAgentHandle && !this.requestAgentRestart) {
+                const requestAgent = this.runtime.findRequestAgent();
+                const profile = this.activeSwarm.workerConnection;
+                if (!requestAgent || !profile) {
+                    this.setRequestAgentState({
+                        kind: 'error',
+                        swarmId,
+                        message: requestAgent
+                            ? 'ce swarm ne publie pas le profil automatique V3 requis'
+                            : 'Runtime Fabi incomplet : Request Agent V3 absent.'
+                    });
+                    return this.workerState;
+                }
+                try {
+                    const bootstrap = await prepareWorkerBootstrap(profile);
+                    this.launchRequestAgent(requestAgent, this.activeSwarm, bootstrap);
+                } catch (error) {
+                    this.setRequestAgentState({
+                        kind: 'error',
+                        swarmId,
+                        message: `Redémarrage Request Agent impossible: ${
+                            error instanceof Error ? error.message : String(error)
+                        }`
+                    });
+                }
+            }
             return this.workerState;
         }
 
@@ -427,17 +632,21 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         this.autoReconnectSettled = true;
 
         const found = this.runtime.findParallax();
-        if (!found) {
+        const requestAgent = this.runtime.findRequestAgent();
+        if (!found || !requestAgent) {
             this.setActiveSwarm(swarm);
             this.setWorkerState({
                 kind: 'missing-binary', swarmId,
-                message: 'Moteur Fabi non installé. Clique « Installer le moteur ».'
+                message: found
+                    ? 'Runtime Fabi incomplet : Request Agent V3 absent. Installe la mise à jour.'
+                    : 'Moteur Fabi non installé. Clique « Installer le moteur ».'
             });
             return this.workerState;
         }
 
         this.switching = true;
         try {
+            await this.stopRequestAgent();
             if (this.handle) {
                 await this.handle.stop();
                 this.handle = undefined;
@@ -465,13 +674,14 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
 
             // Le worker pilote ensuite son propre état (running → étapes → crash/restart).
             this.handle = spawnWorker(
-                found.binary,
+                found,
                 peer,
                 swarmId,
                 swarm.workerConnection,
                 bootstrap,
                 s => this.setWorkerState(s)
             );
+            this.launchRequestAgent(requestAgent, swarm, bootstrap);
         } catch (e) {
             this.setWorkerState({ kind: 'error', swarmId, message: e instanceof Error ? e.message : String(e) });
         } finally {
@@ -483,6 +693,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     async disconnect(): Promise<WorkerState> {
         this.autoReconnectSettled = true;
         this.clearPersistedSwarmId();
+        await this.stopRequestAgent();
         if (this.handle) {
             await this.handle.stop();
             this.handle = undefined;
@@ -515,6 +726,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             waiter.reject(new Error('Fabi IDE est en cours de fermeture.'));
         }
         this.readyWaiters.clear();
+        await this.stopRequestAgent();
         if (this.handle) {
             try {
                 await this.handle.stop();

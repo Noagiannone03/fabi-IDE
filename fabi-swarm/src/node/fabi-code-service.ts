@@ -43,7 +43,7 @@ const DEFAULT_TURN_TIMEOUT_MS = 10 * 60_000;
 export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationContribution {
 
     @inject(ILogger) protected readonly logger: ILogger;
-    // Optionnel : fournit le scheduler actif + le jeton de compte (porte de conso).
+    // Optionnel : fournit le Request Agent local + le jeton de compte.
     @inject(FabiSwarmService) @optional() protected readonly swarm?: FabiSwarmService;
 
     protected client: FabiCodeClient | undefined;
@@ -145,7 +145,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         });
     }
 
-    /** Redémarre OpenCode si le modèle/scheduler/token actif a changé depuis le spawn. */
+    /** Redémarre OpenCode si le modèle/Request Agent/token actif a changé. */
     protected async ensureCurrentServer(): Promise<void> {
         if (!process.env.FABI_CODE_BASE_URL) {
             await this.waitForConsumableSwarm();
@@ -190,13 +190,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 FABI_CODE_DEFAULT_CONTEXT_TOKENS
             );
         } else {
-            let schedulerUrl: string | undefined;
+            let requestAgentUrl: string | undefined;
             model = FABI_FALLBACK_MODEL;
             try {
                 const active = await this.swarm?.getActiveSwarm();
-                if (active?.schedulerUrl) {
-                    schedulerUrl = active.schedulerUrl;
-                }
                 if (active?.model) {
                     model = active.model;
                 }
@@ -205,13 +202,17 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                     FABI_CODE_DEFAULT_CONTEXT_TOKENS
                 );
                 apiKey = await this.swarm?.getAccountToken();
+                const requestAgent = await this.swarm?.waitForRequestAgent();
+                if (requestAgent?.kind === 'ready') {
+                    requestAgentUrl = requestAgent.baseUrl;
+                }
             } catch (err) {
                 throw new Error(`Impossible de lire le swarm actif: ${err instanceof Error ? err.message : String(err)}`);
             }
-            if (!schedulerUrl) {
-                throw new Error('Aucun swarm Fabi actif: choisis un modèle et attends que le worker soit prêt.');
+            if (!requestAgentUrl) {
+                throw new Error('Le Request Agent local du swarm actif n’est pas prêt.');
             }
-            baseURL = `${schedulerUrl.replace(/\/+$/, '')}/v1`;
+            baseURL = `${requestAgentUrl.replace(/\/+$/, '')}/v1`;
         }
         this.modelId = model;
         const configuredOutputTokens = process.env.FABI_CODE_MAX_OUTPUT_TOKENS;

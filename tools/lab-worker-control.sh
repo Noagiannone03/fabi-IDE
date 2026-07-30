@@ -56,6 +56,7 @@ action="$1"
 network_mode="$2"
 engine_sha="${3:-}"
 runtime="$HOME/.local/share/fabi/runtime"
+registry_root="$HOME/.local/share/fabi/trust/model-registry-root-7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce.json"
 screen_name="fabi-worker-$network_mode"
 if [ "$network_mode" = "iroh" ]; then
   launcher="$HOME/.local/share/fabi/mac-worker-iroh.sh"
@@ -107,12 +108,16 @@ start_worker() {
   fi
   if [ -n "$engine_sha" ]; then
     source_dir="$HOME/.local/share/fabi/runtime-candidates/$engine_sha/parallax-src"
-    if [ ! -d "$source_dir/src/parallax" ]; then
-      echo "missing_candidate_source $source_dir"
-      exit 1
-    fi
   else
-    source_dir=""
+    source_dir="$runtime/parallax-src"
+  fi
+  if [ ! -d "$source_dir/src/parallax" ]; then
+    echo "missing_parallax_source $source_dir"
+    exit 1
+  fi
+  if [ ! -r "$registry_root" ]; then
+    echo "missing_qualified_registry_root $registry_root"
+    exit 1
   fi
   if [ "$network_mode" = "public" ] || [ "$network_mode" = "iroh" ]; then
     if ! command -v screen >/dev/null 2>&1; then
@@ -122,22 +127,17 @@ start_worker() {
     # macOS 15+ Local Network privacy associates multicast access with the
     # responsible process. In this lab a detached ssh/nohup child loses that
     # context, while screen keeps a durable user session for the worker.
-    if [ -n "$source_dir" ]; then
-      FABI_PARALLAX_SOURCE="$source_dir" nohup screen -DmS "$screen_name" \
-        /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log" \
-        </dev/null >/dev/null 2>&1 &
-    else
+    FABI_PARALLAX_SOURCE="$source_dir" \
+    FABI_MODEL_REGISTRY_ROOT="$registry_root" \
+    FABI_SWARM_V3_COORDINATION_MODE="client" \
       nohup screen -DmS "$screen_name" \
-        /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log" \
-        </dev/null >/dev/null 2>&1 &
-    fi
+      /bin/zsh -c 'exec "$1" >"$2" 2>&1' _ "$launcher" "$log" \
+      </dev/null >/dev/null 2>&1 &
     echo "started mac screen=$screen_name"
   else
-    if [ -n "$source_dir" ]; then
-      FABI_PARALLAX_SOURCE="$source_dir" nohup "$launcher" > "$log" 2>&1 &
-    else
+    FABI_PARALLAX_SOURCE="$source_dir" \
+    FABI_MODEL_REGISTRY_ROOT="$registry_root" \
       nohup "$launcher" > "$log" 2>&1 &
-    fi
     echo "started mac pid=$!"
   fi
 }
@@ -181,6 +181,7 @@ run_windows() {
 \$NetworkMode = "$network_mode"
 \$EngineSha = "${FABI_LAB_ENGINE_SHA:-}"
 \$Runtime = Join-Path \$env:LOCALAPPDATA "fabi\\runtime"
+\$RegistryRoot = Join-Path \$env:LOCALAPPDATA "fabi\\trust\\model-registry-root-7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce.json"
 \$TaskName = if (\$NetworkMode -eq "iroh") {
   "FabiWorkerIroh"
 } elseif (\$NetworkMode -eq "public") {
@@ -225,18 +226,38 @@ function Start-FabiWorker {
   if (\$NetworkMode -eq "public" -or \$NetworkMode -eq "iroh") {
     if (-not (Test-Path \$Launcher)) { throw "Missing \$NetworkMode launcher: \$Launcher" }
     if (\$EngineSha) {
-      \$CandidateSource = Join-Path \$env:LOCALAPPDATA "fabi\\runtime-candidates\\\$EngineSha\\parallax-src"
-      if (-not (Test-Path (Join-Path \$CandidateSource "src\\parallax"))) {
-        throw "Missing candidate source: \$CandidateSource"
+      \$ParallaxSource = Join-Path \$env:LOCALAPPDATA "fabi\\runtime-candidates\\\$EngineSha\\parallax-src"
+      if (-not (Test-Path (Join-Path \$ParallaxSource "src\\parallax"))) {
+        throw "Missing candidate source: \$ParallaxSource"
       }
-      Set-Content -Path \$CandidatePointer -Value \$CandidateSource -NoNewline
+      Set-Content -Path \$CandidatePointer -Value \$ParallaxSource -NoNewline
     } else {
+      \$ParallaxSource = Join-Path \$Runtime "parallax-src"
       Remove-Item \$CandidatePointer -Force -ErrorAction SilentlyContinue
+    }
+    if (-not (Test-Path (Join-Path \$ParallaxSource "src\\parallax"))) {
+      throw "Missing installed Parallax source: \$ParallaxSource"
+    }
+    if (-not (Test-Path -LiteralPath \$RegistryRoot -PathType Leaf)) {
+      throw "Missing qualified registry root: \$RegistryRoot"
     }
     # Windows OpenSSH kills descendants when its session job closes. Use the
     # native Task Scheduler as the durable lifecycle boundary for this lab.
+    \$quotedSource = \$ParallaxSource.Replace("'", "''")
+    \$quotedRoot = \$RegistryRoot.Replace("'", "''")
+    \$quotedLauncher = \$Launcher.Replace("'", "''")
+    # Conserver littéralement les références PowerShell env jusqu'à l'exécution de
+    # la tâche. Une chaîne PowerShell double les développerait ici et
+    # enregistrerait une commande invalide commençant par un signe égal.
+    \$taskCommand = (
+      '\$env:FABI_PARALLAX_SOURCE = ''{0}''; ' +
+      '\$env:FABI_MODEL_REGISTRY_ROOT = ''{1}''; ' +
+      '\$env:FABI_SWARM_V3_COORDINATION_MODE = ''client''; ' +
+      '& ''{2}''; exit \$LASTEXITCODE'
+    ) -f \$quotedSource, \$quotedRoot, \$quotedLauncher
+    \$encodedTaskCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\$taskCommand))
     \$TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument (
-      "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File " + \$Launcher
+      "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + \$encodedTaskCommand
     )
     \$CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     \$TaskPrincipal = New-ScheduledTaskPrincipal -UserId \$CurrentUser -LogonType Interactive -RunLevel Highest

@@ -6,7 +6,9 @@ import { OpenAiLanguageModelsManager } from '@theia/ai-openai/lib/common/openai-
 import { AgentService } from '@theia/ai-core/lib/common/agent-service';
 import { AISettingsService } from '@theia/ai-core/lib/common/settings-service';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
-import { ConnectionInfo, SwarmEntry, FABI_MODEL_ID } from '../common/fabi-swarm-protocol';
+import {
+    RequestAgentState, SwarmEntry, FABI_MODEL_ID
+} from '../common/fabi-swarm-protocol';
 
 /** Préférence Theia AI : l'agent (par id) qui traite un message du chat quand
  *  aucun @agent n'est mentionné. Sans elle (ni mention, ni fallback) le chat
@@ -51,6 +53,8 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
     protected agentsAssigned = false;
     /** Vrai uniquement après un enregistrement effectif dans Theia. */
     protected modelRegistered = false;
+    /** Fence les câblages async après changement de swarm/endpoint local. */
+    protected modelSyncGeneration = 0;
 
     async onStart(): Promise<void> {
         // Agent par défaut dès le boot (indépendant du swarm) → le chat sait
@@ -61,14 +65,17 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
         // trop tôt à Theia provoque des requêtes "Routing pipelines not ready".
         this.frontend.onActiveChangedEvent(() => void this.syncModelRegistration());
         this.frontend.onConnectionChangedEvent(() => void this.syncModelRegistration());
+        this.frontend.onRequestAgentChangedEvent(() => void this.syncModelRegistration());
         // État initial (le backend a pu pousser avant qu'on s'abonne).
         try {
-            const [active, connection] = await Promise.all([
+            const [active, connection, requestAgent] = await Promise.all([
                 this.frontend.service.getActiveSwarm(),
-                this.frontend.service.getConnection()
+                this.frontend.service.getConnection(),
+                this.frontend.service.getRequestAgentState()
             ]);
             this.frontend.active = active;
             this.frontend.connection = connection;
+            this.frontend.requestAgent = requestAgent;
             void this.syncModelRegistration();
         } catch {
             /* backend indispo -> on câblera au prochain push */
@@ -76,21 +83,24 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
     }
 
     protected async syncModelRegistration(): Promise<void> {
+        const generation = ++this.modelSyncGeneration;
         const swarm = this.frontend.active;
         const connection = this.frontend.connection;
-        if (!swarm || !connection?.ready) {
+        const requestAgent = this.frontend.requestAgent;
+        if (!swarm || !connection?.ready
+            || requestAgent.kind !== 'ready' || !requestAgent.baseUrl) {
             this.unregisterModel();
             return;
         }
-        await this.wire(swarm, connection);
+        await this.wire(swarm, requestAgent, generation);
     }
 
-    protected async wire(swarm: SwarmEntry | undefined, connection?: ConnectionInfo): Promise<void> {
+    protected async wire(
+        swarm: SwarmEntry | undefined,
+        requestAgent: RequestAgentState,
+        generation: number
+    ): Promise<void> {
         if (!swarm) {
-            return;
-        }
-        if (connection && !connection.ready) {
-            this.unregisterModel();
             return;
         }
         let apiKey = 'fabi-no-auth';
@@ -100,13 +110,20 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
                 apiKey = token;
             }
         } catch {
-            /* repli */
+            if (generation === this.modelSyncGeneration) {
+                this.unregisterModel();
+            }
+            return;
+        }
+        if (generation !== this.modelSyncGeneration
+            || requestAgent.kind !== 'ready' || !requestAgent.baseUrl) {
+            return;
         }
         try {
             await this.openai.createOrUpdateLanguageModels({
                 id: FABI_MODEL_ID,
                 model: swarm.model,
-                url: `${swarm.schedulerUrl.replace(/\/+$/, '')}/v1`,
+                url: `${requestAgent.baseUrl.replace(/\/+$/, '')}/v1`,
                 apiKey,
                 apiVersion: undefined,
                 maxRetries: 3,
@@ -115,9 +132,19 @@ export class FabiSwarmModelContribution implements FrontendApplicationContributi
                 developerMessageSettings: 'system'
             });
             this.modelRegistered = true;
+            if (generation !== this.modelSyncGeneration) {
+                // L'appel obsolète a pu finir après le câblage courant et
+                // écraser son URL. Rejoue le dernier snapshot plutôt que de
+                // supprimer aveuglément un modèle potentiellement correct.
+                void this.syncModelRegistration();
+                return;
+            }
             await this.assignToAgents();
         } catch (e) {
-            console.warn('[fabi-swarm] enregistrement du modèle échoué :', e);
+            if (generation === this.modelSyncGeneration) {
+                this.unregisterModel();
+                console.warn('[fabi-swarm] enregistrement du modèle échoué :', e);
+            }
         }
     }
 

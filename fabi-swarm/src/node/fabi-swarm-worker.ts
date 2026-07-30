@@ -10,6 +10,7 @@ import { join } from 'path';
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import { WorkerConnectionProfile, WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
 import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
+import type { RuntimeCommand } from './fabi-runtime-install';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
 
 // Parallax intercepte SIGINT et accorde ensuite 5 s à SIGINT puis 5 s à SIGTERM
@@ -33,7 +34,7 @@ export interface WorkerHandle {
  * après 30 s (sauf si on a demandé l'arrêt). `stop()` annule le restart.
  */
 export function spawnWorker(
-    bin: string,
+    command: RuntimeCommand,
     peer: string,
     swarmId: string,
     profile: WorkerConnectionProfile,
@@ -46,10 +47,10 @@ export function spawnWorker(
     let restartTimer: ReturnType<typeof setTimeout> | undefined;
 
     const startChild = (): void => {
-        const args = buildJoinArgs(peer);
+        const args = [...command.argsPrefix, ...buildJoinArgs(peer)];
         const env = buildWorkerEnv(profile, bootstrap, swarmId);
         const log = openWorkerLog(swarmId);
-        const proc = spawn(bin, args, {
+        const proc = spawn(command.binary, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: process.platform !== 'win32',
             env
@@ -60,7 +61,11 @@ export function spawnWorker(
             onUpdate({ kind: 'error', swarmId, message: 'spawn parallax sans PID' });
             return;
         }
-        writeWorkerLog(log, 'launcher', `spawn pid=${currentPid} cmd=${bin} ${args.join(' ')}`);
+        writeWorkerLog(
+            log,
+            'launcher',
+            `spawn pid=${currentPid} cmd=${command.binary} ${args.join(' ')}`
+        );
         try {
             killOrphanedWorkers(currentPid);
         } catch {

@@ -1,7 +1,10 @@
 import * as React from '@theia/core/shared/react';
 import { Disposable, DisposableCollection } from '@theia/core';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
-import { SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo } from '../common/fabi-swarm-protocol';
+import {
+    SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo, RequestAgentActivity,
+    RequestAgentPhase
+} from '../common/fabi-swarm-protocol';
 import { FabiConnectionView } from './fabi-swarm-connection';
 import { FabiCodeFrontend } from './fabi-code-frontend';
 import { FabiCodeServerInfo } from '../common/fabi-code-protocol';
@@ -26,6 +29,9 @@ export const FabiSwarmSelector: React.FC<{
     const [connection, setConnection] = React.useState<ConnectionInfo | undefined>(frontend.connection);
     const [runtime, setRuntime] = React.useState<RuntimeStatus | undefined>(frontend.runtime);
     const [worker, setWorker] = React.useState<WorkerState>(frontend.worker);
+    const [requestActivity, setRequestActivity] = React.useState<RequestAgentActivity>(
+        frontend.requestAgentActivity
+    );
     const [code, setCode] = React.useState<FabiCodeServerInfo>(engine.server);
     const [open, setOpen] = React.useState(false);
     const [view, setView] = React.useState<'list' | 'connection'>('list');
@@ -41,6 +47,7 @@ export const FabiSwarmSelector: React.FC<{
         d.push(frontend.onConnectionChangedEvent(c => setConnection(c)));
         d.push(frontend.onRuntimeChangedEvent(r => setRuntime(r)));
         d.push(frontend.onWorkerChangedEvent(w => setWorker(w)));
+        d.push(frontend.onRequestAgentActivityChangedEvent(a => setRequestActivity(a)));
         d.push(engine.onServerStatusEvent(info => setCode(info)));
         void frontend.service.listSwarms().then(setSwarms).catch(() => { /* */ });
         void frontend.service.getRuntimeStatus().then(setRuntime).catch(() => { /* */ });
@@ -117,7 +124,23 @@ export const FabiSwarmSelector: React.FC<{
     // so `connection.ready` may transiently be false. OpenCode activity is the
     // authoritative local signal for the compact bar while that turn is alive.
     const generating = code.activeTurns > 0;
-    const barStatus = generating && code.activity === 'preparing' ? 'Préparation du contexte…'
+    const activeRequest = [...requestActivity.activeRequests]
+        .sort((a, b) => b.occurredAtMs - a.occurredAtMs)[0];
+    const phaseLabel = (phase: RequestAgentPhase | undefined): string | undefined => {
+        switch (phase) {
+            case 'planning': return 'Choix de la route…';
+            case 'authorizing': return 'Autorisation…';
+            case 'reserving': return 'Réservation des workers…';
+            case 'prefilling': return 'Préparation du contexte…';
+            case 'decoding': return 'Génération…';
+            case 'recovering': return 'Reconstruction de la route…';
+            case 'replaying': return 'Reprise exacte…';
+            default: return undefined;
+        }
+    };
+    const barStatus = generating && phaseLabel(activeRequest?.phase)
+        ? phaseLabel(activeRequest?.phase)
+        : generating && code.activity === 'preparing' ? 'Préparation du contexte…'
         : generating ? 'Génération…'
         : codeError ? 'Erreur moteur'
             : connection?.ready && code.status === 'starting' ? 'Démarrage IA…'

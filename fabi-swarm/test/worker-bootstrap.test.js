@@ -76,6 +76,7 @@ test('prepares a pinned TUF root and a complete secret-free worker environment',
         assert.equal(env.FABI_CATALOG_DHT_MODE, 'client');
         assert.equal(env.FABI_SWARM_V3_MODE, 'active');
         assert.equal(env.FABI_SWARM_V3_PLACEMENT, 'autonomous');
+        assert.equal(env.FABI_SWARM_V3_COORDINATION_MODE, 'client');
         assert.match(env.FABI_SWARM_V3_STATE_DIR, /qwen_unsafe-id/);
         assert.equal(env.FABI_MODEL_REGISTRY_ROOT, prepared.rootPath);
         assert.equal(env.FABI_RELAY_TOKEN, undefined);
