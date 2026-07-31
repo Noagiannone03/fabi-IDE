@@ -21,11 +21,11 @@ import { spawn } from 'child_process';
 import { once } from 'events';
 import {
     chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync,
-    readFileSync, renameSync, rmSync, statSync, writeFileSync
+    readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync
 } from 'fs';
 import { createHash } from 'crypto';
 import { homedir, platform as osPlatform, arch as osArch, tmpdir } from 'os';
-import { isAbsolute, join } from 'path';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
 import { Writable } from 'stream';
 
 export type Accel = 'mlx' | 'cuda' | 'cpu';
@@ -300,6 +300,35 @@ export function managedRuntimePathsIn(stagingRoot: string): string[] {
 }
 
 /**
+ * Conserve uniquement le rollback produit par la dernière activation réussie.
+ * Les liens symboliques sont ignorés et les erreurs de nettoyage ne remettent
+ * jamais en cause un runtime déjà validé.
+ */
+export function pruneManagedRuntimeBackups(finalRoot: string, keep: string): string[] {
+    const parent = dirname(finalRoot);
+    const prefix = `${basename(finalRoot)}.backup-`;
+    const kept = resolve(keep);
+    const removed: string[] = [];
+    for (const entry of readdirSync(parent, { withFileTypes: true })) {
+        if (!entry.isDirectory() || !entry.name.startsWith(prefix)) {
+            continue;
+        }
+        const candidate = join(parent, entry.name);
+        if (resolve(candidate) === kept) {
+            continue;
+        }
+        try {
+            rmSync(candidate, { recursive: true, force: true });
+            removed.push(candidate);
+        } catch {
+            // Une rétention trop longue est préférable à l'échec d'une mise à
+            // jour dont le nouveau runtime a déjà passé sa validation.
+        }
+    }
+    return removed;
+}
+
+/**
  * Active uniquement les fichiers possédés par une release. Les identités
  * réseau, racines TUF, bases DHT/fencing et journaux locaux restent dans la
  * racine d'installation. Toute faute restaure les anciens chemins gérés.
@@ -342,6 +371,7 @@ export async function activateManagedRuntime(
         rmSync(backup, { recursive: true, force: true });
         return undefined;
     }
+    pruneManagedRuntimeBackups(finalRoot, backup);
     return backup;
 }
 

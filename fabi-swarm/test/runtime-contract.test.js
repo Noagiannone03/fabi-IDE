@@ -2,7 +2,9 @@
 
 const assert = require('node:assert/strict');
 const { once } = require('node:events');
-const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const {
+    existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
+} = require('node:fs');
 const http = require('node:http');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
@@ -19,6 +21,7 @@ const {
     managedRuntimePathsIn,
     parallaxCommandIn,
     parseRuntimeManifest,
+    pruneManagedRuntimeBackups,
     relocateBundledRuntime,
     requestAgentCommandIn,
     writeWithBackpressure,
@@ -314,12 +317,22 @@ test('activates only managed runtime paths and rolls back atomically', async () 
         writeFileSync(join(install, 'network', 'identity.key'), 'persistent');
 
         const second = makeStaging('second');
-        await activateManagedRuntime(second, install, async () => undefined);
+        const firstBackup = await activateManagedRuntime(second, install, async () => undefined);
+        assert.ok(firstBackup);
         assert.equal(readFileSync(join(install, 'runtime', 'version'), 'utf8'), 'second');
         assert.equal(
             readFileSync(join(install, 'network', 'identity.key'), 'utf8'),
             'persistent'
         );
+
+        const third = makeStaging('third');
+        const secondBackup = await activateManagedRuntime(third, install, async () => undefined);
+        assert.ok(secondBackup);
+        assert.notEqual(secondBackup, firstBackup);
+        assert.equal(readFileSync(join(install, 'runtime', 'version'), 'utf8'), 'third');
+        assert.equal(readFileSync(join(secondBackup, 'runtime', 'version'), 'utf8'), 'second');
+        assert.equal(existsSync(firstBackup), false);
+        assert.deepEqual(pruneManagedRuntimeBackups(install, secondBackup), []);
 
         const broken = makeStaging('broken');
         await assert.rejects(
@@ -328,7 +341,7 @@ test('activates only managed runtime paths and rolls back atomically', async () 
             }),
             /import failed/
         );
-        assert.equal(readFileSync(join(install, 'runtime', 'version'), 'utf8'), 'second');
+        assert.equal(readFileSync(join(install, 'runtime', 'version'), 'utf8'), 'third');
         assert.equal(
             readFileSync(join(install, 'network', 'identity.key'), 'utf8'),
             'persistent'
