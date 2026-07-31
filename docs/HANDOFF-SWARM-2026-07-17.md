@@ -5378,7 +5378,7 @@ inspecté ; sa version observée conserve notamment un port ZMQ Windows fixe et
 ne constitue pas un remplacement propre du frontend qualifié.
 
 Le moteur au commit
-`4cd69760f9a70103d51d639b22d895fa9758ee72`, poussé sur
+`d2a8d0a3271286476818acd0effa26160c502dc3`, poussé sur
 `codex/swarm-protocol-v3`, porte donc le frontend Rust officiel vLLM 0.24
 épinglé au lieu de le remplacer :
 
@@ -5402,7 +5402,8 @@ défaut est `localhost`, alors que Clap désérialise `--listen-address` en
 `SocketAddr` numérique. Le moteur final résout donc explicitement ce nom à la
 frontière Python, fixe `localhost` à `127.0.0.1` pour rester cohérent avec les
 health checks Fabi et formate aussi correctement IPv6. Deux tests couvrent ce
-cas réel ; ne qualifier ni le commit intermédiaire `3ee1c9c`, ni `214cb7f`.
+cas réel ; ne qualifier aucun des commits intermédiaires `3ee1c9c`,
+`214cb7f` ou `4cd6976`.
 
 Le patch s'applique proprement après le patch de replay sur une copie neuve du
 source vLLM épinglé. Les tests Rust ciblés du parseur et des listeners passent
@@ -5413,9 +5414,9 @@ headers du SDK Windows ; elle n'est volontairement pas comptée comme preuve
 Windows.
 
 OpenCode/Fabi CLI
-`e84c7858e6436aa51c85979b18b0be4eece502c9`, poussé sur `dev`, épingle ce
+`8427aab97abcebb1a287daf1b5f96a81bc2a21b0`, poussé sur `dev`, épingle ce
 moteur. Ses trois tests d'installateur et le typecheck monorepo sont verts. Le
-runtime `2d581dd5419bbdcc567317456e3d321734e4cbb3`, poussé sur `main`, verrouille
+runtime `d0b43640aed43326c9f8e0a5375e839c79a46848`, poussé sur `main`, verrouille
 ces deux révisions et inclut désormais `vllm-rs.exe` dans le tarball Windows
 CUDA avec un smoke test de disponibilité. Le commit parent `fafd4d0` conserve
 trois jours les artefacts des déclenchements manuels afin de tester un paquet
@@ -5429,15 +5430,22 @@ s'applique proprement avec les deux patches sur un clone vierge ; `cargo fmt`,
 les deux tests managed-engine, les trois tests listener et les deux tests CLI
 frontend sont verts sur macOS.
 
-Le workflow manuel final `30617311029` construit maintenant les six plateformes
-depuis `2d581dd`. Au moment de cette mise à jour, il est encore en cours : ne
+Le second build Windows natif `30617311029` a franchi ce crate, puis révélé
+dans le serveur un réglage `TCP_NODELAY` qui supposait encore que tout flux
+était le `Either<TcpStream, UnixStream>` Unix. Le patch final sélectionne
+maintenant le flux TCP direct sur Windows et protège aussi les imports
+spécifiques ; les mêmes tests Rust et Python sont verts après cette
+correction.
+
+Le workflow manuel final `30619417270` construit maintenant les six plateformes
+depuis `d0b4364`. Au moment de cette mise à jour, il est encore en cours : ne
 pas qualifier la couche zéro RTX sur la seule base des tests macOS. Cette
 séparation permet d'installer le paquet final dans un slot candidat, de garder
 `rc38` comme rollback et de ne créer `rc39` qu'après la vraie qualification.
 
 Suite exacte :
 
-1. obtenir un build manuel vert sur `2d581dd` et télécharger l'artefact
+1. obtenir un build manuel vert sur `d0b4364` et télécharger l'artefact
    `windows-x64-cuda` ;
 2. l'installer dans le slot candidat de la RTX sans écraser `rc38` ;
 3. vérifier que la RTX annonce réellement `supports_frontend=true`, prend un
