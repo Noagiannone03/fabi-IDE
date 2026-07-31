@@ -5378,7 +5378,7 @@ inspecté ; sa version observée conserve notamment un port ZMQ Windows fixe et
 ne constitue pas un remplacement propre du frontend qualifié.
 
 Le moteur au commit
-`214cb7f651af897c2bdf1b2b7ac1dd1e72542479`, poussé sur
+`4cd69760f9a70103d51d639b22d895fa9758ee72`, poussé sur
 `codex/swarm-protocol-v3`, porte donc le frontend Rust officiel vLLM 0.24
 épinglé au lieu de le remplacer :
 
@@ -5387,6 +5387,9 @@ Le moteur au commit
   exclusif, et le processus Rust lie directement son socket TCP ;
 - le listener Unix est compilé uniquement sur Unix et une implémentation Axum
   TCP portable est compilée ailleurs ;
+- la supervision `vllm-managed-engine` garde `setpgid` et les signaux sur Unix,
+  tandis que Windows utilise l'outil système documenté
+  `taskkill /PID … /T /F` pour terminer un arbre de processus ;
 - `install.sh` trouve désormais aussi `Scripts/python.exe`, résout le suffixe
   `.exe`, construit avec `protoc` fourni par Chocolatey si nécessaire et
   installe `Scripts/vllm-rs.exe` ;
@@ -5399,37 +5402,42 @@ défaut est `localhost`, alors que Clap désérialise `--listen-address` en
 `SocketAddr` numérique. Le moteur final résout donc explicitement ce nom à la
 frontière Python, fixe `localhost` à `127.0.0.1` pour rester cohérent avec les
 health checks Fabi et formate aussi correctement IPv6. Deux tests couvrent ce
-cas réel ; ne pas qualifier le commit intermédiaire `3ee1c9c`.
+cas réel ; ne qualifier ni le commit intermédiaire `3ee1c9c`, ni `214cb7f`.
 
 Le patch s'applique proprement après le patch de replay sur une copie neuve du
 source vLLM épinglé. Les tests Rust ciblés du parseur et des listeners passent
-sur macOS, les 15 tests du wrapper Python passent, Ruff est vert et la suite moteur
+sur macOS, les 20 tests Python ciblés passent, Ruff est vert et la suite moteur
 complète donne `805 passed, 7 skipped`. Une tentative de cross-compilation
 macOS vers MSVC a atteint la dépendance C `ring` puis s'est arrêtée faute de
 headers du SDK Windows ; elle n'est volontairement pas comptée comme preuve
 Windows.
 
 OpenCode/Fabi CLI
-`8507783d623fbd104309f6d1cd624b0b176051e5`, poussé sur `dev`, épingle ce
+`e84c7858e6436aa51c85979b18b0be4eece502c9`, poussé sur `dev`, épingle ce
 moteur. Ses trois tests d'installateur et le typecheck monorepo sont verts. Le
-runtime `d9dd74f2e1de2f96716ddaa0a5613f7e7f5773c7`, poussé sur `main`, verrouille
+runtime `2d581dd5419bbdcc567317456e3d321734e4cbb3`, poussé sur `main`, verrouille
 ces deux révisions et inclut désormais `vllm-rs.exe` dans le tarball Windows
 CUDA avec un smoke test de disponibilité. Le commit parent `fafd4d0` conserve
 trois jours les artefacts des déclenchements manuels afin de tester un paquet
 candidat sans publier de tag.
 
-Le workflow manuel final `30615811593` construit les six plateformes depuis ce
-SHA. Au moment de cette mise à jour, il est encore en cours : ne pas qualifier
-la couche zéro RTX sur la seule base des tests macOS. Le run précédent
-`30614860582` peut seulement servir de preuve de compilation du patch Rust
-initial ; son runtime ne contient pas la normalisation de `localhost` et ne
-doit pas être installé. Cette séparation permet d'installer le paquet final
-dans un slot candidat, de garder `rc38` comme rollback et de ne créer `rc39`
-qu'après la vraie qualification.
+Le premier build Windows natif `30614860582` a révélé que le listener lui-même
+compilait, puis que le crate officiel `vllm-managed-engine` appelait encore
+sans `cfg(unix)` `pre_exec`, `setpgid`, `kill` et `SIGKILL`. Son artefact de
+debug est incomplet et ne doit pas être installé. La correction finale
+s'applique proprement avec les deux patches sur un clone vierge ; `cargo fmt`,
+les deux tests managed-engine, les trois tests listener et les deux tests CLI
+frontend sont verts sur macOS.
+
+Le workflow manuel final `30617311029` construit maintenant les six plateformes
+depuis `2d581dd`. Au moment de cette mise à jour, il est encore en cours : ne
+pas qualifier la couche zéro RTX sur la seule base des tests macOS. Cette
+séparation permet d'installer le paquet final dans un slot candidat, de garder
+`rc38` comme rollback et de ne créer `rc39` qu'après la vraie qualification.
 
 Suite exacte :
 
-1. obtenir un build manuel vert sur `d9dd74f` et télécharger l'artefact
+1. obtenir un build manuel vert sur `2d581dd` et télécharger l'artefact
    `windows-x64-cuda` ;
 2. l'installer dans le slot candidat de la RTX sans écraser `rc38` ;
 3. vérifier que la RTX annonce réellement `supports_frontend=true`, prend un
