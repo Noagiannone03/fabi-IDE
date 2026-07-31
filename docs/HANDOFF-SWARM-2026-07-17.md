@@ -5355,3 +5355,76 @@ Elle ne prouve pas encore un failover matériel. La suite ordonnée est :
    chemin client->tête et inter-worker, direct ou relay ;
 5. génération longue pour débit stable, pression mémoire pendant prefill et
    decode, puis répétition du contexte maximal.
+
+## Frontend qualifié portable et couche zéro Windows du 31 juillet 2026
+
+La limitation observée sur la RTX n'était pas une incapacité de CUDA ou de
+vLLM à exécuter la première ou la dernière couche. Le runner Parallax Windows
+sait déjà charger les embeddings, les blocs et la tête LM correspondant à son
+span. La RTX publiait `supports_frontend=false` parce que le frontend HTTP Rust
+qualifié n'était pas livré sur Windows : son bootstrap héritait un descripteur
+de socket POSIX et son module listener compilait directement les types Unix de
+Tokio. Le placement V3 empêchait donc correctement ce nœud de prendre la
+couche zéro, car une route sans point d'entrée OpenAI/SSE aurait été
+inutilisable.
+
+La piste d'un frontend Python distinct a été écartée après audit du runtime
+réel RTX. Son wheel Windows vLLM 0.16 n'a pas le même protocole de manager que
+le frontend Python vLLM courant, invoque des opérations `Utility` non
+implémentées par Parallax et ne porte pas l'extension Fabi
+`/inference/v1/chat-replay`. L'utiliser aurait créé deux comportements selon
+l'OS et régressé le replay exact. Le fork Windows SystemPanic a aussi été
+inspecté ; sa version observée conserve notamment un port ZMQ Windows fixe et
+ne constitue pas un remplacement propre du frontend qualifié.
+
+Le moteur au commit
+`3ee1c9c18c09f8a810efddf9509a4a0f300dfd10`, poussé sur
+`codex/swarm-protocol-v3`, porte donc le frontend Rust officiel vLLM 0.24
+épinglé au lieu de le remplacer :
+
+- le mode POSIX existant garde l'héritage atomique `--listen-fd` ;
+- Windows reçoit un mode natif `--listen-address HOST:PORT`, mutuellement
+  exclusif, et le processus Rust lie directement son socket TCP ;
+- le listener Unix est compilé uniquement sur Unix et une implémentation Axum
+  TCP portable est compilée ailleurs ;
+- `install.sh` trouve désormais aussi `Scripts/python.exe`, résout le suffixe
+  `.exe`, construit avec `protoc` fourni par Chocolatey si nécessaire et
+  installe `Scripts/vllm-rs.exe` ;
+- le launcher Parallax sélectionne le contrat adapté à l'OS tout en conservant
+  exactement les mêmes handlers SSE, outils, abort et replay.
+
+Le patch s'applique proprement après le patch de replay sur une copie neuve du
+source vLLM épinglé. Les tests Rust ciblés du parseur et des listeners passent
+sur macOS, les 18 tests Python ciblés passent, Ruff est vert et la suite moteur
+complète donne `803 passed, 7 skipped`. Une tentative de cross-compilation
+macOS vers MSVC a atteint la dépendance C `ring` puis s'est arrêtée faute de
+headers du SDK Windows ; elle n'est volontairement pas comptée comme preuve
+Windows.
+
+OpenCode/Fabi CLI
+`72c84a9706c9d87667d803560d8dafe8c93839fd`, poussé sur `dev`, épingle ce
+moteur. Ses trois tests d'installateur et le typecheck monorepo sont verts. Le
+runtime `61cee381be25ec5e46c303ee274ed36d5ed48e86`, poussé sur `main`, verrouille
+ces deux révisions et inclut désormais `vllm-rs.exe` dans le tarball Windows
+CUDA avec un smoke test de disponibilité.
+
+Le workflow manuel `30614860582` construit les six plateformes depuis ce SHA.
+Au moment de cette mise à jour, les tests transactionnels Ubuntu et Windows
+sont verts et le build natif Windows CUDA est encore en cours : ne pas
+qualifier la couche zéro RTX sur la seule base des tests macOS. Le runtime
+`fafd4d0d78e3a78f28046a9dfb3db84471b3f000` ajoute en plus une rétention de
+trois jours des artefacts issus des déclenchements manuels. Cela permet
+d'installer un paquet candidat complet dans un slot séparé, de garder `rc38`
+comme rollback et de ne créer `rc39` qu'après la vraie qualification.
+
+Suite exacte :
+
+1. obtenir un build manuel vert sur `fafd4d0` et télécharger l'artefact
+   `windows-x64-cuda` ;
+2. l'installer dans le slot candidat de la RTX sans écraser `rc38` ;
+3. vérifier que la RTX annonce réellement `supports_frontend=true`, prend un
+   span commençant à zéro et forme une route complète avec le Mac mini ;
+4. qualifier SSE, abort, outils et budget exact `12 220 + 4 096` depuis cette
+   tête Windows ;
+5. seulement alors publier `v2.7.0-rc39`, mettre à jour l'IDE et refaire le
+   même test depuis les actifs publics.
