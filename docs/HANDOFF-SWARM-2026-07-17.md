@@ -5229,3 +5229,129 @@ Ensuite :
    publiés ;
 6. ajouter l'A40 RunPod seulement après cette baseline afin de prouver une
    seconde couverture et le relay TCP-only, puis exécuter churn et kills.
+
+## Qualification publique rc38 et pipeline client-side du 31 juillet 2026
+
+Le run release `30550407042` est maintenant entièrement vert : les huit jobs
+Ubuntu, Windows, Linux CPU/CUDA, Darwin arm64 MLX/x64 CPU et Windows CUDA ont
+réussi, et tous les actifs publics attendus sont publiés. Le runtime
+`v2.7.0-rc38` pointe toujours exactement sur
+`46c44ebdabeb34634a0e5ece60c6e3c93ec26fd6` et contient :
+
+- OpenCode/Fabi CLI `10c110c3d07f7039b7afb91ca67fc815ab2458bc` ;
+- moteur `c261ecb0592e799b93226c6817d0f2260131e1ab` ;
+- transport natif `0.1.0`.
+
+### Installations publiques réelles
+
+La RTX Windows a été installée depuis les actifs publics en forçant un `PATH`
+sans `zstd.exe`. Le log prouve le téléchargement du helper autonome, sa
+vérification, la reconstruction des deux parties du tarball CUDA, la
+vérification SHA-256 et l'activation transactionnelle. Le manifeste installé
+annonce exactement `rc38`, CUDA, Python `3.12.7` et les révisions ci-dessus.
+La racine TUF qualifiée
+`7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce`,
+les identités worker/catalogue et `relay.env` ont survécu. La RTX 4080 SUPER
+est détectée avec 16 376 Mio.
+
+Le vrai installeur intégré de l'IDE a ensuite installé le même `rc38` public
+sur le Mac courant, avec le helper autonome, puis validé le manifeste MLX, la
+racine TUF, les imports et
+`python -m backend.server.request_agent_frontend --help`. Après activation
+réussie seulement, il a conservé le rollback immédiat `rc37` et supprimé huit
+anciens rollbacks gérés, soit environ 17 Gio, sans toucher aux identités ni aux
+états persistants.
+
+La politique de rétention est poussée dans le runtime au commit
+`9cc11c8b515ac1f670c40917a1bd3f1d9b75a32a` et dans l'IDE au commit
+`41795b76c862566cfbc46fec150424e52b865898`. Elle est couverte par trois
+installations successives et un rollback sur shell, PowerShell et Node. Le run
+multi-OS de branche runtime `30610502029` est vert. Attention : le tag immuable
+`rc38` précède ce commit runtime ; son installateur standalone ne supprime donc
+pas encore les rollbacks historiques. L'installeur IDE courant le fait, et une
+prochaine release runtime devra embarquer `9cc11c8`.
+
+L'IDE épingle désormais officiellement `rc38` au commit
+`f34286399303e2bfc58a6270d5c19c65c00d8e8f`. Ses 49 tests et son build
+TypeScript sont verts ; le build Electron complet avait déjà été validé sans
+erreur avec ces mêmes constantes.
+
+### Ordre inverse et placement autonome
+
+Les workers ont été relancés exclusivement depuis leurs runtimes `rc38`
+installés, RTX d'abord puis Mac mini. Sans instruction de couches venant du
+VPS :
+
+- la RTX a choisi `[1,36)`, chargé 35 couches et annoncé 25 072 tokens KV ;
+- seule, elle a publié `no_feasible_route`, ce qui est correct puisque la
+  couche zéro manquait ;
+- le Mac mini a ensuite choisi `[0,1)` et annoncé 899 264 tokens KV ;
+- la première calibration Mac vers RTX a été refusée pendant la convergence
+  DHT, car la RTX n'avait pas encore autorisé le nouveau pair ;
+- la boucle normale catalogue/topologie a convergé en environ une minute,
+  sans patch ni redémarrage.
+
+La route finale est `Mac [0,1) -> RTX [1,36)`, `route_ready`, admission active,
+les deux liveness `healthy`, contexte live 25 072 et contrat planifié 16 384.
+Les workers se voient directement sans relay entre eux ; les dernières
+mesures observées étaient environ 16 à 22 ms de RTT inter-worker et 88 à 92 ms
+vers l'autorité VPS. Cette preuve valide l'arrivée dans l'ordre inverse et le
+placement client-side progressif. L'IDE devrait toutefois présenter cette
+minute comme une synchronisation réseau, pas comme une panne définitive.
+
+### Générations depuis le Request Agent local
+
+Le data plane OpenAI est maintenant réellement client-side :
+
+1. l'IDE parle en HTTP/SSE au Request Agent loopback ;
+2. le Request Agent lit la DHT, construit et réserve sa route ;
+3. le prompt et les tokens circulent entre le client et les workers via Iroh ;
+4. le VPS ne transporte que permis, epoch/fencing, registre et bootstrap. Il
+   peut servir de relay chiffré si le NAT l'impose, mais le scheduler ne proxy
+   plus le SSE d'inférence.
+
+Un premier essai avec la credential locale a correctement échoué par
+`no_eligible_worker` : le Mac courant et le Mac mini ont deux tokens de compte
+différents. La qualification a donc injecté uniquement en mémoire la
+credential du labo dans le Request Agent, sans remplacer le token persistant
+local. Cela confirme aussi que le login/device pairing multi-machine reste une
+fonction produit indispensable.
+
+Avec cette identité de labo, le chemin public `rc38` a produit :
+
+- génération courte : HTTP 200, `[DONE]`, contenu `OK.`, phases
+  `planning -> authorizing -> reserving -> prefilling -> decoding ->
+  completed`, TTFT 9,189 s et durée 10,956 s ;
+- abort client après le premier fragment : journal SQLite durable
+  `aborted`, 31 tokens prompt et 4 tokens commis, puis
+  `active_routes=[]` et `max_running_request=0` côté coordinateur ;
+- gros contexte OpenCode : exactement 12 220 tokens prompt calculés par le
+  tokenizer Qwen, 4 096 tokens de sortie réservés, soit 16 316 ; HTTP 200,
+  `[DONE]`, contenu `OK.`, 7 tokens commis, TTFT 16,824 s et durée 18,683 s ;
+- dépassement propre : 22 000 + 4 096 = 26 096 tokens a été refusé en 3,228 s
+  par HTTP 400 `context_length_exceeded`, avec la capacité live exacte 25 072,
+  avant toute réservation ou phase de génération.
+
+Un snapshot juste après la génération montrait 15 154 Mio GPU résidents sur
+la RTX, 894 Mio libres, aucune réservation KV résiduelle et aucun swap sur le
+Mac mini. La sortie de sept tokens est trop courte pour publier un débit de
+decode représentatif ; un essai long reste nécessaire pour mesurer un débit
+stable.
+
+### Reprise exacte après cette baseline
+
+La baseline `rc38` Mac mini + RTX est donc qualifiée pour installation
+publique, placement autonome, contribution gate, SSE, abort et gros contexte.
+Elle ne prouve pas encore un failover matériel. La suite ordonnée est :
+
+1. vrai E2E Electron/OpenCode : outils, permissions, abort UI, changement de
+   modèle et présentation propre de la convergence DHT ;
+2. login/device pairing afin qu'un même compte soit provisionné sans copie
+   manuelle sur plusieurs machines ;
+3. seconde couverture complète, par exemple A40 RunPod à moins de 1 EUR/h,
+   puis kills réels pendant prefill/decode, replay exact, fencing d'ancienne
+   epoch, pannes successives et absence de couverture ;
+4. deux NAT indépendants sans route Tailscale produit, avec preuve séparée du
+   chemin client->tête et inter-worker, direct ou relay ;
+5. génération longue pour débit stable, pression mémoire pendant prefill et
+   decode, puis répétition du contexte maximal.
