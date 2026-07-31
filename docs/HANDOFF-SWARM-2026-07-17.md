@@ -5378,7 +5378,7 @@ inspecté ; sa version observée conserve notamment un port ZMQ Windows fixe et
 ne constitue pas un remplacement propre du frontend qualifié.
 
 Le moteur au commit
-`d2a8d0a3271286476818acd0effa26160c502dc3`, poussé sur
+`a898ae67731f2e693a8e7dddb2f63a4beb878cf2`, poussé sur
 `codex/swarm-protocol-v3`, porte donc le frontend Rust officiel vLLM 0.24
 épinglé au lieu de le remplacer :
 
@@ -5403,7 +5403,7 @@ défaut est `localhost`, alors que Clap désérialise `--listen-address` en
 frontière Python, fixe `localhost` à `127.0.0.1` pour rester cohérent avec les
 health checks Fabi et formate aussi correctement IPv6. Deux tests couvrent ce
 cas réel ; ne qualifier aucun des commits intermédiaires `3ee1c9c`,
-`214cb7f` ou `4cd6976`.
+`214cb7f`, `4cd6976` ou `d2a8d0a`.
 
 Le patch s'applique proprement après le patch de replay sur une copie neuve du
 source vLLM épinglé. Les tests Rust ciblés du parseur et des listeners passent
@@ -5414,9 +5414,9 @@ headers du SDK Windows ; elle n'est volontairement pas comptée comme preuve
 Windows.
 
 OpenCode/Fabi CLI
-`8427aab97abcebb1a287daf1b5f96a81bc2a21b0`, poussé sur `dev`, épingle ce
+`0690c4045d8023e20e97d148527446b28aa70a4a`, poussé sur `dev`, épingle ce
 moteur. Ses trois tests d'installateur et le typecheck monorepo sont verts. Le
-runtime `d0b43640aed43326c9f8e0a5375e839c79a46848`, poussé sur `main`, verrouille
+runtime `962a5198addbbc39717c061ba810aa36e108033e`, poussé sur `main`, verrouille
 ces deux révisions et inclut désormais `vllm-rs.exe` dans le tarball Windows
 CUDA avec un smoke test de disponibilité. Le commit parent `fafd4d0` conserve
 trois jours les artefacts des déclenchements manuels afin de tester un paquet
@@ -5437,15 +5437,20 @@ maintenant le flux TCP direct sur Windows et protège aussi les imports
 spécifiques ; les mêmes tests Rust et Python sont verts après cette
 correction.
 
-Le workflow manuel final `30619417270` construit maintenant les six plateformes
-depuis `d0b4364`. Au moment de cette mise à jour, il est encore en cours : ne
+L'audit exhaustif suivant ce second échec a aussi trouvé dans le binaire CLI
+le handler `SIGTERM` Tokio propre à Unix. Le patch final sélectionne désormais
+`Ctrl-C + SIGTERM` sur Unix et `Ctrl-C` sur Windows ; aucune autre référence
+Unix non protégée ne subsiste dans le source Rust parcouru.
+
+Le workflow manuel final `30619668658` construit maintenant les six plateformes
+depuis `962a519`. Au moment de cette mise à jour, il est encore en cours : ne
 pas qualifier la couche zéro RTX sur la seule base des tests macOS. Cette
 séparation permet d'installer le paquet final dans un slot candidat, de garder
 `rc38` comme rollback et de ne créer `rc39` qu'après la vraie qualification.
 
 Suite exacte :
 
-1. obtenir un build manuel vert sur `d0b4364` et télécharger l'artefact
+1. obtenir un build manuel vert sur `962a519` et télécharger l'artefact
    `windows-x64-cuda` ;
 2. l'installer dans le slot candidat de la RTX sans écraser `rc38` ;
 3. vérifier que la RTX annonce réellement `supports_frontend=true`, prend un
