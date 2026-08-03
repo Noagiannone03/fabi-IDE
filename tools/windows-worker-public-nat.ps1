@@ -22,7 +22,7 @@ $env:PARALLAX_KEY_PATH = Join-Path $HOME ".config\fabi\identity"
 $env:FABI_WORKER_SESSION_ID = [guid]::NewGuid().ToString()
 $env:PARALLAX_PROCESS_LOG_DIR = Join-Path $env:LOCALAPPDATA "fabi\process-logs"
 New-Item -ItemType Directory -Path $env:PARALLAX_PROCESS_LOG_DIR -Force | Out-Null
-$env:PARALLAX_CUDA_SYSTEM_RESERVE_GB = "1.5"
+Remove-Item Env:\PARALLAX_CUDA_SYSTEM_RESERVE_GB -ErrorAction SilentlyContinue
 $env:PYTHONUNBUFFERED = "1"
 if (-not $env:RUST_LOG) {
   $env:RUST_LOG = "info"

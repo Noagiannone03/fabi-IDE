@@ -13,8 +13,19 @@ import { ConnectionInfo, SwarmEntry, WorkerState } from '../common/fabi-swarm-pr
 /** Apply the scheduler-authoritative account gate to an otherwise ready route. */
 export function requireContribution(
     transport: ConnectionInfo,
-    access: { allowed: boolean; reason: string }
+    access: {
+        allowed: boolean;
+        reason: string;
+        workerState?: string;
+        workerUsableMemoryBytes?: number;
+    }
 ): ConnectionInfo {
+    // Le gate est un second niveau d'admission. Dès que le transport n'est
+    // plus routable, son état live doit gagner sur une réponse de gate mise en
+    // cache (par exemple `capacity_reached` juste avant le départ d'un peer).
+    if (!transport.ready || access.allowed) {
+        return transport;
+    }
     if (access.reason === 'capacity_reached') {
         return {
             ...transport,
@@ -24,26 +35,40 @@ export function requireContribution(
             activity: 'ce worker sert déjà une génération — le prompt se libère à sa fin'
         };
     }
-    if (!transport.ready || access.allowed) {
-        return transport;
-    }
     // `no_eligible_worker` is a live state, never a timeout-based verdict:
     // selective layer download, verification and backend/KV materialization can
     // legitimately take minutes. Only an explicit credential rejection is
     // definitive. Keep polling while the worker process remains healthy.
     const definitive = ['invalid_credential', 'missing_credential'].includes(access.reason);
+    const memoryStandby = access.reason === 'no_eligible_worker'
+        && access.workerState === 'insufficient_memory';
+    const usableMemory = access.workerUsableMemoryBytes !== undefined
+        ? `${(access.workerUsableMemoryBytes / 1024 ** 3).toFixed(2)} Gio sûrs disponibles`
+        : undefined;
     return {
         ...transport,
         ready: false,
         reason: definitive ? 'contribution-required' : 'contribution-pending',
-        headline: definitive ? 'Compte Fabi non reconnu' : 'Préparation de ta contribution',
+        headline: definitive
+            ? 'Compte Fabi non reconnu'
+            : memoryStandby
+                ? 'Contribution en veille'
+                : 'Préparation de ta contribution',
         activity: definitive
             ? 'ce compte ne possède aucun worker prêt sur ce modèle'
+            : memoryStandby
+                ? `mémoire insuffisante pour une tranche sûre${usableMemory ? ` — ${usableMemory}` : ''}`
             : access.reason === 'no_eligible_worker'
-                ? 'ton worker charge et vérifie sa tranche du modèle…'
+                ? access.workerState === 'building'
+                    ? 'ton worker télécharge, vérifie et charge sa tranche du modèle…'
+                    : access.workerState === 'waiting_catalog'
+                        ? 'ton worker consulte le catalogue distribué du modèle…'
+                        : 'ton worker est connecté et cherche une tranche compatible…'
                 : 'le scheduler confirme ton worker et son allocation…',
         detail: definitive
             ? 'Reconnecte le worker avec le même compte Fabi que cet IDE.'
+            : memoryStandby
+                ? 'Ferme une application gourmande si tu veux contribuer maintenant ; le worker réessaiera automatiquement sans perturber les routes actives.'
             : undefined
     };
 }
@@ -134,6 +159,17 @@ export function deriveConnection(
     }
 
     const total = peersTotal ?? 0;
+
+    // Une couverture de couches peut rester chargée alors que le data plane ne
+    // possède plus de chemin qualifié (peer parti, lien direct perdu, contrat
+    // prefill incomplet). `needMoreNodes` distingue ce cas d'une vraie
+    // saturation par des requêtes : ne jamais annoncer « occupé » sans trafic.
+    if (pipelineReady === true && routingReady === false && active.needMoreNodes === true) {
+        return { reason: 'need-more-peers', ready: false, headline: 'Route en reconstruction',
+            activity: `${total} worker(s) prêt(s) — attente d'un chemin pair-à-pair complet`,
+            detail: 'les couches restent chargées ; Fabi reprendra dès qu’un worker ou un lien compatible complète la route',
+            ...base };
+    }
 
     // Petals conserve les blocs ONLINE pendant qu'ils servent une requête et
     // annonce séparément le KV restant. Même contrat ici : pipelineReady décrit

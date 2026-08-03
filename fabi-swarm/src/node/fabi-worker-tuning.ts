@@ -96,30 +96,15 @@ export function resolveConfiguredWorkerLimits(
     };
 }
 
-/** Réserve indicative legacy ; le runtime qualifié calcule maintenant la réserve via psutil.available. */
-export function resolveHostSystemReserveGb(ramGb: number): number {
-    const total = Math.max(0, ramGb);
-    if (total <= 10) {
-        return 1.25;
-    }
-    if (total <= 20) {
-        return 2;
-    }
-    return Math.min(8, Math.max(3, Number((total * 0.10).toFixed(1))));
-}
-
-/** VRAM dédiée conservée pour l'affichage, le driver et les autres applications GPU. */
-export function resolveCudaSystemReserveGb(vramGb: number): number {
-    return Math.round(Math.max(0, vramGb)) <= 12 ? 2 : 1.5;
-}
-
-/** Env mémoire worker : le host RAM budget est calculé par le runtime depuis psutil.available. */
-export function resolveMemoryReserveEnv(hw: HardwareProfile): Record<string, string> {
-    if (hw.accelerator === 'cuda' && hw.vramGb !== undefined) {
-        return {
-            PARALLAX_CUDA_SYSTEM_RESERVE_GB: String(resolveCudaSystemReserveGb(hw.vramGb))
-        };
-    }
+/**
+ * Ne transforme pas une classe de machine en réserve mémoire fixe.
+ *
+ * Le moteur initialisé possède l'admission sur tous les OS : MLX combine la
+ * mémoire disponible et son working-set recommandé ; CUDA combine
+ * cudaMemGetInfo et le profilage vLLM/SGLang. Les overrides opérateur déjà
+ * présents dans process.env restent inchangés.
+ */
+export function resolveMemoryReserveEnv(_hw: HardwareProfile): Record<string, string> {
     return {};
 }
 
@@ -210,7 +195,22 @@ export function buildJoinArgs(schedulerPeer: string): string[] {
     return args;
 }
 
-/** Tue les workers parallax orphelins (évite la double-allocation). Unix only. */
+/** Identifie uniquement un processus racine du worker, jamais un sidecar Fabi. */
+export function isParallaxWorkerCommand(command: string, runtimeRoot: string): boolean {
+    const normalized = command.replace(/\\/g, '/');
+    const normalizedRoot = runtimeRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalized.includes(normalizedRoot)) {
+        return false;
+    }
+    return (
+        normalized.includes(`${normalizedRoot}/parallax-venv/bin/parallax `)
+            && /\sjoin(?:\s|$)/.test(normalized)
+    ) || (
+        /\s-m\s+parallax\.cli\s+join(?:\s|$)/.test(normalized)
+    ) || normalized.includes(`${normalizedRoot}/parallax-src/src/parallax/launch.py `);
+}
+
+/** Tue les groupes de workers Parallax orphelins, sans toucher aux sidecars. */
 export function killOrphanedWorkers(currentPid: number): void {
     if (process.platform === 'win32') {
         killWindowsRuntimeOrphans(currentPid);
@@ -221,27 +221,38 @@ export function killOrphanedWorkers(currentPid: number): void {
         'fabi',
         'runtime'
     );
-    const escapedRuntime = runtimeRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const r = spawnSync('pgrep', ['-f', escapedRuntime], { encoding: 'utf8' });
+    const r = spawnSync('ps', ['-axo', 'pid=,pgid=,command='], { encoding: 'utf8' });
     if (r.status !== 0 || !r.stdout) {
         return;
     }
-    const pids = r.stdout.split(/\s+/).map(s => parseInt(s.trim(), 10))
-        .filter(n => Number.isFinite(n) && n !== currentPid && n !== process.pid);
-    if (pids.length === 0) {
-        return;
-    }
-    for (const orphan of pids) {
-        try {
-            process.kill(-orphan, 'SIGTERM');
-        } catch {
-            try { process.kill(orphan, 'SIGTERM'); } catch { /* déjà mort */ }
+    const groups = new Set<number>();
+    for (const line of r.stdout.split(/\r?\n/)) {
+        const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+        if (!match) {
+            continue;
+        }
+        const pid = Number(match[1]);
+        const pgid = Number(match[2]);
+        if (
+            pid !== currentPid
+            && pid !== process.pid
+            && pgid > 1
+            && isParallaxWorkerCommand(match[3], runtimeRoot)
+        ) {
+            groups.add(pgid);
         }
     }
+    if (groups.size === 0) {
+        return;
+    }
+    for (const group of groups) {
+        try {
+            process.kill(-group, 'SIGTERM');
+        } catch { /* déjà mort */ }
+    }
     spawnSync('sh', ['-c', 'sleep 2']);
-    for (const orphan of pids) {
-        try { process.kill(-orphan, 'SIGKILL'); } catch { /* déjà mort */ }
-        try { process.kill(orphan, 'SIGKILL'); } catch { /* déjà mort */ }
+    for (const group of groups) {
+        try { process.kill(-group, 'SIGKILL'); } catch { /* déjà mort */ }
     }
 }
 
@@ -251,13 +262,21 @@ function killWindowsRuntimeOrphans(currentPid: number): void {
         return;
     }
     const runtimeRoot = join(localAppData, 'fabi', 'runtime');
-    const script = `
+    const script = String.raw`
 $runtime = ${JSON.stringify(runtimeRoot)}
 $current = ${currentPid}
 Get-CimInstance Win32_Process |
-  Where-Object { $_.ProcessId -ne $current -and $_.CommandLine -and $_.CommandLine.Contains($runtime) } |
+  Where-Object {
+    $_.ProcessId -ne $current -and
+    $_.CommandLine -and
+    $_.CommandLine.Contains($runtime) -and (
+      $_.CommandLine -match '(?i)[\\/]parallax(?:\.exe)?\s+join(?:\s|$)' -or
+      $_.CommandLine -match '(?i)\s-m\s+parallax\.cli\s+join(?:\s|$)' -or
+      $_.CommandLine -match '(?i)[\\/]parallax[\\/]launch\.py(?:\s|$)'
+    )
+  } |
   ForEach-Object {
-    try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+    try { & taskkill.exe /PID $_.ProcessId /T /F 2>$null | Out-Null } catch {}
   }
 `;
     spawnSync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {

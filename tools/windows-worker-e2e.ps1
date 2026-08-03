@@ -12,7 +12,7 @@ $tokenPath = Join-Path $HOME ".config\fabi\account-token"
 $env:FABI_ACCOUNT_TOKEN = (Get-Content $tokenPath -Raw).Trim()
 $env:PARALLAX_KEY_PATH = Join-Path $HOME ".config\fabi\identity"
 $env:FABI_WORKER_SESSION_ID = [guid]::NewGuid().ToString()
-$env:PARALLAX_CUDA_SYSTEM_RESERVE_GB = "1.5"
+Remove-Item Env:\PARALLAX_CUDA_SYSTEM_RESERVE_GB -ErrorAction SilentlyContinue
 $env:PARALLAX_INITIAL_PEERS = "/ip4/100.79.54.80/tcp/18080/p2p/12D3KooWKLCTHRAhMEafQfaGZTAEx8kJjeMqpXDDeyhBGVotuSfR,/ip4/100.79.54.80/udp/18080/quic-v1/p2p/12D3KooWKLCTHRAhMEafQfaGZTAEx8kJjeMqpXDDeyhBGVotuSfR"
 $env:PYTHONUNBUFFERED = "1"
 

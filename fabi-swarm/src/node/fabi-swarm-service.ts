@@ -38,6 +38,8 @@ interface ContributionAccess {
     eligibleWorkers: number;
     activeRequests: number;
     maxConcurrentRequests: number;
+    workerState?: string;
+    workerUsableMemoryBytes?: number;
 }
 
 const UNKNOWN_CONTRIBUTION: ContributionAccess = {
@@ -344,7 +346,12 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 reason: typeof raw.reason === 'string' ? raw.reason : 'invalid_response',
                 eligibleWorkers: numberField('eligible_workers'),
                 activeRequests: numberField('active_requests'),
-                maxConcurrentRequests: numberField('max_concurrent_requests')
+                maxConcurrentRequests: numberField('max_concurrent_requests'),
+                workerState: typeof raw.worker_state === 'string' ? raw.worker_state : undefined,
+                workerUsableMemoryBytes: typeof raw.worker_usable_memory_bytes === 'number'
+                    && Number.isFinite(raw.worker_usable_memory_bytes)
+                    ? raw.worker_usable_memory_bytes
+                    : undefined
             };
         } finally {
             clearTimeout(timer);

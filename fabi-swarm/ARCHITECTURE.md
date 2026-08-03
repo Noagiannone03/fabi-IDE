@@ -165,8 +165,10 @@ worker 30 s sur crash (comme le CLI).
 
 `fabi-worker-tuning.ts` : détecte le matériel (Apple Silicon / CUDA / generic),
 calcule des limites anti-OOM (paliers RAM/VRAM → batch/seq/tokens/kv-block),
-laisse le runtime calculer la réserve RAM hôte depuis `psutil.available`, pose
-seulement la réserve VRAM dédiée CUDA (`PARALLAX_CUDA_SYSTEM_RESERVE_GB`),
+laisse le runtime initialisé calculer les enveloppes RAM/VRAM live ; aucun
+palier matériel de l'IDE ne pose une réserve fixe. Un override opérateur
+explicite reste possible via `PARALLAX_SYSTEM_RESERVE_GB` ou
+`PARALLAX_CUDA_SYSTEM_RESERVE_GB`,
 construit l'argv exact :
 `parallax join -s <peer> -r --max-batch-size … [--disable-prefix-cache]
 [--gpu-backend vllm sur Windows]`. Tue les workers orphelins avant spawn.

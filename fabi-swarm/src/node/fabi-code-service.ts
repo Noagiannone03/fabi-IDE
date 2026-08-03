@@ -34,10 +34,19 @@ import {
     recommendedOutputTokens
 } from './fabi-code-config';
 import { FabiCodePartAccumulator } from './fabi-code-part-stream';
+import { isOpenCodeTurnSettled, OpenCodeSessionStatuses } from './fabi-code-turn-state';
 
 const SWARM_READY_TIMEOUT_MS = 120_000;
 const OPENCODE_SSE_MAX_EVENT_BYTES = 16 * 1024 * 1024;
 const DEFAULT_TURN_TIMEOUT_MS = 10 * 60_000;
+
+interface TurnWaiter {
+    resolve: () => void;
+    timer: ReturnType<typeof setTimeout>;
+    directory?: string;
+    /** The prompt POST returned successfully, so a missing status now means idle. */
+    accepted: boolean;
+}
 
 @injectable()
 export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationContribution {
@@ -57,7 +66,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     /** Contrôleurs d'abort des POST /message bloquants, par session. */
     protected readonly inflight = new Map<string, AbortController>();
     /** Tours OpenCode en cours : résolus par session.status/session.error ou timeout. */
-    protected readonly turnWaiters = new Map<string, { resolve: () => void; timer: ReturnType<typeof setTimeout> }>();
+    protected readonly turnWaiters = new Map<string, TurnWaiter>();
     protected readonly turnPhases = new Map<string, 'preparing' | 'generating'>();
     protected readonly partStream = new FabiCodePartAccumulator();
     protected sseAbort: AbortController | undefined;
@@ -330,6 +339,13 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                     return;
                 }
                 res.setEncoding('utf-8');
+                // SSE is an edge-triggered notification stream, not durable
+                // session state. Reconcile after every connection so an idle
+                // or error transition emitted during a disconnect cannot leave
+                // the desktop on "Generating" until its safety timeout.
+                void this.reconcileActiveTurns().catch(error => {
+                    this.logger.warn(`[fabi-code] resynchronisation des tours impossible: ${error instanceof Error ? error.message : String(error)}`);
+                });
                 res.on('data', (chunk: string) => {
                     try {
                         parser.feed(chunk);
@@ -507,6 +523,14 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 directory,
                 ac.signal
             );
+            const waiter = this.turnWaiters.get(sessionId);
+            if (waiter) {
+                waiter.accepted = true;
+                // OpenCode may answer the POST after publishing `idle`. If the
+                // SSE edge raced with this process, its authoritative status
+                // map (which omits idle sessions) closes the turn now.
+                await this.reconcileTurn(sessionId, waiter);
+            }
             await done;
         } catch (err) {
             const aborted = (err as Error)?.name === 'AbortError';
@@ -523,6 +547,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             await this.http('POST', `/session/${encodeURIComponent(sessionId)}/abort`, {}, directory);
         } catch {
             /* best-effort */
+        } finally {
+            // Abort is a local user decision. It must settle the desktop even
+            // when the corresponding OpenCode idle event is lost with the SSE
+            // connection that was just interrupted.
+            this.finishTurn(sessionId);
         }
     }
 
@@ -543,10 +572,29 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 this.finishTurn(sessionId, 'Timeout: le moteur Fabi n\'a pas terminé le tour.');
             }, timeoutMs);
             timer.unref?.();
-            this.turnWaiters.set(sessionId, { resolve, timer });
+            this.turnWaiters.set(sessionId, { resolve, timer, directory, accepted: false });
             this.turnPhases.set(sessionId, 'preparing');
             this.setStatus(this.info.status, this.info.detail);
         });
+    }
+
+    protected async reconcileActiveTurns(): Promise<void> {
+        await Promise.all(
+            [...this.turnWaiters.entries()]
+                .filter(([, waiter]) => waiter.accepted)
+                .map(([sessionId, waiter]) => this.reconcileTurn(sessionId, waiter))
+        );
+    }
+
+    protected async reconcileTurn(sessionId: string, waiter: TurnWaiter): Promise<void> {
+        if (this.turnWaiters.get(sessionId) !== waiter || !waiter.accepted) {
+            return;
+        }
+        const raw = await this.http('GET', '/session/status', undefined, waiter.directory);
+        const statuses = JSON.parse(raw) as OpenCodeSessionStatuses;
+        if (isOpenCodeTurnSettled(statuses, sessionId)) {
+            this.finishTurn(sessionId);
+        }
     }
 
     protected finishTurn(sessionId: string, error?: string): void {

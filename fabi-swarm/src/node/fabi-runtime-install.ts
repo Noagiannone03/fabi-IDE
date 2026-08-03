@@ -32,9 +32,9 @@ export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
-export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc38';
-export const QUALIFIED_OPENCODE_COMMIT = '10c110c3d07f7039b7afb91ca67fc815ab2458bc';
-export const QUALIFIED_PARALLAX_COMMIT = 'c261ecb0592e799b93226c6817d0f2260131e1ab';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc40';
+export const QUALIFIED_OPENCODE_COMMIT = '4e1381353f718eb8e1e31cbd54d59a84150f88f4';
+export const QUALIFIED_PARALLAX_COMMIT = 'f02149e7a5af47ea4d8442538e2c69bc8f1450b1';
 export const QUALIFIED_NATIVE_NETWORK_VERSION = '0.1.0';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
 
@@ -482,6 +482,40 @@ export interface DownloadRetryPolicy {
 class NonRetryableDownloadError extends Error {
 }
 
+/** GET court avec la même politique bornée que les gros actifs runtime. */
+export async function fetchRuntimeMetadata(
+    url: string,
+    retryPolicy: DownloadRetryPolicy = {},
+    fetchImpl: typeof fetch = fetch
+): Promise<Response> {
+    const attempts = Math.max(1, Math.floor(retryPolicy.attempts ?? 6));
+    const delayMs = retryPolicy.delayMs ?? (attempt => Math.min(10_000, attempt * 2_000));
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+        try {
+            const response = await fetchImpl(url);
+            const transient = response.status === 408
+                || response.status === 429
+                || response.status >= 500;
+            if (!transient || attempt === attempts) {
+                return response;
+            }
+            await response.body?.cancel().catch(() => undefined);
+            lastError = new Error(`métadonnée runtime indisponible (${response.status}) : ${url}`);
+        } catch (error) {
+            lastError = error;
+            if (attempt === attempts) {
+                break;
+            }
+        }
+        const delay = Math.max(0, Math.floor(delayMs(attempt)));
+        if (delay > 0) {
+            await new Promise<void>(resolve => setTimeout(resolve, delay));
+        }
+    }
+    throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
 /**
  * Télécharge `url` vers `dest` avec retries bornés et reprise RFC 9110.
  * Une portion n'est réutilisée qu'avec un ETag fort envoyé dans `If-Range`.
@@ -749,7 +783,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
     try {
         // 1. Asset splitté ? (manifeste .parts) → parties + réassemblage.
         reportDownload(0, 'téléchargement du moteur…');
-        const partsRes = await fetch(`${tarballUrl}.parts`);
+        const partsRes = await fetchRuntimeMetadata(`${tarballUrl}.parts`);
         if (partsRes.ok) {
             const list = (await partsRes.text()).split(/\r?\n/).map(s => s.trim()).filter(Boolean);
             const partPaths: string[] = [];
@@ -775,7 +809,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
 
         // 2. Vérif SHA-256 obligatoire : une release sans somme n'est pas installable.
         onProgress({ phase: 'verify', percent: 100, message: 'vérification de l\'intégrité…' });
-        const shaRes = await fetch(`${tarballUrl}.sha256`);
+        const shaRes = await fetchRuntimeMetadata(`${tarballUrl}.sha256`);
         if (!shaRes.ok) {
             throw new Error(`somme SHA256 absente pour ${plat.artifact} (${shaRes.status})`);
         }
@@ -796,7 +830,7 @@ export async function installRuntime(onProgress: (p: InstallProgress) => void): 
         const helperPath = join(work, helperArtifact);
         reportDownload(100, 'préparation du décompresseur…');
         await downloadResumable(helperUrl, helperPath, () => undefined);
-        const helperShaRes = await fetch(`${helperUrl}.sha256`);
+        const helperShaRes = await fetchRuntimeMetadata(`${helperUrl}.sha256`);
         if (!helperShaRes.ok) {
             throw new Error(`somme SHA256 absente pour ${helperArtifact} (${helperShaRes.status})`);
         }

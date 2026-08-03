@@ -5459,3 +5459,648 @@ Suite exacte :
    tête Windows ;
 5. seulement alors publier `v2.7.0-rc39`, mettre à jour l'IDE et refaire le
    même test depuis les actifs publics.
+
+## Tête Windows réelle et identité des permis du 31 juillet 2026
+
+Le workflow candidat `30619668658` est finalement entièrement vert sur les
+six plateformes. Son tarball Windows CUDA a été installé dans un slot candidat
+sur la RTX sans écraser le rollback `rc38`. Le binaire
+`Scripts/vllm-rs.exe` est bien celui du candidat et la RTX annonce désormais
+`supports_frontend=true`.
+
+### Qualification de la RTX comme tête et worker complet
+
+La RTX a choisi seule `[0,36)`, sans instruction de placement du VPS, puis a
+chargé embeddings, 36 blocs et tête LM. Elle est devenue `READY`, a formé à
+elle seule une route complète et a annoncé une capacité KV live de 23 264
+tokens. Le Mac mini `rc38` est resté disponible et a choisi `[0,21)`, mais le
+Request Agent a correctement préféré la route RTX en un seul saut.
+
+Depuis ce frontend Windows natif :
+
+- une génération SSE réelle a répondu HTTP 200 en 6,7 secondes avec la
+  sentinelle exacte `WINDOWS HEAD OK` ;
+- un abort client a libéré la route et toutes les réservations ;
+- après les essais, `active_routes=[]`, `max_running_request=0` et les deux
+  workers sont restés `ready`.
+
+Cette preuve ferme la limitation historique : Windows CUDA peut maintenant
+prendre la première couche, les couches intermédiaires et la dernière couche.
+Le placement continue de dépendre de la mémoire et du coût réseau réels, pas
+de l'OS.
+
+### Défaut exact découvert par le gros contexte
+
+Le premier essai OpenCode exact de 12 220 tokens d'entrée et 4 096 tokens
+réservés a été correctement recalibré par la tête Windows à 12 229 tokens
+après application de son template canonique. Le Request Agent a donc relâché
+le permis initial 16 316 et demandé le contrat exact 16 325. Il réutilisait
+toutefois l'identifiant logique comme clé HTTP `Idempotency-Key`. L'autorité a
+refusé le second payload, comme elle le devait, puisque la même clé ne peut pas
+désigner deux contrats différents.
+
+Le comportement fail-closed de l'autorité a été conservé. Le design suit le
+contrat d'idempotence documenté par
+[l'IETF](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-idempotency-key-header),
+[AWS](https://docs.aws.amazon.com/ec2/latest/devguide/ec2-api-idempotency.html)
+et [Stripe](https://docs.stripe.com/api/idempotent_requests) : une répétition
+réseau du même payload garde la même clé, tandis qu'un payload différent
+reçoit une autre clé même s'il appartient à la même requête logique.
+
+Le moteur final
+`32f8770507a91e6aa46f5b520055816b4d979bf6`, poussé sur
+`codex/swarm-protocol-v3`, sépare donc :
+
+- `logical_request_id`, stable pendant calibration, replan et journal SSE ;
+- une empreinte SHA-256 d'idempotence dérivée de l'endpoint coordinateur, du
+  modèle, du budget contexte, des politiques de reprise et du TTL.
+
+Le ledger SQLite migre en place vers `logical_request_id` sans reconstruire la
+table ni perdre les permis historiques. La colonne historique `request_id`
+reste la clé d'idempotence. Les tests couvrent la répétition exacte, le passage
+16 316 vers 16 325 avec la même identité logique, la migration rc38 et la
+stabilité de l'empreinte. Résultats :
+
+- 63 tests ciblés verts ;
+- suite moteur complète : `808 passed, 7 skipped` ;
+- Ruff et `git diff --check` verts.
+
+Le CLI `12f66554f566b39c59a253bb59e88a3ff3d92505`, poussé sur `dev`,
+épingle exactement ce moteur. Ses trois tests installateur et son typecheck
+monorepo sont verts. Le runtime
+`bd668d5482cc4fd241117646e9b32c5a6440cecd`, poussé sur `main`,
+verrouille exactement ce CLI et ce moteur ; `verify-runtime-lock.sh` est vert
+sur les clones locaux exacts. Ne pas utiliser le commit CLI intermédiaire
+`b985...` : une révision moteur complète y avait été reconstruite à tort
+depuis un SHA abrégé, et le verrou runtime a bloqué cette erreur avant toute
+release.
+
+### Déploiement du contrat corrigé et nouvelle preuve OpenCode
+
+L'image coordinateur VPS
+`local/parallax-scheduler:swarm-v3-32f8770` porte l'étiquette OCI exacte
+`32f8770507a91e6aa46f5b520055816b4d979bf6`. Elle a remplacé atomiquement
+l'ancien conteneur en conservant les 40 variables, les clés, les volumes, le
+réseau hôte, l'epoch 116 et un conteneur de rollback. La migration du ledger a
+réussi et les workers M4 et RTX se sont reconnectés `ready`.
+
+Le test OpenCode a alors produit :
+
+- calibration client : 12 220 + 4 096 = 16 316 ;
+- calibration canonique Windows : 12 229 + 4 096 = 16 325 ;
+- HTTP 200 en 20,142 secondes ;
+- contenu exact `FABIOPENCODE-62219` ;
+- usage retourné : 12 229 prompt, 11 completion, 12 240 total ;
+- zéro route ou réservation KV résiduelle.
+
+Le ledger prouve une seule identité logique, un permis 16 316 relâché puis un
+permis 16 325 distinct relâché. Ce n'est donc ni une relaxation de l'autorité
+ni une réutilisation ambiguë.
+
+Le workflow candidat multi-OS `30628467184` est entièrement vert : les deux
+transactions d'installation et les six tarballs ont réussi, Windows CUDA
+inclus. Le tag léger `v2.7.0-rc39` a donc été créé sur l'unique commit testé
+`bd668d5482cc4fd241117646e9b32c5a6440cecd`.
+
+Son premier run de publication est `30631691410`. Le job Darwin arm64 MLX a
+échoué avant le build parce que le runner GitHub n'a plus pu joindre
+`github.com:443` pendant huit secondes au checkout du CLI exact. Le même
+checkout avait réussi juste avant, le candidat identique est vert et aucun
+code n'était en cause. La relance ciblée du job échoué est terminée avec
+succès le 3 août. Le run, ses deux transactions d'installation et ses six
+builds sont donc tous verts. La release publique préliminaire `v2.7.0-rc39`
+contient ses 31 actifs attendus, dont les deux parties Windows CUDA, leur
+manifeste et somme SHA-256, l'extracteur autonome et les trois installateurs.
+
+### Installation publique Mac et requalification mixte du 3 août 2026
+
+Le Mac mini a été installé depuis les actifs publics `v2.7.0-rc39`. Son
+`MANIFEST` vérifié contient exactement :
+
+- OpenCode `12f66554f566b39c59a253bb59e88a3ff3d92505` ;
+- Parallax `32f8770507a91e6aa46f5b520055816b4d979bf6` ;
+- cible `bun-darwin-arm64`, accélération `mlx`, réseau natif `0.1.0`.
+
+Au démarrage autonome, le worker a choisi `[0,24)` et tenté le contexte
+32 768. Le contrat mémoire live a mesuré un plafond de 22 624 tokens et refusé
+proprement cette enveloppe : 2,07 Go restaient disponibles pour 3 Go requis.
+Le worker s'est fenced puis a fait une seule convergence vers 16 384, sans
+boucle de réallocation. Il est devenu `ready` avec 18 240 tokens KV mesurés,
+5,236 Go de poids et 1,67 Go de KV. Il n'y a eu ni swapin ni swapout observé.
+
+Le PC téléchargeait en parallèle, à la demande de l'utilisateur, un GGUF
+Qwen3-Coder de 17,665 Go. Ce téléchargement n'a pas été interrompu. Ollama a
+été arrêté sans suppression sur Windows et le profil Colima `openclaw` a été
+arrêté sans suppression sur le Mac. RunPod a été envisagé pour ne pas disputer
+la connexion du PC, mais l'API a refusé la création avant allocation avec HTTP
+402, solde insuffisant : aucun pod n'a existé et aucun coût n'a été engagé.
+
+La RTX a ensuite été relancée depuis le slot candidat Windows déjà qualifié,
+sans télécharger Fabi ni toucher au GGUF. Aucune session Windows interactive
+n'était ouverte : la tâche `InteractiveToken` accepte `/Run` mais ne démarre
+pas hors session. La documentation Microsoft confirme que `S4U` peut démarrer
+sans session, mais lui retire l'accès réseau et aux fichiers chiffrés ; ce
+mode ne convient donc pas à un worker P2P. La qualification de laboratoire a
+utilisé une session SSH persistante avec le contexte utilisateur réel. Le
+produit devra choisir explicitement entre lifecycle lié à l'IDE et vrai
+service Windows provisionné, sans stocker implicitement un mot de passe.
+
+La route mixte Mac public `rc39` + RTX candidate est devenue `route_ready` :
+
+- les deux workers `ready`, liveness `healthy` ;
+- Mac `supports_frontend=true`, RTX candidate `supports_frontend=false` ;
+- lien inter-worker direct, aucun relay inter-worker, RTT annoncé entre 11 et
+  26 ms ;
+- capacité de route 18 240 tokens, aucune réservation résiduelle.
+
+Preuves depuis le Request Agent local exact `32f8770` :
+
+- SSE `/no_think` : HTTP 200, TTFT 5,663 s, contenu exact
+  `RC39 ROUTE OK` ;
+- abort client volontaire après 7,002 s : le Request Agent avait encore une
+  route au premier poll, puis route locale et coordinateur à zéro moins de
+  deux secondes plus tard ;
+- contexte OpenCode : 12 220 tokens locaux + 4 096 réservés, recalibrés par
+  la tête à 12 229 + 4 096 = 16 325, HTTP 200 en 57,832 s, contenu exact
+  `FABIOPENCODE-62219`, usage 12 229 prompt + 11 completion ;
+- après les trois scénarios : `active_routes=[]`, aucun échec récent, aucun
+  replan froid et `reserved_context_tokens=0` sur les deux workers.
+
+Reste avant de qualifier complètement la release dans l'IDE : laisser finir
+le téléchargement utilisateur, installer le paquet Windows public `rc39`,
+répéter les preuves depuis ce paquet exact, puis seulement mettre à jour la
+constante runtime de l'IDE et exécuter son E2E Electron/OpenCode.
+
+## Admission mémoire initialisée et politique de contribution du 3 août 2026
+
+### Cause exacte du worker local bloqué
+
+Le worker du Mac de développement n'était pas lent pendant un chargement : il
+était en `STANDBY` sans span possible. La première annonce avait été calculée
+avant le processus MLX réel avec 0,98 Gio utilisable. Le placement avait choisi
+`[24,27)`, puis l'exécuteur initialisé ne disposait plus que de 0,17 Gio
+additionnel. Les trois couches consommaient 0,564 Gio et le KV 32k demandait
+encore 0,38 Gio : `MemoryContractError`, puis redémarrage. La seconde annonce
+figeait 170 Mio et ne se rafraîchissait jamais, même si la pression baissait.
+
+Le Mac 16 Gio n'était pas vide. Les mesures système ont montré environ :
+
+- Arc : 4,2 Gio RSS ;
+- Cursor : 2,4 Gio ;
+- Fabi/Electron : 1,3 Gio ;
+- VS Code : 1 Gio ;
+- plus Zoom, Outlook, le runtime et les services macOS ;
+- 2,1 Gio de swap utilisé au premier diagnostic, avec pression noyau
+  `warning`.
+
+La formulation IDE « ton worker charge et vérifie » était donc fausse. Le gate
+ne distinguait pas un worker en construction d'un worker connecté mais sans
+mémoire sûre.
+
+### Recherche primaire et choix de politique
+
+Les implémentations et documentations suivantes ont été relues avant le
+correctif :
+
+- Apple décrit la mémoire disponible comme consultative et changeante, et
+  fournit les événements `normal`, `warning`, `critical` via
+  `DISPATCH_SOURCE_TYPE_MEMORYPRESSURE` ;
+- MLX précise que `set_memory_limit` reste une limite indicative et expose
+  `max_recommended_working_set_size`, `get_active_memory` et la mémoire de pic ;
+- vLLM initialise le runtime, charge le modèle, profile le pic non-Torch et les
+  activations, puis attribue seulement le reliquat au KV ;
+- Ollama macOS calcule la mémoire libre depuis `HOST_VM_INFO64`, utilise le plus
+  petit de la mémoire système et Metal sur mémoire unifiée et conserve 512 Mio
+  de coût runtime Metal ; sur les autres GPU, son minimum est 457 Mio ;
+- Exo place proportionnellement à `psutil.virtual_memory().available` et suit
+  les pics MLX ;
+- Petals estime poids/cache/workspace avant de choisir le nombre de blocs, mais
+  son cas macOS reste essentiellement une réduction manuelle du nombre de
+  blocs ;
+- llama.cpp sépare poids, KV et buffers de calcul et son placement récent fait
+  des allocations virtuelles de test avant de réduire contexte/offload.
+
+Sources : [Apple memory pressure](https://developer.apple.com/documentation/dispatch/dispatch_source_type_memorypressure),
+[MLX memory limit](https://ml-explore.github.io/mlx/build/html/python/_autosummary/mlx.core.set_memory_limit.html),
+[vLLM GPU worker](https://docs.vllm.ai/en/latest/api/vllm/v1/worker/gpu_worker/),
+[Ollama Darwin memory probe](https://github.com/ollama/ollama/blob/main/discover/gpu_info_darwin.m),
+[Ollama device overhead](https://github.com/ollama/ollama/blob/main/ml/device.go),
+[Exo placement](https://github.com/exo-explore/exo/blob/main/src/exo/master/placement_utils.py),
+[Petals server placement](https://github.com/bigscience-workshop/petals/blob/main/src/petals/server/server.py).
+
+Le produit suit désormais la politique agressive mais mesurée d'Ollama, comme
+demandé : 512 Mio de coût runtime par défaut sur MLX et CUDA, puis plafond
+officiel MLX ou profilage vLLM/SGLang. Les variables
+`PARALLAX_SYSTEM_RESERVE_GB` et `PARALLAX_CUDA_SYSTEM_RESERVE_GB` conservent un
+override opérateur littéral.
+
+### Correctif moteur V3
+
+Le moteur final `f02149e7a5af47ea4d8442538e2c69bc8f1450b1`, poussé sur
+`codex/swarm-protocol-v3`, introduit une admission en deux phases :
+
+1. le contrôleur P2P démarre sans annoncer une capacité définitive ;
+2. un processus de préflight initialise le vrai backend MLX ou CUDA, ses
+   imports, son contexte distribué et le contexte de chaque GPU ;
+3. ce processus reste vivant pendant `STANDBY`, échantillonne la capacité
+   réellement additionnelle et publie une enveloppe stabilisée ;
+4. une baisse est appliquée immédiatement ; une hausse exige trois mesures
+   cohérentes ;
+5. dès qu'un span passe `BUILDING`, l'enveloppe est figée, le préflight sort et
+   cède sa place au vrai exécuteur ;
+6. l'exécuteur conserve l'autorité finale après poids/workspace et refuse un KV
+   qui ne tient pas physiquement.
+
+La correction élimine aussi un double comptage MLX : le DHT annonçait parfois
+la limite totale du processus alors que le manifeste compare uniquement poids
+et KV. Il annonce maintenant `additional_bytes`, donc exclut les allocations
+déjà possédées par le runtime initialisé.
+
+Un worker sans span reste connecté avec la décision explicite
+`insufficient_live_memory`. Si la mémoire revient, sa nouvelle offre est
+publiée automatiquement sans toucher aux routes actives. L'API contribution
+renvoie un état agrégé lié au compte, sans identifiant de peer. L'IDE affiche
+désormais `Contribution en veille — mémoire insuffisante`, la capacité sûre et
+la reprise automatique, au lieu d'un faux chargement.
+
+Sur le Mac local, le préflight final a mesuré 6 857 949 184 octets disponibles
+et annoncé 6 321 078 272 octets, soit 5,89 Gio utilisables après les 512 Mio de
+coût Metal. Avec la mesure précédente de 2,70 Gio disponibles, la même politique
+aurait annoncé environ 2,20 Gio, et non zéro. La limite MLX officielle du M4 16
+Gio observée est 12 713 115 648 octets : Fabi ne peut donc pas monopoliser les
+16 Gio physiques même quand le système est vide.
+
+Validations locales :
+
+- suite moteur complète finale : `817 passed, 7 skipped` ;
+- 85 tests ciblés admission/placement/gate verts ;
+- Ruff sur tous les fichiers touchés et `git diff --check` verts ;
+- IDE : 49 tests verts ;
+- CLI : trois tests installateur verts et typecheck monorepo vert ;
+- préflight MLX réel exécuté sur le M4, sans worker ni machine distante modifiés.
+
+Un dernier audit du chemin de lancement a trouvé une incohérence avant
+publication : le moteur utilisait bien son nouveau défaut CUDA de 512 Mio,
+mais l'IDE et le CLI injectaient encore automatiquement l'ancien override
+`PARALLAX_CUDA_SYSTEM_RESERVE_GB=1.5` ou `2`. Le candidat `30801726224` a été
+annulé : même s'il avait compilé, il n'aurait pas constitué la preuve de la
+politique produit Windows/Linux demandée.
+
+Le CLI final `4e1381353f718eb8e1e31cbd54d59a84150f88f4`, poussé sur `dev`,
+supprime ces paliers matériels et laisse l'admission au runtime initialisé sur
+Apple, CUDA et CPU. Les overrides explicitement posés par un opérateur restent
+respectés. Le test CLI couvre maintenant CUDA 8 et 16 Gio sans variable
+injectée ; 27 tests worker et le typecheck monorepo sont verts. L'IDE applique
+le même contrat et ses 49 tests sont verts. Les deux anciens launchers de labo
+Windows effacent également l'override historique afin de tester le défaut
+produit.
+
+Le runtime `688a6f1942275ba4eaa284606d914bf11d787b07`, poussé sur `main`,
+verrouille ce CLI final et le moteur
+`f02149e7a5af47ea4d8442538e2c69bc8f1450b1` ;
+`verify-runtime-lock.sh` est vert sur les clones exacts. Le push `30802544505`
+a correctement rejoué les transactions mais, conformément à la condition du
+workflow, a ignoré les tarballs hors tag. Le vrai candidat multi-OS est donc le
+déclenchement manuel `30802614546` sur la même tête exacte. Ses deux
+transactions d'installation et ses six tarballs sont tous verts, Windows CUDA
+inclus. Le tag léger `v2.7.0-rc40` a donc été créé sur l'unique commit candidat
+`688a6f1942275ba4eaa284606d914bf11d787b07`. Le workflow de publication est
+`30807023196`; ne qualifier la release publique qu'après ses six builds,
+attestations, uploads et le contrôle du nombre d'actifs.
+
+Une seconde mesure locale avec import complet de l'exécuteur MLX a observé
+8 062 664 704 octets disponibles et annoncé 7 525 793 792 octets, soit 7,01
+Gio de contribution après la marge de 512 Mio. Cette valeur est volontairement
+différente de la mesure précédente : elle prouve que l'offre suit la mémoire
+réellement récupérable au lieu d'un palier calculé une fois pour toutes.
+
+Le VPS était encore servi avant déploiement par l'image qualifiée
+`local/parallax-scheduler:swarm-v3-32f8770`. L'image candidate
+`local/parallax-scheduler:swarm-v3-f02149e` a été construite à côté depuis le
+SHA complet ; son label OCI est exact et un smoke test isolé importe
+`parallax`, le transport natif protocole 1 et le nouveau contrôleur de capacité.
+Le conteneur actif, ses 40 variables, son volume d'état, ses clés montées, son
+réseau hôte et sa politique de restart ont ensuite été repris à l'identique
+lors de la bascule atomique.
+
+La première création a refusé une ligne vide ajoutée par le format d'inspection
+Docker. Le trap de déploiement a restauré immédiatement `32f8770` et son probe
+`/v1/models` est resté vert. Après filtrage de cette ligne vide, la seconde
+bascule a réussi : le coordinateur actif porte `f02149e…`, expose le modèle,
+conserve 40 variables et le réseau hôte, affiche zéro restart et aucune erreur
+récente. Le seul rollback conservé est
+`parallax-scheduler-qwen3-4b-v3-pre-f02149e-20260803T102829Z`, sur l'image
+`32f8770`; douze conteneurs de rollback plus anciens et déjà arrêtés ont été
+supprimés, sans supprimer leurs images ni les volumes.
+
+Le statut de contribution public répond maintenant avec le nouvel état agrégé
+`worker_state=standby` pour le worker local encore sous `rc39`. Il ne renvoie
+logiquement pas encore sa nouvelle capacité : cette preuve exige l'installation
+du runtime `f02149e` côté worker.
+
+L'artefact candidat `dist-darwin-arm64-mlx` de `30802614546` a été téléchargé
+sans activation. Ses deux SHA-256 sont valides et son manifeste contient
+exactement OpenCode `4e138135…`, Parallax `f02149e…`, réseau natif `0.1.0` et
+MLX arm64. Le source embarqué contient bien les deux défauts runtime MLX/CUDA
+à 512 Mio. Comme il s'agit du workflow manuel, sa version de manifeste est
+`main` ; seule la reconstruction depuis le tag devra porter
+`v2.7.0-rc40`.
+
+Le clone IDE local complet a ensuite été compilé avec Node 22 : les trois
+extensions `fabi-branding`, `fabi-swarm`, `fabi-spaces`, puis les bundles
+Theia browser, node et Electron terminent avec zéro erreur. Ce résultat ne
+remplace pas le futur E2E visuel sur le runtime public, mais ferme le risque
+d'un test limité aux seuls fichiers TypeScript unitaires.
+
+### Activation publique et preuves mémoire réelles
+
+L'actif public Apple Silicon de `v2.7.0-rc40` a été installé une première fois
+dans une racine temporaire isolée. Le SHA-256, les 58 relocalisations et les
+imports du module `runtime_capacity` sont valides ; son `MANIFEST` porte bien
+le tag `rc40`, OpenCode `4e138135…` et Parallax `f02149e…`. Une commande de
+smoke a d'abord demandé par erreur une classe `RuntimeCapacityController` qui
+n'existe pas : il s'agissait d'un mauvais nom dans le diagnostic, pas d'un
+défaut du paquet. Le module réel expose `StableCapacityTracker` et
+`run_runtime_capacity_probe` et s'importe correctement.
+
+Le même actif public a ensuite été installé transactionnellement sur le Mac
+mini, puis le worker Iroh a été redémarré avec le launcher de labo qui passe
+explicitement la source du runtime installé. Le préflight MLX a publié trois
+échantillons stables de 10,16 à 10,18 Gio. Le placement autonome a choisi
+`[0,24)`, chargé 5,236 Go de poids et dimensionné poids + KV à 9,068 Go. Le
+worker est `ready` avec 41 856 tokens KV. Le coordinateur est revenu à
+`available` / `route_ready`, sans erreur ni restart ; le lien Mac mini -> RTX
+est direct.
+
+Le Mac de développement a également reçu l'actif public, sans fermer
+Electron. Le premier GET direct a reçu HTTP 500 depuis l'edge GitHub FRA avant
+toute activation ; l'ancien runtime est donc resté intact. L'actif a ensuite
+été téléchargé via l'API GitHub, son SHA vérifié, puis installé par la même
+transaction. Seul le groupe du worker a reçu SIGINT ; son superviseur IDE l'a
+relancé automatiquement 30 secondes après sa sortie propre.
+
+Sous la charge réelle de cette machine, le nouveau préflight a publié 6,76 à
+6,87 Gio au lieu des 170 Mio figés de `rc39`. Le worker a choisi `[24,36)`,
+téléchargé uniquement les plages signées nécessaires, chargé 2,980 Go de
+poids et réservé 2,99 Go de KV. Il sert maintenant 65 408 tokens KV. Le statut
+global accepte les trois workers, reste `route_ready`, et le gate public du
+compte local répond `allowed=true`, `reason=eligible`, avec un worker éligible.
+Cette preuve montre à la fois que Fabi utilise réellement la machine et qu'un
+poste plus occupé reçoit une tranche plus petite que le Mac mini.
+
+Après chargement, `psutil` mesurait encore environ 1,52 Gio disponibles et le
+contrôleur restait `normal`. Le système avait toutefois comprimé/swapé des
+pages pendant le chargement : cette politique est volontairement agressive,
+comme Ollama, et non sans coût. La protection live reste active : trois
+échantillons sous le seuil `warning` ferment les nouvelles admissions ; deux
+échantillons sous le seuil `critical` drainent la génération puis la
+redémarrent avec une enveloppe recalculée. Une route active n'est jamais
+retaillée en boucle.
+
+Le HTTP 500 réel a motivé un durcissement séparé de l'installation. Le runtime
+`d420447` applique désormais les retries bornés officiels de curl à tous les
+GET POSIX et une boucle compatible Windows PowerShell 5.1 au fallback
+`Invoke-WebRequest`. L'IDE applique le même contrat aux petites métadonnées
+`.parts` et `.sha256`, en ne retentant que 408, 429, 5xx et les erreurs réseau ;
+un 404 déterministe n'est jamais masqué. La transaction shell, le build des
+trois extensions, les 16 tests runtime ciblés et les 51 tests IDE sont verts.
+Le lancement accidentel de `npm test` à la racine a seulement indiqué que ce
+script npm n'existe pas ; la commande de suite correcte est
+`node --test fabi-swarm/test/*.test.js`, qui est verte.
+
+La publication taggée `30807023196` est finalement entièrement verte : deux
+transactions d'installation et six builds, y compris Linux CUDA et Windows
+CUDA. La release publique préliminaire `v2.7.0-rc40` contient exactement ses
+31 actifs attendus. Son tag léger pointe sur le candidat testé
+`688a6f1942275ba4eaa284606d914bf11d787b07`, tandis que `main` contient en plus
+le durcissement téléchargement `d420447bbe7b83f76658d04c7893bf19755ec994`,
+validé par le workflow push `30809498479` entièrement vert.
+
+### Cycle de vie worker et Request Agent
+
+L'E2E local a exposé un défaut indépendant de l'admission mémoire : avant un
+redémarrage, le nettoyage des orphelins considérait tout processus dont la
+commande contenait la racine du runtime comme un worker. Il pouvait donc tuer
+le Request Agent local, puis provoquer dans l'IDE un faux retour à
+`bootstrapping` après une génération ou une reconnexion.
+
+Le nettoyage reconnaît désormais uniquement les racines Parallax réelles :
+`parallax ... join`, `python -m parallax.cli join` ou `parallax/launch.py`.
+Sur Unix, les groupes de processus détachés sont signalés ; sur Windows,
+`taskkill /T` ferme l'arbre du worker. Le nettoyage a lieu avant le nouveau
+spawn pour supprimer la course où le nouveau worker pouvait être pris pour un
+orphelin. Le Request Agent, OpenCode et les autres sidecars de la même release
+ne correspondent jamais à ce filtre. Ce choix suit les contrats officiels
+[Node `detached`](https://nodejs.org/api/child_process.html) et
+[Microsoft `taskkill /T`](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/taskkill).
+
+La preuve ne repose pas seulement sur le test unitaire. Dans l'application
+Electron réelle, le worker PID `64187` et le Request Agent PID `64188` étaient
+prêts sur un cluster `available`. Après SIGINT contrôlé du seul groupe worker,
+Fabi a lancé le nouveau worker PID `64964` tout en conservant exactement le
+Request Agent PID `64188`. Les trois nœuds sont ensuite revenus `available`,
+pipeline structurelle et admission actives. Le build Electron complet
+browser/node/electron termine avec zéro erreur et les 51 tests IDE passent.
+
+Pendant l'installation publique de la RTX, son arrêt volontaire a aussi
+révélé un mensonge d'état dans l'IDE : il affichait `Contribution déjà
+utilisée` alors que le coordinateur confirmait `active_requests=0`, aucune
+route active et `reason=swarm_not_ready`. La réponse de contribution
+`capacity_reached` mise en cache avant le changement de topologie gagnait à
+tort sur l'état transport live. `requireContribution` traite désormais le
+gate seulement si la route est actuellement prête ; un départ de peer, une
+route occupée ou un swarm incomplet invalide donc immédiatement ce verdict
+périmé. Le test `reports a loaded but saturated route` couvre la régression,
+les 51 tests restent verts et l'application Electron a été reconstruite puis
+relancée avec ce correctif.
+
+## Découverte, couverture autonome et reprise du swarm du 3 août 2026
+
+### Deux pannes distinctes derrière « aucun swarm joignable »
+
+Le symptôme IDE a d'abord correspondu à une panne de découverte : le
+conteneur actif `parallax-scheduler-qwen3-4b-v3` avait été recréé sans les cinq
+labels Docker consommés par le registre (`fabi.swarm`, `fabi.swarm.id`,
+`fabi.swarm.model`, `fabi.swarm.name`, `fabi.swarm.url`). Le scheduler et son
+endpoint modèle restaient sains, mais le catalogue public ne pouvait plus le
+publier. Le conteneur a été recréé atomiquement avec les mêmes 40 variables,
+volumes, mounts, réseau hôte, restart policy et image, en restaurant les cinq
+labels. Le rollback arrêté
+`parallax-scheduler-qwen3-4b-v3-pre-labels-20260803T1228Z` est conservé. Le
+registre public publie de nouveau `qwen3-4b-v3` ; le fichier Compose historique
+ne porte toutefois pas encore ces labels et ce risque de déploiement doit être
+fermé dans la source avant la prochaine bascule.
+
+La découverte restaurée, deux workers étaient bien annoncés mais leurs spans
+fixes étaient Mac mini `[0,32)` et Mac local `[0,10)` pour un manifeste de 36
+couches. La fin `[32,36)` n'était donc couverte par personne. Le contrôleur
+autonome refusait de déplacer le worker redondant tant qu'une autre route
+complète ne survivait pas au mouvement. Comme aucune route n'existait encore,
+ce garde créait un interblocage de bootstrap.
+
+### Alignement sur la règle d'équilibrage de Petals
+
+Le code officiel Petals `src/petals/server/block_selection.py` a été relu avant
+la correction. Petals protège une chaîne qui sert déjà : il refuse un
+déplacement lorsque le débit minimum courant est positif et deviendrait nul.
+En revanche, si la chaîne est déjà discontinue, il autorise un déplacement qui
+améliore sa couverture. Fabi applique maintenant le même invariant, avec ses
+contraintes plus fortes de contexte, endpoints et leases :
+
+- une route complète existante doit survivre au départ du worker déplacé ;
+- sans route complète, le worker peut réparer la couverture seulement si une
+  autre copie `READY` conserve chacune de ses couches actuelles ;
+- le nouveau span doit strictement améliorer le score exact du planificateur.
+
+Le moteur final
+`9d16bfd1b2dc52c80eee20802b518246c32792c9`, poussé sur
+`codex/swarm-protocol-v3`, couvre le cas exact 36 couches : `[0,10)` en doublon
+avec `[0,32)` migre vers `[32,36)`. Les 25 tests ciblés passent, Ruff et le
+formatage sont verts, et la suite complète donne `819 passed, 7 skipped`.
+Il inclut aussi le correctif parent
+`6ee749aec5fe2267ee439fec453cf68d3169a864`, qui évince les requêtes terminales
+propagées et libère leur slot d'admission local.
+
+Le CLI
+`f38b5fd0723d8b2499b5199ce67ac3f6a31ff830`, poussé sur `dev`, qualifie ce
+moteur ; ses trois tests installateur et le typecheck monorepo sont verts. Le
+runtime `7a82a07d68822452efbaf8c27f3e20021080a352`, poussé sur `main`, verrouille
+exactement ce CLI et ce moteur. `verify-runtime-lock.sh` est vert sur les deux
+clones exacts. Le workflow push `30814909486` valide les transactions Linux et
+Windows. La matrice manuelle exacte `30815023024` construit encore les six
+plateformes au moment de cette écriture ; aucun nouveau tag ne doit être créé
+avant ses six résultats verts et la qualification réelle Mac/Windows.
+
+### Preuve live après relance de l'IDE
+
+L'application Electron locale avait été fermée proprement à
+`2026-08-03T12:41:46Z`; son worker avait donc quitté le swarm. Le registre ne
+voyait logiquement plus que le Mac mini `[0,32)` et annonçait une route
+incomplète. Après relance normale de l'IDE, le runtime installé a cette fois vu
+l'offre du Mac mini avant son premier choix et a sélectionné seul `[32,36)`.
+Cette observation confirme que le VPS n'attribue pas les couches en V3 : les
+workers choisissent leurs spans depuis l'état DHT.
+
+La route obtenue est restée stable pendant six probes espacés de cinq secondes :
+
+- Mac mini `eac4e808…` : `[0,32)`, `READY`, 20 992 tokens KV ;
+- Mac local `993a92a3…` : `[32,36)`, `READY`, 222 560 tokens KV ;
+- deux offres, deux leases et deux liens Iroh relay qualifiés ;
+- `structural_pipeline_ready=true`, `admission_ready=true`, contexte de route
+  20 992 tokens et aucune réservation résiduelle.
+
+Un premier stream authentifié a traversé les deux workers. Un second appel
+immédiat a reçu temporairement HTTP 500 parce que l'autorité a répondu
+`swarm_not_ready` pendant la transition d'admission ; ce résultat n'est pas
+masqué et doit être rejoué avec le runtime exact qui inclut `6ee749a`. Une
+nouvelle génération `/no_think` a ensuite répondu HTTP 200 avec le contenu
+exact `FABI SWARM OK`, TTFT 5,312 s et durée totale 8,646 s. Après la requête,
+les deux workers sont restés sains, la route est `route_ready`,
+`max_running_request=0` et les réservations KV sont revenues à zéro.
+
+## Autorité dynamique, état durable OpenCode et génération longue du 3 août 2026
+
+### Deux causes réelles derrière le nouveau tour bloqué
+
+Un redémarrage manuel du worker Mac mini avait omis
+`FABI_SWARM_V3_COORDINATION_MODE=client`. Le runtime installé acceptait alors
+encore la valeur historique `fixed` et refusait l'enveloppe signée du Request
+Agent avec `fixed coordinator admission does not accept a capability
+envelope`. Une relance par le launcher qualifié a immédiatement reformé la
+route Mac mini `[0,32)` -> Mac local `[32,36)` et un stream direct a répondu
+exactement `FABI V3 PRODUCT OK` en 9 s.
+
+Le produit ne dépend désormais plus de cette variable : en mode V3 actif, le
+worker construit toujours son autorité à partir du registre de confiance et
+des capabilities signées. Une valeur héritée `fixed` ne peut donc plus
+réactiver silencieusement l'ancien placement. Le moteur
+`faa90ad90900b04377056153498af021d49b9e82`, le CLI
+`38c127d8ceb3a46fd7c64a2b2f5e61ddda998e39` et le runtime
+`250955e52a7728ab8f0180f66fd603cd12aaf5ac` sont poussés respectivement sur
+`codex/swarm-protocol-v3`, `dev` et `main`. Les tests ciblés du moteur, les
+trois tests installateur, le typecheck CLI et `verify-runtime-lock.sh` sont
+verts. La suite moteur donne `819 passed, 7 skipped`; un test d'import en
+sous-processus a dépassé une fois son timeout fixe de 10 s sous charge, puis a
+passé isolément en 0,82 s. Cette anomalie de timing n'est pas présentée comme
+un défaut fonctionnel résolu.
+
+Le tour Electron observé à `15:24:56` a ensuite obtenu sa route et commencé le
+prefill réel, puis a échoué à `15:25:52` avec `Worker route was lost`. Les
+keepalives du permis devenaient `503` pendant que la génération occupait la
+seule pipeline. Le correctif parent `623f177` renouvelle désormais un permis
+existant d'après la contribution live sans exiger qu'une seconde route libre
+soit admissible. Il ne supprime ni le contrôle de compte ni la preuve que le
+worker contribue encore.
+
+### Déploiement VPS attesté par le contenu
+
+La première tentative de déploiement a produit un diagnostic trompeur : le
+script imprimait son succès via `SystemExit(0)`, puis son bloc
+`except BaseException` interceptait aussi ce succès et restaurait l'image
+`ab9c8ff`. Le label du candidat était donc exact, mais le conteneur actif était
+revenu à l'ancien code. Ce n'était ni Docker Compose ni un superviseur. La
+comparaison du SHA de l'image active et l'inspection de la méthode Python
+importée ont permis d'établir cette cause avant tout nouveau test.
+
+Le candidat a été reconstruit avec l'argument Docker exact
+`PARALLAX_COMMIT=faa90ad90900b04377056153498af021d49b9e82`. Son smoke test ne
+contrôle plus seulement le label : il importe le paquet installé et vérifie
+que `ContributionGate.keepalive_route_permit` ne contient plus le garde
+`serving_ready`. La seconde bascule utilise une condition de succès normale,
+conserve l'ancien conteneur sous
+`parallax-scheduler-qwen3-4b-v3-pre-faa90ad-r2-20260803T134504Z` et vérifie
+l'ID d'image après démarrage. L'actif est maintenant
+`local/parallax-scheduler:swarm-v3-faa90ad-r2`, conserve ses 40 variables et
+ses cinq mounts, expose `/v1/models`, et importe bien le code `faa90ad`.
+
+Après ce redémarrage, les deux workers se sont réannoncés sans commande de
+placement du VPS. Ils ont conservé leurs décisions autonomes publiées dans la
+DHT : Mac mini `[0,32)`, Mac local `[32,36)`. La route est revenue
+`available`, `route_ready`, avec 22 048 tokens de contexte réellement
+supportés et les deux liens relay qualifiés. Le scheduler reste donc un
+coordinateur de requête, d'autorité et d'observabilité ; il ne distribue pas
+les couches en V3.
+
+Une génération synthétique longue, sans outil et lancée via le Request Agent
+local, a ensuite traversé les deux workers pendant 198,101 s. Elle a reçu HTTP
+200, un `[DONE]`, 211 chunks et 548 caractères ; son TTFT était de 152,882 s,
+notamment avec le chargement/prefill de ce test. Tous les renouvellements du
+même permis ont répondu `200` au-delà de trois minutes, puis le Request Agent
+a envoyé le `DELETE` terminal. La capacité du compte est revenue à
+`allowed=true`, `active_requests=0`, la pipeline à `available` et les deux
+workers sont restés `healthy`. Le défaut de perte à 60 s est ainsi reproduit
+sur l'ancien actif et fermé sur l'actif exact.
+
+Le champ d'observabilité `swarm_v3_execution.active_routes` retombe toutefois
+à zéro après un rafraîchissement de capability alors que le data plane est
+encore en decode. Les logs workers et le ledger de permis restent cohérents,
+mais cette projection ne doit pas encore être utilisée comme unique preuve
+d'activité ; son cycle de vie doit être corrigé séparément.
+
+### Réconciliation durable des tours IDE
+
+La source officielle OpenCode confirme que `session.status` expose les états
+`busy`, `retry` et `idle`, et que `GET /session/status` fournit leur projection
+durable. Les événements SSE ne sont qu'un flux de changements et peuvent être
+manqués lors d'une reconnexion ; le moteur de retry OpenCode peut en outre
+continuer un 5xx retryable. Fabi conserve donc le SSE pour la réactivité, mais
+réconcilie maintenant chaque tour accepté avec `/session/status` après la
+connexion et après le POST du prompt. Une session absente ou `idle` termine le
+tour ; `busy`, `retry` et tout état inconnu le gardent actif. L'abort libère
+également toujours l'état local dans son `finally`.
+
+Le helper pur `fabi-code-turn-state.ts` et son test empêchent le retour d'un
+faux `Generating` persistant après perte d'un événement de bord. Les 53 tests
+`fabi-swarm` passent et le build TypeScript est vert. L'application Electron
+reste lancée par son chemin produit normal, avec worker et Request Agent
+automatiques. Le tour utilisateur antérieur au déploiement a bien échoué et
+n'a pas été rejoué automatiquement, afin de ne pas exécuter deux fois ses
+outils ; `/session/status` est revenu vide avant de demander un nouvel essai.
+
+Le workflow runtime manuel `30817748887`, sur le SHA exact `250955e`, a déjà
+validé les transactions Windows et Linux ainsi que les tarballs
+`linux-arm64-cpu`, `linux-x64-cpu` et `darwin-arm64-mlx`. Les builds
+`darwin-x64-cpu`, `linux-x64-cuda` et surtout `windows-x64-cuda` sont encore en
+cours au moment de cette écriture. Aucun tag public ne doit être créé avant la
+fin verte des six artefacts et leur installation réelle sur le Mac mini et la
+RTX.

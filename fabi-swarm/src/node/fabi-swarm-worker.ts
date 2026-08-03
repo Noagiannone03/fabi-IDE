@@ -50,6 +50,14 @@ export function spawnWorker(
         const args = [...command.argsPrefix, ...buildJoinArgs(peer)];
         const env = buildWorkerEnv(profile, bootstrap, swarmId);
         const log = openWorkerLog(swarmId);
+        // Nettoyer avant le spawn supprime toute course où le nouveau CLI (ou
+        // son launch.py) serait pris pour un ancien worker. Le filtre ne cible
+        // que les racines Parallax, jamais le Request Agent du même runtime.
+        try {
+            killOrphanedWorkers(-1);
+        } catch {
+            /* best-effort */
+        }
         const proc = spawn(command.binary, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
             detached: process.platform !== 'win32',
@@ -66,12 +74,6 @@ export function spawnWorker(
             'launcher',
             `spawn pid=${currentPid} cmd=${command.binary} ${args.join(' ')}`
         );
-        try {
-            killOrphanedWorkers(currentPid);
-        } catch {
-            /* best-effort */
-        }
-
         const state: WorkerState = { kind: 'running', pid: currentPid, swarmId };
         onUpdate({ ...state });
         const push = () => onUpdate({ ...state });

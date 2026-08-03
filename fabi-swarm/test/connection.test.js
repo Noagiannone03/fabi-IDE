@@ -69,8 +69,26 @@ test('reports a loaded but saturated route without claiming model bootstrap', ()
         allowed: false,
         reason: 'capacity_reached'
     });
-    assert.equal(accountBusy.reason, 'contribution-pending');
-    assert.match(accountBusy.headline, /déjà utilisée/);
+    assert.equal(accountBusy, state);
+    assert.equal(accountBusy.reason, 'route-busy');
+    assert.doesNotMatch(accountBusy.headline, /déjà utilisée/);
+});
+
+test('reports a broken ready route as rebuilding instead of busy', () => {
+    const state = deriveConnection(
+        swarm({
+            schedulerStatus: 'waiting',
+            pipelineReady: true,
+            routingReady: false,
+            needMoreNodes: true,
+            nodesActive: 2
+        }),
+        { kind: 'running', stage: 'ready', startLayer: 24, endLayer: 36 }
+    );
+    assert.equal(state.reason, 'need-more-peers');
+    assert.equal(state.headline, 'Route en reconstruction');
+    assert.match(state.activity, /chemin pair-à-pair complet/);
+    assert.doesNotMatch(state.activity, /génération/);
 });
 
 test('surfaces capacity, scheduler and worker failures instead of optimistic states', () => {
@@ -106,7 +124,21 @@ test('keeps the prompt locked until contribution is authorized', () => {
     assert.equal(stillLoading.ready, false);
     assert.equal(stillLoading.reason, 'contribution-pending');
     assert.match(stillLoading.headline, /Préparation/);
-    assert.match(stillLoading.activity, /charge et vérifie/);
+    assert.match(stillLoading.activity, /connecté et cherche/);
+
+    const memoryStandby = requireContribution(
+        transport,
+        {
+            allowed: false,
+            reason: 'no_eligible_worker',
+            workerState: 'insufficient_memory',
+            workerUsableMemoryBytes: 178_421_760
+        }
+    );
+    assert.equal(memoryStandby.headline, 'Contribution en veille');
+    assert.match(memoryStandby.activity, /mémoire insuffisante/);
+    assert.match(memoryStandby.activity, /0\.17 Gio/);
+    assert.match(memoryStandby.detail, /réessaiera automatiquement/);
 
     const denied = requireContribution(
         transport,

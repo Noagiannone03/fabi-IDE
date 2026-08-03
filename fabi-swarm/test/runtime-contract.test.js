@@ -18,6 +18,7 @@ const {
     activateManagedRuntime,
     createDownloadProgressReporter,
     downloadResumable,
+    fetchRuntimeMetadata,
     managedRuntimePathsIn,
     parallaxCommandIn,
     parseRuntimeManifest,
@@ -29,9 +30,8 @@ const {
     validateRuntimeManifest
 } = require('../lib/node/fabi-runtime-install');
 const {
-    resolveCudaSystemReserveGb,
+    isParallaxWorkerCommand,
     resolveConfiguredWorkerLimits,
-    resolveHostSystemReserveGb,
     resolveMemoryReserveEnv,
     resolveWorkerLimits
 } = require('../lib/node/fabi-worker-tuning');
@@ -216,6 +216,50 @@ test('does not retry a deterministic runtime download failure', async () => {
     }
 });
 
+test('retries transient runtime metadata failures but not a missing asset', async () => {
+    let transientRequests = 0;
+    let missingRequests = 0;
+    const server = http.createServer((request, response) => {
+        if (request.url === '/transient') {
+            transientRequests++;
+            if (transientRequests < 3) {
+                response.writeHead(500);
+                response.end('temporary');
+                return;
+            }
+            response.writeHead(200, { 'Content-Type': 'text/plain' });
+            response.end('verified');
+            return;
+        }
+        missingRequests++;
+        response.writeHead(404);
+        response.end('missing');
+    });
+    try {
+        server.listen(0, '127.0.0.1');
+        await once(server, 'listening');
+        const address = server.address();
+        assert.ok(address && typeof address !== 'string');
+        const origin = `http://127.0.0.1:${address.port}`;
+        const recovered = await fetchRuntimeMetadata(
+            `${origin}/transient`,
+            { attempts: 3, delayMs: () => 0 }
+        );
+        assert.equal(recovered.status, 200);
+        assert.equal(await recovered.text(), 'verified');
+        assert.equal(transientRequests, 3);
+
+        const missing = await fetchRuntimeMetadata(
+            `${origin}/missing`,
+            { attempts: 3, delayMs: () => 0 }
+        );
+        assert.equal(missing.status, 404);
+        assert.equal(missingRequests, 1);
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
+});
+
 test('rejects a runtime built from a different engine revision', () => {
     assert.throws(
         () => validateRuntimeManifest(manifest({ parallax: '0'.repeat(40) }), contract),
@@ -368,15 +412,7 @@ test('uses the qualified 32k window and keeps explicit lab overrides', () => {
     );
 });
 
-test('applies the same live-memory reserve policy on macOS, Windows and Linux', () => {
-    assert.equal(resolveHostSystemReserveGb(8), 1.25);
-    assert.equal(resolveHostSystemReserveGb(16), 2);
-    assert.equal(resolveHostSystemReserveGb(32), 3.2);
-    assert.equal(resolveHostSystemReserveGb(48), 4.8);
-    assert.equal(resolveHostSystemReserveGb(128), 8);
-    assert.equal(resolveCudaSystemReserveGb(8), 2);
-    assert.equal(resolveCudaSystemReserveGb(16), 1.5);
-
+test('delegates live RAM and VRAM admission to the initialized runtime on every OS', () => {
     assert.deepEqual(
         resolveMemoryReserveEnv({ accelerator: 'apple-silicon', ramGb: 16 }),
         {}
@@ -386,9 +422,34 @@ test('applies the same live-memory reserve policy on macOS, Windows and Linux', 
         {}
     );
     assert.deepEqual(
-        resolveMemoryReserveEnv({ accelerator: 'cuda', ramGb: 32, vramGb: 16 }),
-        {
-            PARALLAX_CUDA_SYSTEM_RESERVE_GB: '1.5'
-        }
+        resolveMemoryReserveEnv({ accelerator: 'cuda', ramGb: 16, vramGb: 8 }),
+        {}
     );
+    assert.deepEqual(
+        resolveMemoryReserveEnv({ accelerator: 'cuda', ramGb: 32, vramGb: 16 }),
+        {}
+    );
+});
+
+test('orphan cleanup targets worker roots without killing the Request Agent', () => {
+    const unixRoot = '/Users/fabi/.local/share/fabi/runtime';
+    assert.equal(isParallaxWorkerCommand(
+        `${unixRoot}/parallax-venv/bin/parallax join -s scheduler`, unixRoot
+    ), true);
+    assert.equal(isParallaxWorkerCommand(
+        `${unixRoot}/parallax-venv/bin/python ${unixRoot}/parallax-src/src/parallax/launch.py --scheduler-addr peer`,
+        unixRoot
+    ), true);
+    assert.equal(isParallaxWorkerCommand(
+        `${unixRoot}/parallax-venv/bin/fabi-request-agent --host 127.0.0.1`, unixRoot
+    ), false);
+
+    const windowsRoot = 'C:\\Users\\fabi\\AppData\\Local\\fabi\\runtime';
+    assert.equal(isParallaxWorkerCommand(
+        `${windowsRoot}\\python-base\\python.exe -m parallax.cli join -s scheduler`, windowsRoot
+    ), true);
+    assert.equal(isParallaxWorkerCommand(
+        `${windowsRoot}\\python-base\\python.exe -m backend.server.request_agent_frontend --host 127.0.0.1`,
+        windowsRoot
+    ), false);
 });
