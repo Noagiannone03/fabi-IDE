@@ -6323,3 +6323,12 @@ réutilise ce diagnostic au lieu d'afficher « moteur non installé ». Un test
 reproduit un runtime entièrement présent construit depuis une mauvaise
 révision Parallax. Les 56 tests `fabi-swarm`, le build TypeScript de toutes les
 extensions Fabi et `git diff --check` passent.
+
+Un smoke OpenAI authentifié sur ce frontend local a ensuite traversé la route
+réelle et terminé avec un événement `finish_reason=length` puis exactement un
+`[DONE]`. Un second appel contenant 17 009 tokens d'entrée et 16 tokens de
+sortie réservés a été refusé avant tout envoi au data plane : HTTP 400,
+`context_length_exceeded`, avec les valeurs réelles « 17 025 requis » et
+« 16 384 supportés ». Les trois workers sont restés `healthy`, sans route
+active résiduelle. Le candidat prouve donc à la fois le chemin nominal et la
+fermeture propre du contexte trop grand.
