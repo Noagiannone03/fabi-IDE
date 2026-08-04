@@ -6194,3 +6194,132 @@ valide pas encore une permission d'outil, une modification de fichier, le
 changement de modèle en cours de session, ni un kill réseau prefill/decode avec
 replan froid ; ces scénarios restent à exécuter et ne sont pas présentés comme
 terminés.
+
+## Contrat de contexte frontend et erreurs SSE du 4 août 2026
+
+### Cause du tour interrompu après lecture de fichiers
+
+Le défaut a été reproduit depuis le vrai Electron/OpenCode, puis suivi jusqu'au
+frontend RTX. Le premier appel contenait exactement 13 616 tokens d'entrée et
+a généré 851 tokens normalement. Après l'outil `glob`, le tour suivant
+contenait 16 721 tokens. Le frontend `vllm-rs.exe` de la RTX avait été ramené à
+`max_model_len=16384` par la réconciliation mémoire, mais son lease V3
+n'exposait que la capacité KV agrégée. Le planificateur confondait donc deux
+grandeurs différentes : le nombre total de tokens KV hébergeables entre les
+requêtes et la longueur maximale d'une requête sur ce frontend.
+
+La requête trop longue était admise, puis le worker recevait un HTTP 400 local.
+`TransformerConnectionHandler.chat_completion` injectait le JSON HTTP brut
+dans le flux RPC avant que le Request Agent ajoute son événement SSE terminal.
+Comme ce JSON ne portait ni préfixe `data:` ni double saut de ligne, le parseur
+EventSource conforme WHATWG l'absorbait avec l'événement suivant. L'adaptateur
+OpenAI compatible de l'AI SDK ne voyait finalement que `[DONE]` et produisait
+son `finishReason=other`; OpenCode n'avait donc ni texte, ni erreur durable à
+afficher. Ce n'était pas un crash de l'outil de lecture, ni un timeout de
+génération.
+
+### Contrat retenu
+
+`SpanLease` publie désormais un `max_context_tokens` positif et obligatoire,
+distinct de `kv_geometry.allocatable_bytes`. Le worker annonce la limite
+effective réellement donnée à son frontend ; une baisse adaptative met à jour
+à la fois la géométrie KV et cette limite. En mode autonome, le passage READY
+conserve le contexte planifié au lieu de le reconstruire depuis la capacité KV
+totale. Le planificateur exact refuse maintenant toute pipeline dont un span ne
+supporte pas `prompt + output réservé`, même si son agrégat KV serait assez
+grand.
+
+Le data plane vérifie aussi le statut HTTP local avant de streamer. Une erreur
+est transportée dans l'enveloppe HTTP binaire déjà définie par le protocole,
+puis le Request Agent la convertit en exactement un événement OpenAI SSE
+`data: {...}\n\n`, suivi de `data: [DONE]\n\n`. Le message et les champs
+`type`, `param` et `code` sont conservés lorsqu'ils existent. Cette fin est
+marquée terminale afin de ne pas ajouter ensuite une erreur générique ou un
+abort en doublon.
+
+Le choix suit les contrats des sources primaires relues avant modification :
+la validation de `max_model_len` dans
+[vLLM](https://github.com/vllm-project/vllm/blob/main/vllm/config/model.py), le
+parseur OpenAI compatible de
+[Vercel AI SDK](https://github.com/vercel/ai/blob/main/packages/openai-compatible/src/chat/openai-compatible-chat-language-model.ts),
+la persistance des erreurs dans le
+[processor OpenCode](https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/session/processor.ts)
+et le framing défini par la
+[spécification WHATWG SSE](https://html.spec.whatwg.org/multipage/server-sent-events.html).
+
+### Validation et versions qualifiées
+
+Les tests ajoutés couvrent le cas exact d'un worker ayant beaucoup de KV mais
+un frontend 16 384, la baisse dynamique du contexte publié, le transport d'un
+HTTP 400 sans octet JSON parasite et les deux seuls événements SSE attendus.
+Les 75 tests ciblés passent. La suite moteur complète donne `823 passed,
+7 skipped`; le sous-ensemble exact du workflow réseau natif donne `251
+passed`. Le wheel `parallax-0.1.2-py3-none-any.whl` se construit, Ruff ciblé et
+`git diff --check` sont verts. Le lint global expose encore 85 erreurs
+antérieures hors de ce changement et n'est pas présenté comme vert.
+
+Le moteur `a1f9fe02fe3d87e19cbdb8fd93aab55e939f8d6a` est poussé sur
+`codex/swarm-protocol-v3`. Le CLI
+`95c0b2013f4e46aa8010033b8a2c622a4bfe48d0`, poussé sur `dev`, verrouille ce
+moteur ; ses trois tests installateur et son typecheck monorepo passent. Le
+runtime `f2e2a5a050976719de27d8036719be2357c39c1a`, poussé sur `main`,
+verrouille exactement ces deux révisions ; la vérification du lock et les
+transactions POSIX/Windows passent. Le workflow `Native network`
+`30908097126` est vert sur Ubuntu, macOS et Windows.
+
+Le VPS importe déjà l'image exacte
+`local/parallax-scheduler:swarm-v3-a1f9fe0`, dont le smoke test vérifie par
+introspection le nouveau champ, son utilisation par le planificateur et le
+framing SSE. Le conteneur actif conserve 40 variables, cinq mounts, le réseau
+hôte, les cinq labels de découverte et la restart policy `unless-stopped`; il
+sert `/v1/models` sur le port configuré 3025. Le précédent `faa90ad-r2` reste
+arrêté comme rollback immédiat. Le nettoyage du cache de build Docker inutilisé
+a récupéré 23,56 Gio sans supprimer image, conteneur, volume ni état produit.
+
+La bascule de qualification a commencé sans affaiblir ce contrat strict. Le
+Mac mini et le Mac local utilisent l'artefact Apple Silicon construit depuis
+`f2e2a5a`, dont le manifeste porte OpenCode `95c0b20` et Parallax `a1f9fe0`.
+La RTX utilise temporairement le paquet natif Windows `rc40`, mais charge le
+checkout candidat `a1f9fe0` depuis une racine séparée et réversible ; cette
+étape qualifie le code et les dépendances natives déjà installées, pas encore
+l'artefact final Windows du candidat. Le workflow manuel runtime
+`30909255842` a terminé les quatre tarballs CPU/MLX et poursuit encore les deux
+builds CUDA Linux/Windows. Aucun nouveau tag public ne doit être créé avant
+leur fin verte et l'installation de l'artefact Windows exact.
+
+La RTX a reproduit le cas mémoire attendu pendant cette qualification : son
+premier frontend 32k a mesuré une limite réelle de 28 512 tokens et a refusé
+le contrat ; le worker s'est fenced, a rechargé le frontend à 16 384 puis a
+publié 23 264 tokens de capacité KV et une limite de requête distincte de
+16 384. Le snapshot coordinateur du 4 août à 15:13 affiche les trois workers
+`ready`, la RTX autonome `[0,36)`, le Mac mini `[0,22)` et le Mac local
+`[22,36)`. Il expose `max_supported_context_tokens=16384`,
+`admission_ready=true` et une route V3 active complète. Cette observation est
+la preuve live que le nouveau champ ferme l'admission sur la limite frontend
+effective au lieu de déduire 32k de l'agrégat KV.
+
+### Faux diagnostic d'installation dans l'IDE
+
+Après installation transactionnelle du candidat Apple Silicon, l'IDE local
+affichait encore une erreur d'installation. Le moteur n'était ni absent ni
+corrompu : les constantes produit de l'IDE qualifient encore volontairement
+`v2.7.0-rc40`, tandis que le manifeste de l'artefact manuel est nommé `main`
+et porte les nouvelles révisions. Le resolver fail-closed rejetait donc
+correctement ce runtime, mais supprimait l'explication et le présentait comme
+un binaire absent.
+
+Le labo relance maintenant Electron avec les quatre overrides explicites du
+contrat (`version=main`, OpenCode `95c0b20`, Parallax `a1f9fe0`, réseau natif
+`0.1.0`). Le backend rapporte alors `installed=true`; le worker et le Request
+Agent sont démarrés automatiquement, et `/health` du frontend local répond
+200 `ready`. Ce mécanisme ne sera pas nécessaire dans la release packagée :
+les constantes seront mises à jour vers le nouveau tag immuable après la CI
+CUDA.
+
+Le diagnostic produit conserve le refus strict mais expose désormais la cause
+exacte : runtime incomplet, moteur OpenCode absent, ou « mise à jour du moteur
+requise » avec les champs du manifeste incompatibles. Le chemin de connexion
+réutilise ce diagnostic au lieu d'afficher « moteur non installé ». Un test
+reproduit un runtime entièrement présent construit depuis une mauvaise
+révision Parallax. Les 56 tests `fabi-swarm`, le build TypeScript de toutes les
+extensions Fabi et `git diff --check` passent.

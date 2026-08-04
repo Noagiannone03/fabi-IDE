@@ -8,7 +8,7 @@
 
 import {
     configuredRuntimeVersion, detectPlatform, findParallax, findRequestAgent,
-    installRuntime, InstallProgress, LocatedRuntimeCommand
+    installedRuntimeProblem, installRuntime, InstallProgress, LocatedRuntimeCommand
 } from './fabi-runtime-install';
 import { RuntimeStatus } from '../common/fabi-swarm-protocol';
 
@@ -43,9 +43,9 @@ export class FabiRuntimeManager {
             accel: plat.accel,
             version: configuredRuntimeVersion(),
             binary: found && requestAgent ? found.binary : undefined,
-            message: this.lastMessage ?? (found && !requestAgent
-                ? 'runtime incomplet : Request Agent V3 absent'
-                : undefined)
+            message: this.lastMessage ?? (found && requestAgent
+                ? undefined
+                : installedRuntimeProblem())
         };
     }
 

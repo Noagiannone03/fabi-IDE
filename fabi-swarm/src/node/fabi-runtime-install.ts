@@ -165,12 +165,21 @@ export function validateRuntimeManifest(raw: string, expected: RuntimeContract):
 }
 
 export function runtimeManifestIsQualified(root: string): boolean {
+    return runtimeQualificationError(root) === undefined;
+}
+
+/**
+ * Explique pourquoi une installation présente est refusée. La résolution du
+ * runtime reste fail-closed, mais l'UI ne doit pas confondre un binaire absent
+ * avec une ancienne release (ou un candidat de qualification explicite).
+ */
+export function runtimeQualificationError(root: string): string | undefined {
     try {
         const manifest = readFileSync(join(root, 'MANIFEST'), 'utf8');
         validateRuntimeManifest(manifest, configuredRuntimeContract());
-        return true;
-    } catch {
-        return false;
+        return undefined;
+    } catch (error) {
+        return error instanceof Error ? error.message : String(error);
     }
 }
 
@@ -415,6 +424,40 @@ export function fabiCodeBinaryIn(root: string): string | undefined {
     const name = osPlatform() === 'win32' ? 'fabi.exe' : 'fabi';
     const candidate = join(root, 'bin', name);
     return existsSync(candidate) ? candidate : undefined;
+}
+
+/** Diagnostic actionnable pour un runtime visible sur disque mais inutilisable. */
+export function installedRuntimeProblem(): string | undefined {
+    const roots: string[] = [];
+    const resourcesPath = (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+    if (resourcesPath) {
+        roots.push(join(resourcesPath, 'runtime'));
+    }
+    roots.push(installRoot());
+
+    for (const root of roots) {
+        const hasManifest = existsSync(join(root, 'MANIFEST'));
+        const parallax = parallaxCommandIn(root);
+        const requestAgent = requestAgentCommandIn(root);
+        const code = fabiCodeBinaryIn(root);
+        if (!hasManifest && !parallax && !requestAgent && !code) {
+            continue;
+        }
+        if (!parallax) {
+            return 'runtime incomplet : worker Parallax absent';
+        }
+        if (!requestAgent) {
+            return 'runtime incomplet : Request Agent V3 absent';
+        }
+        if (!code) {
+            return 'runtime incomplet : moteur OpenCode absent';
+        }
+        const qualificationError = runtimeQualificationError(root);
+        if (qualificationError) {
+            return `mise à jour du moteur requise : ${qualificationError}`;
+        }
+    }
+    return undefined;
 }
 
 /** Localise parallax sans rien télécharger : override env > bundlé > install partagé. */

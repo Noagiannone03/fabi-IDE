@@ -641,12 +641,14 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         const found = this.runtime.findParallax();
         const requestAgent = this.runtime.findRequestAgent();
         if (!found || !requestAgent) {
+            const runtimeStatus = this.runtime.status();
             this.setActiveSwarm(swarm);
             this.setWorkerState({
                 kind: 'missing-binary', swarmId,
                 message: found
                     ? 'Runtime Fabi incomplet : Request Agent V3 absent. Installe la mise à jour.'
-                    : 'Moteur Fabi non installé. Clique « Installer le moteur ».'
+                    : runtimeStatus.message
+                        ?? 'Moteur Fabi non installé. Clique « Installer le moteur ».'
             });
             return this.workerState;
         }

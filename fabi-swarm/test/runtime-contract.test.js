@@ -20,6 +20,7 @@ const {
     downloadResumable,
     fetchRuntimeMetadata,
     managedRuntimePathsIn,
+    installedRuntimeProblem,
     parallaxCommandIn,
     parseRuntimeManifest,
     pruneManagedRuntimeBackups,
@@ -265,6 +266,31 @@ test('rejects a runtime built from a different engine revision', () => {
         () => validateRuntimeManifest(manifest({ parallax: '0'.repeat(40) }), contract),
         /parallax_revision/
     );
+});
+
+test('explains a present but unqualified runtime instead of reporting it absent', () => {
+    const root = mkdtempSync(join(tmpdir(), 'fabi-runtime-diagnostic-'));
+    const previousInstall = process.env.FABI_INSTALL;
+    try {
+        process.env.FABI_INSTALL = root;
+        const bin = join(root, 'bin');
+        const venv = join(root, 'runtime', 'parallax-venv', 'bin');
+        mkdirSync(bin, { recursive: true });
+        mkdirSync(venv, { recursive: true });
+        writeFileSync(join(bin, 'fabi'), '');
+        writeFileSync(join(venv, 'parallax'), '');
+        writeFileSync(join(venv, 'fabi-request-agent'), '');
+        writeFileSync(join(root, 'MANIFEST'), manifest({ parallax: '0'.repeat(40) }));
+        assert.match(installedRuntimeProblem(), /mise à jour du moteur requise/);
+        assert.match(installedRuntimeProblem(), /parallax_revision/);
+    } finally {
+        if (previousInstall === undefined) {
+            delete process.env.FABI_INSTALL;
+        } else {
+            process.env.FABI_INSTALL = previousInstall;
+        }
+        rmSync(root, { recursive: true, force: true });
+    }
 });
 
 test('rejects a runtime without the qualified native V3 transport', () => {
