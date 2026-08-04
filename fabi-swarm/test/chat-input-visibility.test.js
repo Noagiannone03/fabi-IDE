@@ -17,3 +17,7 @@ test('keeps the editor identity after its first scheduler admission', () => {
 test('does not expose the input before its first scheduler admission', () => {
     assert.equal(shouldRenderChatInput(false, false, false), false);
 });
+
+test('does not call Theia chat rendering before its model is attached', () => {
+    assert.equal(shouldRenderChatInput(true, false, true, false), false);
+});

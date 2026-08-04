@@ -42,6 +42,13 @@ export class FabiChatInputWidget extends AIChatInputWidget {
 
     /** Theia owns request cancellation, so mirror its exact pending predicate. */
     protected get requestInProgress(): boolean {
+        // A swarm status update can schedule a render between construction and
+        // ChatViewWidget attaching its model. Theia's own render contract assumes
+        // that attachment already happened, so this pre-attachment state cannot
+        // contain a cancellable request.
+        if (!this._chatModel) {
+            return false;
+        }
         const branchItems = this._branch?.items;
         const requests = this._chatModel.getRequests();
         const currentRequest = (branchItems && branchItems.length > 0
@@ -137,7 +144,13 @@ export class FabiChatInputWidget extends AIChatInputWidget {
         //  - swarm PRÊT → barre de modèle compacte EN HAUT + input réel dessous.
         // (Pas de div wrapper autour de l'input : un conteneur casse le calcul de
         //  largeur de l'éditeur Monaco. Un Fragment n'ajoute aucune boîte.)
-        if (!shouldRenderChatInput(this.ready, this.requestInProgress, this.inputPreviouslyUnlocked)) {
+        const chatModelAttached = this._chatModel !== undefined;
+        if (!shouldRenderChatInput(
+            this.ready,
+            this.requestInProgress,
+            this.inputPreviouslyUnlocked,
+            chatModelAttached
+        )) {
             return <FabiSwarmSelector frontend={this.swarm} engine={this.engine} locked />;
         }
         return (

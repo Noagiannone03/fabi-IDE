@@ -138,8 +138,11 @@ export const FabiSwarmSelector: React.FC<{
             default: return undefined;
         }
     };
-    const barStatus = generating && phaseLabel(activeRequest?.phase)
+    const recovering = activeRequest?.phase === 'recovering' || activeRequest?.phase === 'replaying';
+    const barStatus = generating && recovering && phaseLabel(activeRequest?.phase)
         ? phaseLabel(activeRequest?.phase)
+        : generating && code.activity === 'generating' ? 'Génération…'
+        : generating && phaseLabel(activeRequest?.phase) ? phaseLabel(activeRequest?.phase)
         : generating && code.activity === 'preparing' ? 'Préparation du contexte…'
         : generating ? 'Génération…'
         : codeError ? 'Erreur moteur'

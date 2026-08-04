@@ -6104,3 +6104,93 @@ validé les transactions Windows et Linux ainsi que les tarballs
 cours au moment de cette écriture. Aucun tag public ne doit être créé avant la
 fin verte des six artefacts et leur installation réelle sur le Mac mini et la
 RTX.
+
+## Acquittement OpenCode asynchrone et E2E Electron du 4 août 2026
+
+### Cause exacte du faux tour bloqué
+
+Le correctif de réconciliation du 3 août utilisait encore
+`POST /session/{id}/message`. La source exacte du fork OpenCode 1.15 qualifié
+(`4e138135…`) confirme que cette route reste attachée au tour complet : dans le
+test réel, les headers HTTP ne sont arrivés qu'après 21,83 s. OpenCode fournit
+déjà le contrat destiné à un frontend découplé :
+`POST /session/{id}/prompt_async`, qui répond `204` immédiatement, puis
+`GET /session/status`, le journal des messages et `/event` portent la vie du
+tour.
+
+La mesure sur le binaire installé a aussi montré pourquoi un simple changement
+de route aurait créé une autre régression. Le `204` arrive environ 8 ms après
+le POST, alors que la session est encore absente de `/session/status` à +0,
++1 et +10 ms ; elle devient `busy` seulement vers +100 à +140 ms. Une session
+idle est volontairement retirée de cette map. « Absente » signifie donc soit
+« pas encore observée », soit « terminée » : ce n'est pas un booléen terminal
+sans mémoire du tour.
+
+Fabi utilise maintenant une machine d'état explicite :
+
+- il photographie les IDs des messages assistant durables avant la soumission ;
+- il envoie le prompt par `prompt_async` et ne garde aucune connexion HTTP
+  pendant le prefill/decode ;
+- avant d'avoir vu `busy`, `retry`, un état futur ou un `step-start`, une
+  session absente est `unobserved`, jamais `idle` ;
+- après un état actif observé, une disparition ou un `idle` solde le tour ;
+- si les deux bords SSE ont été manqués, un nouveau message assistant n'est
+  terminal que lorsqu'il possède un `finish`, `time.completed` ou `error`
+  durable.
+
+Le timeout de sécurité de dix minutes reste un garde ultime contre un sidecar
+irrécupérable ; il ne sert pas à deviner la vie d'une génération ni celle du
+réseau. Les tests couvrent notamment la fenêtre `204 -> busy` et le repli par
+historique durable.
+
+### Deux défauts UI révélés par le vrai Electron
+
+Un status swarm pouvait demander un rendu entre la construction d'un
+`FabiChatInputWidget` et l'attachement de son `ChatModel`. Le getter local
+appelait alors `_chatModel.getRequests()` et produisait une exception à chaque
+rafraîchissement, même depuis l'instance de chat Theia invisible. L'input ne
+rend désormais jamais le parent avant cet attachement ; une requête ne peut
+pas non plus être considérée active sans modèle. Le test de visibilité couvre
+ce cycle de vie. Après rebuild et redémarrage, un tour complet n'a produit
+aucune nouvelle exception `getRequests`.
+
+La barre compacte donnait également priorité à la phase Request Agent
+`prefilling`, qui peut être en retard sur les tokens déjà reçus par OpenCode.
+Tout delta texte/réflexion persistant est maintenant une preuve locale de
+decode et fait afficher `Génération…`. Les phases explicites `recovering` et
+`replaying` restent prioritaires. Sur le troisième tour Electron, le premier
+delta de réflexion observé a bien remplacé `Préparation du contexte…` par
+`Génération…` pendant que la réponse continuait à streamer.
+
+### Preuves produit de bout en bout
+
+Le test n'a pas appelé directement le backend : Electron a été lancé depuis
+le clone local complet, l'onglet `Fabi AI` a été ouvert et le prompt a traversé
+le widget Theia, le sidecar OpenCode, le Request Agent local et la route V3
+réelle. Le premier tour a rendu exactement `FABIELECTRON-804`. Le message
+assistant durable porte `finish=stop`, sans erreur, avec 53,351 s entre sa
+création et sa complétion. La barre est revenue à `Prêt`, `/session/status` à
+`{}`, `active_routes` à `[]` et `last_failure` est resté nul. Un second tour
+sur le bundle incluant le garde de cycle de vie a rendu exactement
+`FABIELECTRON-805` en environ 46,2 s et a libéré les mêmes états sans exception
+UI.
+
+L'abort natif a enfin été exercé pendant un vrai decode long via le contrôle
+Theia `Cancel (Esc)`. OpenCode est passé de `busy` à une map vide, la route V3
+a été libérée et l'IDE est revenu à `Prêt`. Le dernier message durable porte
+`MessageAbortedError` / `Aborted` avec `time.completed`; il n'est donc pas
+confondu avec une fin normale. Une première injection physique CDP avait été
+interceptée par la couche de hover Theia et n'a pas été comptée comme preuve ;
+le clic DOM suivant a appelé le handler React du contrôle produit.
+
+La suite `fabi-swarm` contient maintenant 55 tests, tous verts. Le build complet
+des extensions puis des bundles Theia browser, node et Electron termine avec
+zéro erreur. Les workers Mac mini et RTX sont restés lancés sur le runtime
+qualifié pendant ces tests. Le port DevTools `9333` n'était qu'un moyen de
+diagnostic lié à loopback et ne fait pas partie du produit.
+
+Ce cycle valide le prompt, le streaming, la fin durable et l'abort. Il ne
+valide pas encore une permission d'outil, une modification de fichier, le
+changement de modèle en cours de session, ni un kill réseau prefill/decode avec
+replan froid ; ces scénarios restent à exécuter et ne sont pas présentés comme
+terminés.

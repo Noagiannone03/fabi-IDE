@@ -6,11 +6,11 @@
 //   2. Tenir UNE connexion SSE persistante vers `/event` d'OpenCode, parser les
 //      `message.part.updated` / `session.status` et les pousser au frontend via
 //      FabiCodeClient (relais zéro-polling).
-//   3. Exposer createSession / prompt / abort via RPC pour le ChatAgent relais.
+//   3. Exposer createSession / prompt_async / abort via RPC pour le ChatAgent relais.
 //
 // L'API ciblée est celle du fork OpenCode 1.15.0 qualifié dans le MANIFEST :
 //   POST /session                      → { id, ... }
-//   POST /session/{id}/message         → bloquant jusqu'à fin de tour
+//   POST /session/{id}/prompt_async    → acquittement 204 immédiat
 //   POST /session/{id}/abort           → interrompt
 //   GET  /event                        → flux SSE global ({type, properties})
 // Le ciblage du workspace se fait par le header `x-opencode-directory`.
@@ -34,7 +34,10 @@ import {
     recommendedOutputTokens
 } from './fabi-code-config';
 import { FabiCodePartAccumulator } from './fabi-code-part-stream';
-import { isOpenCodeTurnSettled, OpenCodeSessionStatuses } from './fabi-code-turn-state';
+import {
+    classifyOpenCodeTurnStatus, hasNewCompletedAssistantMessage,
+    OpenCodeMessageState, OpenCodeSessionStatuses, snapshotAssistantMessageIds
+} from './fabi-code-turn-state';
 
 const SWARM_READY_TIMEOUT_MS = 120_000;
 const OPENCODE_SSE_MAX_EVENT_BYTES = 16 * 1024 * 1024;
@@ -44,8 +47,12 @@ interface TurnWaiter {
     resolve: () => void;
     timer: ReturnType<typeof setTimeout>;
     directory?: string;
-    /** The prompt POST returned successfully, so a missing status now means idle. */
+    /** OpenCode acknowledged `/prompt_async`. */
     accepted: boolean;
+    /** At least one durable/SSE active state was observed for this turn. */
+    observedActive: boolean;
+    /** Assistant messages that predated this prompt. */
+    previousAssistantIds: ReadonlySet<string>;
 }
 
 @injectable()
@@ -63,7 +70,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected modelId = FABI_FALLBACK_MODEL;
     /** Signature de config réellement chargée dans le sidecar OpenCode. */
     protected configKey: string | undefined;
-    /** Contrôleurs d'abort des POST /message bloquants, par session. */
+    /** Contrôleurs d'abort des soumissions prompt_async, par session. */
     protected readonly inflight = new Map<string, AbortController>();
     /** Tours OpenCode en cours : résolus par session.status/session.error ou timeout. */
     protected readonly turnWaiters = new Map<string, TurnWaiter>();
@@ -389,6 +396,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             const part = props.part as Record<string, unknown> | undefined;
             if (part) {
                 if (part.type === 'step-start') {
+                    this.markTurnActive(sessionId);
                     this.setTurnPhase(sessionId, 'generating');
                 }
                 this.client?.onPart(this.partStream.remember(this.normalizePart(sessionId, part)));
@@ -400,6 +408,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             const delta = typeof props.delta === 'string' ? props.delta : '';
             const cumulative = this.partStream.append({ sessionId, messageId, partId, field, delta });
             if (cumulative) {
+                // A persisted text/reasoning delta is stronger evidence than a
+                // possibly delayed Request Agent phase: decode has started.
+                this.markTurnActive(sessionId);
+                this.setTurnPhase(sessionId, 'generating');
                 this.client?.onPart(cumulative);
             }
         } else if (type === 'message.updated') {
@@ -413,11 +425,13 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             const status = (props.status as { type?: string } | undefined)?.type;
             // `retry` est encore un tour actif ; seul `idle` clôt réellement.
             if (status === 'idle') {
-                this.finishTurn(sessionId);
+                this.handleTurnIdle(sessionId);
+            } else if (status) {
+                this.markTurnActive(sessionId);
             }
         } else if (type === 'session.idle') {
             // Event déprécié mais encore émis par OpenCode 1.15 avec status=idle.
-            this.finishTurn(sessionId);
+            this.handleTurnIdle(sessionId);
         } else if (type === 'session.error') {
             const err = props.error as { data?: { message?: string } } | undefined;
             this.finishTurn(sessionId, err?.data?.message ?? 'erreur de session');
@@ -510,25 +524,27 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         this.inflight.set(sessionId, ac);
         try {
             const done = this.waitForTurn(sessionId, ac, directory);
+            const waiter = this.turnWaiters.get(sessionId)!;
+            waiter.previousAssistantIds = await this.snapshotAssistantIds(sessionId, directory);
             const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
             if (agent) {
                 body.agent = agent; // 'build' (édite) | 'plan' (lecture seule)
             }
-            // OpenCode 1.14.x répond vite au POST, puis publie la vraie fin via /event.
-            // On attend donc session.status idle/session.error, avec timeout anti-spin.
+            // OpenCode 1.15 fournit un acquittement asynchrone explicite. La
+            // génération et sa fin sont suivies par /event + /session/status ;
+            // aucune connexion HTTP n'est gardée pendant un long prefill/decode.
             await this.http(
                 'POST',
-                `/session/${encodeURIComponent(sessionId)}/message`,
+                `/session/${encodeURIComponent(sessionId)}/prompt_async`,
                 body,
                 directory,
                 ac.signal
             );
-            const waiter = this.turnWaiters.get(sessionId);
-            if (waiter) {
+            if (this.turnWaiters.get(sessionId) === waiter) {
                 waiter.accepted = true;
-                // OpenCode may answer the POST after publishing `idle`. If the
-                // SSE edge raced with this process, its authoritative status
-                // map (which omits idle sessions) closes the turn now.
+                // `prompt_async` peut répondre quelques millisecondes avant
+                // `busy`. reconcileTurn distingue cet état non observé d'un
+                // vrai idle et consulte l'historique en repli.
                 await this.reconcileTurn(sessionId, waiter);
             }
             await done;
@@ -572,7 +588,14 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 this.finishTurn(sessionId, 'Timeout: le moteur Fabi n\'a pas terminé le tour.');
             }, timeoutMs);
             timer.unref?.();
-            this.turnWaiters.set(sessionId, { resolve, timer, directory, accepted: false });
+            this.turnWaiters.set(sessionId, {
+                resolve,
+                timer,
+                directory,
+                accepted: false,
+                observedActive: false,
+                previousAssistantIds: new Set()
+            });
             this.turnPhases.set(sessionId, 'preparing');
             this.setStatus(this.info.status, this.info.detail);
         });
@@ -592,9 +615,65 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
         const raw = await this.http('GET', '/session/status', undefined, waiter.directory);
         const statuses = JSON.parse(raw) as OpenCodeSessionStatuses;
-        if (isOpenCodeTurnSettled(statuses, sessionId)) {
+        const state = classifyOpenCodeTurnStatus(statuses, sessionId, waiter.observedActive);
+        if (state === 'active') {
+            waiter.observedActive = true;
+            return;
+        }
+        if (state === 'settled') {
+            this.finishTurn(sessionId);
+            return;
+        }
+        // Le 204 de prompt_async précède parfois `busy`. Une absence initiale
+        // n'est terminale que si l'historique durable contient déjà une nouvelle
+        // réponse assistant achevée (cas où les deux bords SSE ont été manqués).
+        const messages = await this.readMessages(sessionId, waiter.directory);
+        if (hasNewCompletedAssistantMessage(messages, waiter.previousAssistantIds)) {
             this.finishTurn(sessionId);
         }
+    }
+
+    protected markTurnActive(sessionId: string): void {
+        const waiter = this.turnWaiters.get(sessionId);
+        if (waiter) {
+            waiter.observedActive = true;
+        }
+    }
+
+    protected handleTurnIdle(sessionId: string): void {
+        const waiter = this.turnWaiters.get(sessionId);
+        if (!waiter) {
+            return;
+        }
+        if (waiter.observedActive) {
+            this.finishTurn(sessionId);
+            return;
+        }
+        // OpenCode 1.15 may emit both `session.status: idle` and the legacy
+        // `session.idle`. A delayed duplicate from the previous turn must not
+        // settle a newly-created waiter in the prompt_async acknowledgement gap.
+        // Once accepted, durable history can still prove a very short turn that
+        // completed before its busy edge was observed.
+        if (waiter.accepted) {
+            void this.reconcileTurn(sessionId, waiter).catch(error => {
+                this.logger.warn(`[fabi-code] réconciliation idle impossible: ${error instanceof Error ? error.message : String(error)}`);
+            });
+        }
+    }
+
+    protected async readMessages(sessionId: string, directory?: string): Promise<OpenCodeMessageState[]> {
+        const raw = await this.http(
+            'GET',
+            `/session/${encodeURIComponent(sessionId)}/message`,
+            undefined,
+            directory
+        );
+        const messages = JSON.parse(raw) as unknown;
+        return Array.isArray(messages) ? messages as OpenCodeMessageState[] : [];
+    }
+
+    protected async snapshotAssistantIds(sessionId: string, directory?: string): Promise<ReadonlySet<string>> {
+        return snapshotAssistantMessageIds(await this.readMessages(sessionId, directory));
     }
 
     protected finishTurn(sessionId: string, error?: string): void {

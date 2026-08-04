@@ -10,7 +10,8 @@
 export function shouldRenderChatInput(
     connectionReady: boolean,
     requestInProgress: boolean,
-    inputPreviouslyUnlocked: boolean
+    inputPreviouslyUnlocked: boolean,
+    chatModelAttached = true
 ): boolean {
-    return connectionReady || requestInProgress || inputPreviouslyUnlocked;
+    return chatModelAttached && (connectionReady || requestInProgress || inputPreviouslyUnlocked);
 }
