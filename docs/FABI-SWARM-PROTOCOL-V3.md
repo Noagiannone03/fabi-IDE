@@ -325,6 +325,20 @@ L'optimiseur Parallax publie un `CapacityDemandMap` par modèle/région : défic
 de réplication par intervalle. C'est un conseil calculé depuis le catalogue, pas une commande.
 Les workers convergent vers ces besoins avec la politique Petals et l'hystérésis Fabi.
 
+### 8.3 Placement adaptatif au contexte
+
+Le `CapacityDemandMap` final n'est pas uniforme. Il agrège la demande par variante de modèle,
+région et classes de contexte cumulatives. Chaque worker compare une frontière de Pareto entre
+span, contexte, concurrence, débit, hops et coût de matérialisation. Un span plus étroit n'est
+préféré que s'il augmente la capacité de routes complètes réellement demandées ; maximiser le
+contexte théorique d'un worker isolé n'a aucune utilité.
+
+Les classes de contexte ne créent pas des partitions rigides : une route longue reste admissible
+pour une requête courte. Le route planner applique cependant un coût d'opportunité pour préserver
+une capacité longue rare lorsqu'une route courte équivalente est disponible. La géométrie, la
+fonction d'utilité, les protections anti-oscillation et le plan de simulation sont spécifiés dans
+[`FABI-CONTEXT-AWARE-PLACEMENT-V3.md`](FABI-CONTEXT-AWARE-PLACEMENT-V3.md).
+
 ## 9. Sélection d'une route par génération
 
 Il n'existe plus de contexte global 16k ou 32k pour tout le swarm. Chaque requête demande :

@@ -6332,3 +6332,167 @@ sortie réservés a été refusé avant tout envoi au data plane : HTTP 400,
 « 16 384 supportés ». Les trois workers sont restés `healthy`, sans route
 active résiduelle. Le candidat prouve donc à la fois le chemin nominal et la
 fermeture propre du contexte trop grand.
+
+## Conception du placement adaptatif au contexte du 4 août 2026
+
+L'échec propre du tour OpenCode à 21 758 tokens a révélé deux sujets séparés.
+Le fork OpenCode possède le défaut upstream documenté dans l'issue `#10634` :
+son contrôle de compaction à la fin d'une étape ne compte pas encore les
+sorties d'outils qui entreront dans l'appel suivant. Ce correctif frontend
+reste à implémenter. Indépendamment, une politique de placement destinée au
+code ne peut pas optimiser un unique contexte global de 16k ou 32k.
+
+La politique autonome active dans `a1f9fe0` a été relue avant toute
+modification. `CapacityDemandMap` est encore un tableau uniforme par couche,
+appelé avec deux répliques, et `AutonomousPlacementPolicy` reçoit un seul
+`context_tokens`. Elle calcule correctement les poids exacts plus le KV du
+span, préserve la couverture, ferme une route incomplète et applique cooldown
+et hystérésis. Elle ne sait toutefois pas encore comparer une route rapide
+16k, une route native 40k, une variante longue 128k, la concurrence de
+sessions et le coût réseau. Aucun changement moteur n'a été appliqué pendant
+cette phase de conception.
+
+Les sources primaires Petals, Exo, Helix, HexGen, vLLM, SGLang, llm-d, Qwen et
+OpenCode ont été relues. La conclusion est de conserver le placement autonome
+Petals, mais de remplacer son objectif par un déficit de **routes complètes**
+par classes de contexte cumulatives. Chaque worker calculera localement une
+frontière de Pareto span/contexte/concurrence/débit/hops. Un span plus étroit
+ne sera retenu que s'il augmente une capacité réellement demandée, ferme une
+route ou renforce une redondance ; étaler les couches sans limite dégraderait
+le decode et la robustesse.
+
+Le design complet est consigné dans
+`docs/FABI-CONTEXT-AWARE-PLACEMENT-V3.md` et lié depuis la section 8.3 du
+protocole V3. Il précise notamment :
+
+- un profil de contexte signé par variante de modèle ; une configuration
+  RoPE/YaRN différente a un `ModelSwarmId` distinct ;
+- un `CapacityDemandMap` modèle × région × classe de contexte, alimenté par
+  de la télémétrie agrégée, bornée et expirable ;
+- une capacité imbriquée : une route 128k peut servir 16k, mais le routeur
+  applique un coût d'opportunité afin de ne pas consommer la dernière capacité
+  longue lorsqu'une route courte équivalente est libre ;
+- une admission toujours exacte en pages KV par requête, et non des pipelines
+  physiquement réservés par classe ;
+- une première passe Petals peu coûteuse puis une évaluation exacte et bornée
+  des meilleurs candidats inspirée du graphe/max-flow Helix ;
+- un oracle OR-Tools CP-SAT pour les petits scénarios et le simulateur Helix
+  pour les traces/réseaux hétérogènes ; ces solveurs ne sont pas dans la boucle
+  P2P produit ;
+- des baselines max-layers, Petals, Exo, V3 uniforme et V3 multi-classes à
+  comparer avant toute réallocation réelle.
+
+Le modèle Qwen3-4B illustre le besoin. Son contrat officiel possède 36 couches,
+8 têtes KV de dimension 128 et 40 960 tokens natifs. En BF16, le KV vaut 4 096
+octets/token/couche : un span de 4 couches coûte environ 640 Mio à 40 960,
+contre 3,438 Gio pour 22 couches. Qwen qualifie YaRN jusqu'à 131 072 mais avertit
+que le réglage statique peut pénaliser les textes courts ; la variante native
+et la variante longue ne doivent donc pas être mélangées dans le même contrat.
+
+Le simulateur officiel Helix a été inspecté dans un répertoire temporaire. Il
+fournit un placement MILP, un routeur max-flow et des traces Azure Code, mais
+ces anciennes complétions sont beaucoup plus courtes que les tours agentiques
+Fabi déjà observés à 13 601 puis 19 710 tokens après outils. La validation
+combinera donc traces publiques, longueurs Fabi anonymisées et longue traîne
+synthétique bornée par les contextes réellement qualifiés. Il n'existe aucune
+base sérieuse pour déclarer 200k comme « moyenne » ; 128k/256k sont des voies
+de service à qualifier, pas des constantes inventées.
+
+L'ordre retenu est : étendre le manifeste avec le contexte explicite, définir
+les classes et la télémétrie, calculer la frontière locale, construire
+simulateur/oracle, remplacer le déficit uniforme, ajouter le coût de rareté au
+route planner, comparer les décisions en shadow **dans V3 uniquement**, puis
+qualifier Mac local + Mac mini + RTX avant d'autoriser la réallocation guidée
+par la demande.
+
+### Première tranche de contrat et de calcul local
+
+La première tranche est maintenant implémentée dans le checkout moteur
+`/Users/noagiannone/Documents/swarm-engine-v3`, sans activation sur les workers
+du labo. `ModelManifest` signe désormais `model_max_context_tokens` et une
+échelle `context_classes` strictement croissante dont le dernier élément est la
+limite exacte. Le builder la dérive de la configuration immuable et refuse un
+modèle sans limite finie. Le route planner refuse une requête au-dessus de
+cette limite même si un worker la surestime, et les commandes registry exposent
+les deux champs pour l'exploitation. Cette évolution change volontairement le
+`ModelSwarmId`; les bundles devront être reconstruits et republiés avant une
+future qualification live.
+
+Le moteur possède aussi, encore hors du chemin actif, un snapshot de demande
+`ContextCapacityDemandMap` versionné par modèle et région. Ses classes sont
+expirables, strictes, sans prompts ni identités, et contiennent seulement des
+agrégats bornés : couverture souhaitée, poids de demande, arrivées admises,
+file, refus, durée p95 et confiance. La validation fail-closed vérifie le
+`ModelSwarmId`, l'échelle signée, le nombre de couches et l'expiration. Une
+couverture 64k compte cumulativement pour les classes inférieures ; une lease
+16k ne compte jamais pour 32k/64k.
+
+`AutonomousPlacementPolicy.memory_frontier()` énumère enfin les compromis
+mémoire exacts `(span, contexte, sessions)` sur l'enveloppe stable : poids
+signés plus KV arrondi aux blocs, au moins une session réelle, respect du rôle
+frontend, puis suppression des points dominés. Le débit mesuré, les liens, les
+blobs déjà présents et la confiance seront ajoutés lors de la seconde passe ;
+ils ne pourront pas affaiblir cette contrainte mémoire.
+
+Validation actuelle : 68 tests ciblés et 206 tests `test_swarm_protocol_*`
+passent, Ruff ciblé et `git diff --check` sont verts. La suite complète donne
+`826 passed, 7 skipped` et un seul échec MLX dépendant de l'état mémoire du Mac
+local : le modèle du test occupe 2,803 Go pour une limite processus calculée à
+2,78 Go, ce qui laisse zéro bloc KV. Ce résultat n'est pas présenté comme un
+succès ; il confirme justement que zéro bloc ne doit jamais devenir une offre
+de capacité. Aucun commit, bundle registry, déploiement ou basculement live de
+cette tranche n'a encore été effectué.
+
+Le premier noyau de simulation est également présent. Le module optionnel
+`placement_simulator.py` utilise NetworkX pour calculer le max-flow de routes
+complètes par classe. Il sépare les slots concurrents, qui utilisent
+`max_sessions`, des routes indépendantes, qui plafonnent chaque worker à une
+unité afin de ne pas présenter plusieurs sessions sur le même domaine de panne
+comme de la redondance.
+
+L'oracle CP-SAT a dû être isolé sous `tools/context_placement_oracle`. La
+version officielle OR-Tools 9.15 requiert protobuf 6.x, incompatible avec le
+contrat moteur protobuf `>=7.35.1,<8`; une tentative d'installation dans le
+venv moteur a révélé le conflit, puis OR-Tools et ses dépendances ont été
+retirés et protobuf 7.35.1 restauré. `pip check` est de nouveau vert. L'oracle
+vit donc dans son propre paquet et échange uniquement du JSON : au plus une
+option par worker, flux conservé de la couche zéro à la dernière, capacité KV
+partagée entre classes pour ne pas compter deux fois un slot long. Ses deux
+tests passent dans un venv Python 3.12 séparé. La validation protocole atteint
+désormais 209 tests verts. Il reste à générer les populations 8/16 Gio, à
+importer les traces et à comparer les heuristiques avant d'intégrer un score
+shadow.
+
+Le score shadow initial est désormais explicable et orientable par la demande
+agentique. Il additionne le gain de routes indépendantes complètes, le gain de
+slots concurrents et la fraction pondérée des déficits de couches par classe.
+Un test de piège oppose un worker capable soit d'héberger le modèle complet en
+10k, soit la moitié en 20k : lorsque la demande longue est dix fois plus forte,
+le score choisit la progression 20k même si la petite route pourrait être
+fermée immédiatement. Ce n'est pas encore la politique live et les poids ne
+sont pas codés comme une constante produit ; ils viendront de la télémétrie
+agrégée et d'un plancher long-contexte explicite.
+
+Les nouveaux contrats ont été séparés dans `context_placement.py` afin de ne
+pas transformer la politique active en fichier monolithique. La frontière
+mémoire exige maintenant une limite de contexte backend qualifiée en plus de
+la limite native du modèle. L'extraction du contexte privilégie
+`max_position_embeddings`, champ architectural utilisé par Transformers, et
+n'utilise `model_max_length` qu'en fallback ; le metadata tokenizer ne peut
+donc plus réduire silencieusement un contrat architectural réel.
+
+Le projet officiel `llm-d-inference-sim` a été cloné en lecture seule au commit
+`0d46c7142a2e6d30e48c4ec732917af515442479`. Il fournit déjà la file, la
+saturation, TTFT/ITL par token, le cache KV, les événements ZMQ avec replay et
+l'injection de pannes. La validation Fabi réutilisera ce data plane simulé et
+le combinera au graphe max-flow de spans P2P, au lieu de réécrire une file et
+un modèle de latence maison.
+
+Validation après séparation : 222 tests protocole/config passent ; la suite
+large avec les deux variantes `test_decode_pipeline_multiple_steps` exclues
+donne `837 passed, 6 skipped, 2 deselected`. L'exclusion est déclarée : CUDA
+n'est pas disponible sur ce Mac et la variante MLX reste sensible à la
+pression mémoire live. Les deux tests CP-SAT passent dans le venv isolé, Ruff,
+`pip check` et `git diff --check` passent. Le wheel
+`parallax-0.1.2-py3-none-any.whl` se construit et contient les nouveaux modules
+ainsi que l'extra optionnel NetworkX, sans OR-Tools dans le runtime.
