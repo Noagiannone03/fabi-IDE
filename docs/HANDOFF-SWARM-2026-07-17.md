@@ -6440,8 +6440,8 @@ passent, Ruff ciblé et `git diff --check` sont verts. La suite complète donne
 local : le modèle du test occupe 2,803 Go pour une limite processus calculée à
 2,78 Go, ce qui laisse zéro bloc KV. Ce résultat n'est pas présenté comme un
 succès ; il confirme justement que zéro bloc ne doit jamais devenir une offre
-de capacité. Aucun commit, bundle registry, déploiement ou basculement live de
-cette tranche n'a encore été effectué.
+de capacité. Aucun bundle registry, déploiement ou basculement live de cette
+tranche n'a encore été effectué.
 
 Le premier noyau de simulation est également présent. Le module optionnel
 `placement_simulator.py` utilise NetworkX pour calculer le max-flow de routes
@@ -6496,3 +6496,13 @@ pression mémoire live. Les deux tests CP-SAT passent dans le venv isolé, Ruff,
 `pip check` et `git diff --check` passent. Le wheel
 `parallax-0.1.2-py3-none-any.whl` se construit et contient les nouveaux modules
 ainsi que l'extra optionnel NetworkX, sans OR-Tools dans le runtime.
+
+Le lot moteur principal est poussé sur `codex/swarm-protocol-v3` au commit
+`39b472f83be144fc4a85bf57815e72b1cac5ab58`. Le pont JSON déterministe vers
+l'oracle, qui sérialise les frontières exactes et uniquement les agrégats de
+demande, est poussé dans le commit suivant
+`913990a534db6e96e5b9dcd19966e5ab4fc54d67`. Les quatre tests simulateur et les
+deux tests CP-SAT isolés passent. La CI native multi-OS déclenchée sur le
+premier commit était encore en cours au moment de cette mise à jour ; une
+nouvelle exécution doit qualifier le second commit avant tout bundle ou
+déploiement.
