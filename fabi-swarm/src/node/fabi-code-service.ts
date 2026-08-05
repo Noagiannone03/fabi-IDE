@@ -22,8 +22,12 @@ import { ILogger } from '@theia/core';
 import { BackendApplicationContribution } from '@theia/core/lib/node';
 import {
     FabiCodeService, FabiCodeClient, FabiCodeServerInfo, FabiCodePart,
-    FabiCodePermissionReply, parseFabiCodeQuestion
+    FabiCodePermission, FabiCodePermissionReply, FabiCodeQuestion, parseFabiCodeQuestion
 } from '../common/fabi-code-protocol';
+import {
+    FabiCodePermissionMode, normalizeFabiCodePermissionMode,
+    OpenCodeSessionParent, resolveOpenCodeRootSessionId
+} from '../common/fabi-code-permission-mode';
 import {
     FabiSwarmService, FABI_FALLBACK_MODEL
 } from '../common/fabi-swarm-protocol';
@@ -41,11 +45,9 @@ import {
 
 const SWARM_READY_TIMEOUT_MS = 120_000;
 const OPENCODE_SSE_MAX_EVENT_BYTES = 16 * 1024 * 1024;
-const DEFAULT_TURN_TIMEOUT_MS = 10 * 60_000;
 
 interface TurnWaiter {
     resolve: () => void;
-    timer: ReturnType<typeof setTimeout>;
     directory?: string;
     /** OpenCode acknowledged `/prompt_async`. */
     accepted: boolean;
@@ -72,7 +74,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected configKey: string | undefined;
     /** Contrôleurs d'abort des soumissions prompt_async, par session. */
     protected readonly inflight = new Map<string, AbortController>();
-    /** Tours OpenCode en cours : résolus par session.status/session.error ou timeout. */
+    /** Tours OpenCode en cours : résolus par état durable, erreur ou abort. */
     protected readonly turnWaiters = new Map<string, TurnWaiter>();
     protected readonly turnPhases = new Map<string, 'preparing' | 'generating'>();
     protected readonly partStream = new FabiCodePartAccumulator();
@@ -82,12 +84,29 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected sseDirectory: string | undefined;
     /** Réveillés quand le serveur devient prêt (baseUrl connue). */
     protected readyWaiters: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+    /** Parent connu de chaque session OpenCode (racines comprises). */
+    protected readonly sessionParents = new Map<string, string | undefined>();
+    /** Politique choisie par le chat racine pour son tour courant. */
+    protected readonly permissionPolicies = new Map<string, { mode: FabiCodePermissionMode; agent: string }>();
+    /** Interactions déjà remises au frontend ou traitées automatiquement. */
+    protected readonly publishedPermissionIds = new Set<string>();
+    protected readonly publishedQuestionIds = new Set<string>();
 
     setClient(client: FabiCodeClient | undefined): void {
         this.client = client;
         if (client) {
             // Rendu immédiat à l'attache.
             client.onServerStatus(this.info);
+            // Un renderer peut se recharger pendant qu'OpenCode attend une
+            // réponse. Les listes REST sont la vérité durable ; le SSE seul ne
+            // rejouera pas l'event `asked` déjà consommé.
+            this.publishedPermissionIds.clear();
+            this.publishedQuestionIds.clear();
+            if (this.baseUrl) {
+                void this.reconcilePendingInteractions().catch(error => {
+                    this.logger.warn(`[fabi-code] reprise des interactions impossible: ${error instanceof Error ? error.message : String(error)}`);
+                });
+            }
         }
     }
 
@@ -114,12 +133,15 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
         this.inflight.clear();
         for (const waiter of this.turnWaiters.values()) {
-            clearTimeout(waiter.timer);
             waiter.resolve();
         }
         this.turnWaiters.clear();
         this.turnPhases.clear();
         this.partStream.clear();
+        this.sessionParents.clear();
+        this.permissionPolicies.clear();
+        this.publishedPermissionIds.clear();
+        this.publishedQuestionIds.clear();
         await this.server?.stop().catch(() => undefined);
     }
 
@@ -173,6 +195,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         this.sseAbort?.abort();
         this.sseAbort = undefined;
         this.baseUrl = undefined;
+        this.sessionParents.clear();
+        this.permissionPolicies.clear();
+        this.publishedPermissionIds.clear();
+        this.publishedQuestionIds.clear();
         for (const ac of this.inflight.values()) {
             ac.abort();
         }
@@ -346,12 +372,15 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                     return;
                 }
                 res.setEncoding('utf-8');
-                // SSE is an edge-triggered notification stream, not durable
-                // session state. Reconcile after every connection so an idle
-                // or error transition emitted during a disconnect cannot leave
-                // the desktop on "Generating" until its safety timeout.
-                void this.reconcileActiveTurns().catch(error => {
-                    this.logger.warn(`[fabi-code] resynchronisation des tours impossible: ${error instanceof Error ? error.message : String(error)}`);
+                // SSE est une notification de bord, pas un journal durable.
+                // Après chaque connexion on relit donc les états ET les
+                // interactions en attente. Une coupure ne peut ainsi perdre ni
+                // une fin de tour, ni une permission/question.
+                void Promise.all([
+                    this.reconcileActiveTurns(),
+                    this.reconcilePendingInteractions()
+                ]).catch(error => {
+                    this.logger.warn(`[fabi-code] resynchronisation impossible: ${error instanceof Error ? error.message : String(error)}`);
                 });
                 res.on('data', (chunk: string) => {
                     try {
@@ -382,9 +411,22 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
         const type = evt.type;
         const props = (evt.properties ?? {}) as Record<string, unknown>;
-        const sessionId = typeof props.sessionID === 'string' ? props.sessionID : undefined;
+        const sessionInfo = props.info && typeof props.info === 'object'
+            ? props.info as Record<string, unknown>
+            : undefined;
+        const sessionId = typeof props.sessionID === 'string'
+            ? props.sessionID
+            : type === 'session.updated' && typeof sessionInfo?.id === 'string'
+                ? sessionInfo.id
+                : undefined;
         if (!sessionId) {
             return;
+        }
+        if (type === 'session.updated') {
+            this.sessionParents.set(
+                sessionId,
+                typeof sessionInfo?.parentID === 'string' ? sessionInfo.parentID : undefined
+            );
         }
         // Miroir fidèle : on relaie l'event BRUT au widget de chat (qui réduit
         // tout l'état). Les callbacks normalisés ci-dessous restent pour le
@@ -440,28 +482,144 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             if (path) {
                 this.client?.onFileEdited(sessionId, path);
             }
-        } else if (type === 'permission.asked' || type === 'permission.updated') {
-            const id = typeof props.id === 'string' ? props.id : undefined;
-            if (id) {
-                const tool = props.tool as { callID?: string } | undefined;
-                const meta = props.metadata as Record<string, unknown> | undefined;
-                // Détail lisible : commande shell ou URL si présente dans metadata.
-                const detail = typeof meta?.command === 'string' ? meta.command as string
-                    : typeof meta?.url === 'string' ? meta.url as string
-                        : undefined;
-                this.client?.onPermissionAsked({
-                    id,
-                    sessionId,
-                    title: typeof props.permission === 'string' ? props.permission as string : 'Autorisation requise',
-                    detail,
-                    callId: tool?.callID
-                });
+        } else if (type === 'permission.asked') {
+            void this.publishPermission(props).catch(error => {
+                this.logger.warn(`[fabi-code] permission non relayée: ${error instanceof Error ? error.message : String(error)}`);
+            });
+        } else if (type === 'permission.replied') {
+            const requestId = typeof props.requestID === 'string' ? props.requestID : undefined;
+            if (requestId) {
+                this.publishedPermissionIds.delete(requestId);
             }
         } else if (type === 'question.asked') {
             const question = parseFabiCodeQuestion(props);
             if (question) {
-                this.client?.onQuestionAsked(question);
+                void this.publishQuestion(question).catch(error => {
+                    this.logger.warn(`[fabi-code] question non relayée: ${error instanceof Error ? error.message : String(error)}`);
+                });
             }
+        } else if (type === 'question.replied' || type === 'question.rejected') {
+            const requestId = typeof props.requestID === 'string' ? props.requestID : undefined;
+            if (requestId) {
+                this.publishedQuestionIds.delete(requestId);
+            }
+        }
+    }
+
+    protected permissionFromProperties(properties: Record<string, unknown>): FabiCodePermission | undefined {
+        const id = typeof properties.id === 'string' ? properties.id : undefined;
+        const sessionId = typeof properties.sessionID === 'string' ? properties.sessionID : undefined;
+        if (!id || !sessionId) {
+            return undefined;
+        }
+        const tool = properties.tool as { callID?: string } | undefined;
+        const metadata = properties.metadata as Record<string, unknown> | undefined;
+        const patterns = Array.isArray(properties.patterns)
+            ? properties.patterns.filter((value): value is string => typeof value === 'string')
+            : [];
+        const detail = typeof metadata?.command === 'string' ? metadata.command
+            : typeof metadata?.url === 'string' ? metadata.url
+                : patterns.length > 0 ? patterns.join(', ')
+                    : undefined;
+        return {
+            id,
+            sessionId,
+            title: typeof properties.permission === 'string' ? properties.permission : 'Autorisation requise',
+            detail,
+            callId: typeof tool?.callID === 'string' ? tool.callID : undefined
+        };
+    }
+
+    /** Résout le chat racine par les liens parentID durables d'OpenCode. */
+    protected async resolveRootSessionId(sessionId: string, directory?: string): Promise<string> {
+        const ancestry: OpenCodeSessionParent[] = [];
+        const visited = new Set<string>();
+        let current = sessionId;
+        for (let depth = 0; depth < 64 && !visited.has(current); depth++) {
+            visited.add(current);
+            if (!this.sessionParents.has(current)) {
+                const raw = await this.http('GET', `/session/${encodeURIComponent(current)}`, undefined, directory);
+                const info = JSON.parse(raw) as { id?: string; parentID?: string };
+                if (!info.id) {
+                    break;
+                }
+                this.sessionParents.set(info.id, typeof info.parentID === 'string' ? info.parentID : undefined);
+            }
+            const parentID = this.sessionParents.get(current);
+            ancestry.push({ id: current, parentID });
+            if (!parentID) {
+                break;
+            }
+            current = parentID;
+        }
+        return resolveOpenCodeRootSessionId(sessionId, ancestry);
+    }
+
+    protected async publishPermission(
+        properties: Record<string, unknown>,
+        directory = this.sseDirectory
+    ): Promise<void> {
+        const permission = this.permissionFromProperties(properties);
+        if (!permission || this.publishedPermissionIds.has(permission.id)) {
+            return;
+        }
+        const rootSessionId = await this.resolveRootSessionId(permission.sessionId, directory)
+            .catch(() => permission.sessionId);
+        const enriched = { ...permission, rootSessionId };
+        const policy = this.permissionPolicies.get(rootSessionId);
+
+        // Le mode automatique est un consentement éphémère pour CE tour racine.
+        // `once` évite qu'une autorisation fuite vers un autre chat. Le mode
+        // lecture seule (`plan`) ne peut jamais être élevé par ce broker.
+        if (policy?.mode === 'auto' && policy.agent !== 'plan') {
+            this.publishedPermissionIds.add(permission.id);
+            try {
+                await this.replyPermission(permission.id, 'once', directory);
+                return;
+            } catch (error) {
+                this.publishedPermissionIds.delete(permission.id);
+                this.logger.warn(`[fabi-code] approbation automatique impossible, retour au dialogue: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+        if (!this.client) {
+            return;
+        }
+        this.publishedPermissionIds.add(permission.id);
+        this.client.onPermissionAsked(enriched);
+    }
+
+    protected async publishQuestion(question: FabiCodeQuestion, directory = this.sseDirectory): Promise<void> {
+        if (this.publishedQuestionIds.has(question.id) || !this.client) {
+            return;
+        }
+        const rootSessionId = await this.resolveRootSessionId(question.sessionId, directory)
+            .catch(() => question.sessionId);
+        this.publishedQuestionIds.add(question.id);
+        this.client.onQuestionAsked({ ...question, rootSessionId });
+    }
+
+    /** Rejoue les interactions qui survivent à une reconnexion SSE/renderer. */
+    protected async reconcilePendingInteractions(): Promise<void> {
+        if (!this.baseUrl) {
+            return;
+        }
+        const [permissionsRaw, questionsRaw] = await Promise.all([
+            this.http('GET', '/permission', undefined, this.sseDirectory),
+            this.http('GET', '/question', undefined, this.sseDirectory)
+        ]);
+        const permissions = JSON.parse(permissionsRaw) as unknown;
+        const questions = JSON.parse(questionsRaw) as unknown;
+        if (Array.isArray(permissions)) {
+            await Promise.all(permissions
+                .filter((value): value is Record<string, unknown> => !!value && typeof value === 'object')
+                .map(permission => this.publishPermission(permission)));
+        }
+        if (Array.isArray(questions)) {
+            await Promise.all(questions
+                .filter((value): value is Record<string, unknown> => !!value && typeof value === 'object')
+                .map(value => parseFabiCodeQuestion(value))
+                .filter((value): value is FabiCodeQuestion => !!value)
+                .map(question => this.publishQuestion(question)));
         }
     }
 
@@ -517,19 +675,28 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         return json.id;
     }
 
-    async prompt(sessionId: string, text: string, directory?: string, agent?: string): Promise<void> {
+    async prompt(
+        sessionId: string,
+        text: string,
+        directory?: string,
+        agent = 'build',
+        permissionMode?: FabiCodePermissionMode
+    ): Promise<void> {
         await this.ensureCurrentServer();
         this.ensureEventStreamFor(directory);
+        this.sessionParents.set(sessionId, undefined);
+        this.permissionPolicies.set(sessionId, {
+            mode: normalizeFabiCodePermissionMode(permissionMode),
+            agent
+        });
         const ac = new AbortController();
         this.inflight.set(sessionId, ac);
         try {
-            const done = this.waitForTurn(sessionId, ac, directory);
+            const done = this.waitForTurn(sessionId, directory);
             const waiter = this.turnWaiters.get(sessionId)!;
             waiter.previousAssistantIds = await this.snapshotAssistantIds(sessionId, directory);
             const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
-            if (agent) {
-                body.agent = agent; // 'build' (édite) | 'plan' (lecture seule)
-            }
+            body.agent = agent; // 'build' (édite) | 'plan' (lecture seule)
             // OpenCode 1.15 fournit un acquittement asynchrone explicite. La
             // génération et sa fin sont suivies par /event + /session/status ;
             // aucune connexion HTTP n'est gardée pendant un long prefill/decode.
@@ -571,26 +738,14 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
     }
 
-    protected waitForTurn(sessionId: string, ac: AbortController, directory?: string): Promise<void> {
+    protected waitForTurn(sessionId: string, directory?: string): Promise<void> {
         const previous = this.turnWaiters.get(sessionId);
         if (previous) {
             this.finishTurn(sessionId, 'Un nouveau tour a remplacé le tour précédent.');
         }
         return new Promise<void>(resolve => {
-            const timeoutMs = Math.max(
-                30_000,
-                Math.min(positiveTokenLimit(process.env.FABI_CODE_TURN_TIMEOUT_MS, DEFAULT_TURN_TIMEOUT_MS), 60 * 60_000)
-            );
-            const timer = setTimeout(() => {
-                ac.abort();
-                void this.http('POST', `/session/${encodeURIComponent(sessionId)}/abort`, {}, directory)
-                    .catch(() => undefined);
-                this.finishTurn(sessionId, 'Timeout: le moteur Fabi n\'a pas terminé le tour.');
-            }, timeoutMs);
-            timer.unref?.();
             this.turnWaiters.set(sessionId, {
                 resolve,
-                timer,
                 directory,
                 accepted: false,
                 observedActive: false,
@@ -681,9 +836,9 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         if (!waiter) {
             return;
         }
-        clearTimeout(waiter.timer);
         this.turnWaiters.delete(sessionId);
         this.turnPhases.delete(sessionId);
+        this.permissionPolicies.delete(sessionId);
         waiter.resolve();
         this.partStream.clearSession(sessionId);
         this.setStatus(this.info.status, this.info.detail);

@@ -840,6 +840,20 @@
 }
 
 /* --- dock de permissions (approbation de commandes) --- */
+
+.fabi-permission-mode {
+    display: inline-flex;
+    align-items: center;
+}
+
+.fabi-permission-mode.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+}
+
+.fabi-permission-mode-select {
+    max-width: 220px;
+}
 .fabi-perm-dock { padding: 6px 12px; display: flex; flex-direction: column; gap: 8px; }
 .fabi-perm {
     border: 1px solid #EC5B2B;

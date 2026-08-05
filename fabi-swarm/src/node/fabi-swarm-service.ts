@@ -19,6 +19,7 @@ import {
     RequestAgentHandle, requestAgentRestartDelay, spawnRequestAgent
 } from './fabi-request-agent';
 import type { RuntimeCommand } from './fabi-runtime-install';
+import { shouldStartMachineWorker } from '../common/fabi-worker-host-policy';
 
 const SWARM_STATE_PATH = join(homedir(), '.config', 'fabi', 'swarm-state.json');
 
@@ -632,6 +633,19 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         const swarm = swarms.find(s => s.id === swarmId);
         if (!swarm) {
             this.setWorkerState({ kind: 'error', message: `swarm "${swarmId}" introuvable dans le registry` });
+            return this.workerState;
+        }
+
+        if (!shouldStartMachineWorker({
+            electronBackend: typeof process.versions.electron === 'string',
+            browserWorkerExplicitlyEnabled: process.env.FABI_ALLOW_BROWSER_WORKER === '1'
+        })) {
+            this.setActiveSwarm(swarm);
+            this.setWorkerState({
+                kind: 'error',
+                swarmId,
+                message: 'Aperçu navigateur : worker local désactivé. Utilise Fabi Desktop ou FABI_ALLOW_BROWSER_WORKER=1 en laboratoire.'
+            });
             return this.workerState;
         }
 

@@ -22,6 +22,11 @@ test('uses the scheduler context contract instead of a fictitious IDE window', (
     });
     assert.deepEqual(modelLimit(built), { context: 32768, output: 4096 });
     assert.equal(built.config.provider['fabi-swarm'].options.baseURL, 'https://scheduler.test/v1');
+    assert.deepEqual(built.config.permission, {
+        bash: 'ask',
+        edit: 'ask',
+        webfetch: 'ask'
+    });
     assert.equal(JSON.stringify(built.config).includes('262144'), false);
 });
 

@@ -33,6 +33,9 @@ import { AgentSpecificVariables, PromptVariantSet } from '@theia/ai-core/lib/com
 import { FabiCodeFrontend } from './fabi-code-frontend';
 import { FabiCodePart, FabiCodeQuestion } from '../common/fabi-code-protocol';
 import { FABI_CODE_MODES, normalizeFabiCodeMode } from '../common/fabi-code-mode';
+import {
+    FABI_CODE_PERMISSION_MODE_SETTING, normalizeFabiCodePermissionMode
+} from '../common/fabi-code-permission-mode';
 
 /** Id stable du provider/agent Fabi (référencé par DefaultChatAgentId). */
 export const FABI_CODE_AGENT_ID = 'fabi-code';
@@ -219,6 +222,9 @@ export class FabiCodeAgent implements ChatAgent {
             // Texte/raisonnement cumulatif par part → on n'ajoute que le delta
             // (OpenCode renvoie le texte complet de la part à chaque update).
             const lastText = new Map<string, string>();
+            // On conserve l'objet réellement fusionné par Theia afin de pouvoir
+            // terminer toute carte encore animée lors d'une vraie fin/erreur.
+            const activeCards = new Map<string, ToolCallChatResponseContentImpl>();
             let settled = false;
             // Id du message UTILISATEUR de ce tour : ses parts (l'écho du prompt)
             // ne doivent PAS être rendues dans la réponse de l'assistant.
@@ -229,6 +235,13 @@ export class FabiCodeAgent implements ChatAgent {
                     return;
                 }
                 settled = true;
+                for (const card of activeCards.values()) {
+                    if (!card.finished) {
+                        card.cancelConfirmation(error);
+                        card.complete(error ? `Interrompu : ${error}` : 'Terminé');
+                    }
+                }
+                activeCards.clear();
                 partSub.dispose();
                 doneSub.dispose();
                 cancelSub.dispose();
@@ -287,15 +300,25 @@ export class FabiCodeAgent implements ChatAgent {
                 const result = part.state === 'error'
                     ? (part.error ?? 'Erreur de l\'outil')
                     : (part.state === 'completed' ? (part.output ?? '') : undefined);
-                // addContent fusionne par id (partId) : ré-émettre une carte fraîche
-                // à chaque update → Theia met à jour la carte existante (merge).
-                out.addContent(new ToolCallChatResponseContentImpl(
+                // addContent fusionne par id. On garde la première instance :
+                // c'est elle que Theia met à jour et que finish() peut solder.
+                const update = new ToolCallChatResponseContentImpl(
                     part.partId,
                     part.tool,
                     this.safeJson(part.input),
                     finished,
                     result
-                ));
+                );
+                const current = activeCards.get(part.partId);
+                if (current) {
+                    out.addContent(update);
+                } else {
+                    activeCards.set(part.partId, update);
+                    out.addContent(update);
+                }
+                if (finished) {
+                    activeCards.delete(part.partId);
+                }
             };
 
             const partSub = this.engine.onPartEvent(part => {
@@ -343,7 +366,7 @@ export class FabiCodeAgent implements ChatAgent {
             // confirmation native de la carte ToolCall de Theia : on attend le
             // choix de l'utilisateur, puis on répond à OpenCode.
             const permSub = this.engine.onPermissionAskedEvent(async p => {
-                if (p.sessionId !== ocSession || settled) {
+                if ((p.rootSessionId ?? p.sessionId) !== ocSession || settled) {
                     return;
                 }
                 const card = new ToolCallChatResponseContentImpl(
@@ -352,6 +375,7 @@ export class FabiCodeAgent implements ChatAgent {
                     p.detail ?? '',
                     false
                 );
+                activeCards.set(`perm:${p.id}`, card);
                 out.addContent(card);
                 card.requestUserConfirmation();
                 let allowed = false;
@@ -360,16 +384,20 @@ export class FabiCodeAgent implements ChatAgent {
                 } catch {
                     allowed = false;
                 }
+                if (settled) {
+                    return;
+                }
                 try {
                     await this.engine.service.replyPermission(p.id, allowed ? 'once' : 'reject', dir);
                 } catch {
                     /* best-effort : si la réponse échoue, OpenCode finira par timeouter */
                 }
                 card.complete(allowed ? 'Autorisé' : 'Refusé');
+                activeCards.delete(`perm:${p.id}`);
             });
 
             const questionSub = this.engine.onQuestionAskedEvent(async question => {
-                if (question.sessionId !== ocSession || settled) {
+                if ((question.rootSessionId ?? question.sessionId) !== ocSession || settled) {
                     return;
                 }
                 const card = new ToolCallChatResponseContentImpl(
@@ -378,6 +406,7 @@ export class FabiCodeAgent implements ChatAgent {
                     question.questions.map(item => item.question).join('\n'),
                     false
                 );
+                activeCards.set(`question:${question.id}`, card);
                 out.addContent(card);
                 const answers = await this.collectQuestionAnswers(question);
                 if (settled) {
@@ -394,6 +423,7 @@ export class FabiCodeAgent implements ChatAgent {
                 } catch {
                     card.complete('Impossible d’envoyer la réponse');
                 }
+                activeCards.delete(`question:${question.id}`);
             });
 
             // Capte l'id du message utilisateur de CE tour (1er message.updated
@@ -413,7 +443,10 @@ export class FabiCodeAgent implements ChatAgent {
             // Theia records the selected native mode on each request. Normalize
             // it before forwarding so only real OpenCode primary agents pass.
             const mode = normalizeFabiCodeMode(request.request.modeId);
-            this.engine.service.prompt(ocSession, userText, dir, mode).catch(err => {
+            const permissionMode = normalizeFabiCodePermissionMode(
+                request.session.settings?.[FABI_CODE_PERMISSION_MODE_SETTING]
+            );
+            this.engine.service.prompt(ocSession, userText, dir, mode, permissionMode).catch(err => {
                 finish(err instanceof Error ? err.message : String(err));
             });
         });

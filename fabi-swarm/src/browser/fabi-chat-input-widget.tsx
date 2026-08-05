@@ -1,13 +1,73 @@
 import * as React from '@theia/core/shared/react';
+import * as ReactDOM from '@theia/core/shared/react-dom';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { URI } from '@theia/core';
+import { SelectComponent, SelectOption } from '@theia/core/lib/browser/widgets/select-component';
+import { Hand, WandSparkles } from 'lucide-react';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
 import { CHAT_VIEW_LANGUAGE_EXTENSION } from '@theia/ai-chat-ui/lib/browser/chat-view-language-contribution';
-import { ChatRequestModel } from '@theia/ai-chat/lib/common/chat-model';
+import { ChatRequestModel, MutableChatModel } from '@theia/ai-chat/lib/common/chat-model';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
 import { FabiSwarmSelector } from './fabi-swarm-selector';
 import { FabiCodeFrontend } from './fabi-code-frontend';
 import { shouldRenderChatInput } from '../common/fabi-chat-input-visibility';
+import {
+    FABI_CODE_PERMISSION_MODE_SETTING, FabiCodePermissionMode,
+    normalizeFabiCodePermissionMode
+} from '../common/fabi-code-permission-mode';
+
+const FABI_PERMISSION_MODE_OPTIONS: readonly SelectOption[] = [
+    { value: 'ask', label: 'Valider les edits' },
+    { value: 'auto', label: 'Auto-edit' }
+];
+
+interface FabiPermissionModePortalProps {
+    host: HTMLElement;
+    value: FabiCodePermissionMode;
+    disabled: boolean;
+    onChange: (mode: FabiCodePermissionMode) => void;
+}
+
+/**
+ * Le composant d'options appartient à Theia et n'expose pas de slot. Un portail
+ * ciblé insère notre sélecteur juste après son sélecteur Agent/Ask, sans forker
+ * le widget ni dupliquer l'éditeur de chat.
+ */
+function FabiPermissionModePortal(props: FabiPermissionModePortalProps): React.ReactPortal {
+    const mount = React.useMemo(() => document.createElement('span'), []);
+    React.useLayoutEffect(() => {
+        const target = props.host.querySelector('.theia-ChatInputOptions-left');
+        if (!target) {
+            return undefined;
+        }
+        mount.className = `fabi-permission-mode${props.disabled ? ' disabled' : ''}`;
+        mount.title = props.value === 'auto'
+            ? 'Les outils sont autorisés une fois pour ce tour, y compris dans les sous-tâches.'
+            : 'Fabi demande votre accord avant une commande ou une modification.';
+        mount.setAttribute('aria-disabled', String(props.disabled));
+        const nativeMode = target.querySelector('.theia-ChatInput-ModeSelector')?.parentElement;
+        target.insertBefore(mount, nativeMode?.nextSibling ?? target.firstChild);
+        return () => mount.remove();
+    }, [mount, props.host, props.disabled, props.value]);
+    return ReactDOM.createPortal(
+        <React.Fragment>
+            <span className='fabi-permission-mode-icon' aria-hidden='true'>
+                {props.value === 'auto' ? <WandSparkles size={13} /> : <Hand size={13} />}
+            </span>
+            <SelectComponent
+                className={`theia-ChatInput-ModeSelector fabi-permission-mode-select${props.disabled ? ' disabled' : ''}`}
+                options={FABI_PERMISSION_MODE_OPTIONS}
+                defaultValue={props.value}
+                onChange={option => {
+                    if (!props.disabled) {
+                        props.onChange(normalizeFabiCodePermissionMode(option.value));
+                    }
+                }}
+            />
+        </React.Fragment>,
+        mount
+    );
+}
 
 /**
  * Sous-classe de l'input du chat IA de Theia. On NE forke PAS le paquet : on
@@ -153,10 +213,29 @@ export class FabiChatInputWidget extends AIChatInputWidget {
         )) {
             return <FabiSwarmSelector frontend={this.swarm} engine={this.engine} locked />;
         }
+        const storedPermissionMode = normalizeFabiCodePermissionMode(
+            this._chatModel.settings?.[FABI_CODE_PERMISSION_MODE_SETTING]
+        );
+        const planMode = this.receivingAgent?.currentModeId === 'plan';
+        const visiblePermissionMode = planMode ? 'ask' : storedPermissionMode;
+        const permissionModeDisabled = this.requestInProgress || planMode || !this.ready;
         return (
             <React.Fragment>
                 <FabiSwarmSelector frontend={this.swarm} engine={this.engine} />
                 {super.render()}
+                <FabiPermissionModePortal
+                    host={this.node}
+                    value={visiblePermissionMode}
+                    disabled={permissionModeDisabled}
+                    onChange={mode => {
+                        const mutableModel = this._chatModel as MutableChatModel;
+                        mutableModel.setSettings({
+                            ...(this._chatModel.settings ?? {}),
+                            [FABI_CODE_PERMISSION_MODE_SETTING]: mode
+                        });
+                        this.update();
+                    }}
+                />
             </React.Fragment>
         );
     }

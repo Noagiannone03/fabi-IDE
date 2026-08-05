@@ -33,7 +33,7 @@
     --fabi-surface-2: #292e37;     /* couche élevée : en-têtes, onglet actif, cartes */
     --fabi-surface-3: #343a45;     /* survol / sélection au-dessus de surface-2 */
     --fabi-gap: 10px;              /* écart entre les îles (un peu plus d'air → vrai flottement) */
-    --fabi-island-radius: 18px;    /* rayon des îles (plus généreux, façon « islands ») */
+    --fabi-island-radius: 14px;    /* rayon net d'outil desktop, sans effet « bulle » */
 
     --fabi-text: #cdd0d6;          /* texte neutre clair */
 
@@ -59,8 +59,8 @@
 
     /* DENSITÉ : on aère. En-têtes de section + onglets plus hauts → ça respire,
        fini le tassement « VS Code par défaut ». */
-    --theia-view-container-title-height: 34px;
-    --theia-private-horizontal-tab-height: 38px;
+    --theia-view-container-title-height: 32px;
+    --theia-private-horizontal-tab-height: 36px;
 }
 
 /* ------------------------------------------------------------------ */
@@ -199,7 +199,7 @@ body.linux {
     background-color: var(--fabi-surface-2) !important;
     background-clip: padding-box !important;
     border: 5px solid var(--fabi-surface) !important;
-    border-radius: 12px !important;
+    border-radius: 9px !important;
     /* Chip surélevé par VALEUR (surface-2 > surface) + ombre de contact courte,
        sans liseré blanc → cohérent avec les îlots, propre, pas de ligne plate. */
     box-shadow:
@@ -217,7 +217,7 @@ body.linux {
 /* Activity bar : sélection en pastille « glass » (plus de liseré orange) */
 /* ------------------------------------------------------------------ */
 .theia-app-sidebar-container .lm-TabBar-tab {
-    border-radius: 12px !important;
+    border-radius: 9px !important;
     margin: 3px 7px !important;
 }
 
@@ -289,7 +289,7 @@ body.linux {
 /* Onglets éditeur : îlots flottants (chips), marges égales → zéro saut.     */
 /* ------------------------------------------------------------------ */
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab {
-    border-radius: 10px !important;
+    border-radius: 8px !important;
     /* marge SUPÉRIEURE plus grande → les onglets sont DÉCOLLÉS du haut de l'éditeur
        (le fond sombre de l'éditeur respire au-dessus des onglets). */
     margin: 7px 3px 1px !important;

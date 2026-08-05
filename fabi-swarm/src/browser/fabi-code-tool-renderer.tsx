@@ -117,13 +117,34 @@ const FabiToolCard: React.FC<{ content: ToolCallChatResponseContent }> = ({ cont
         error: 'codicon-error',
         done: 'codicon-check'
     }[status];
+    const toggleOutput = () => out && setOpen(value => !value);
+    const activity = status === 'running'
+        ? `${meta.label} en cours`
+        : status === 'confirm' ? 'Autorisation requise'
+            : status === 'error' ? 'Échec'
+                : 'Terminé';
 
     return (
-        <div className={`fabi-tc fabi-tc-${status}`}>
-            <div className='fabi-tc-head' onClick={() => out && setOpen(o => !o)}>
+        <div className={`fabi-tc fabi-tc-${status}`} aria-live='polite'>
+            <div
+                className='fabi-tc-head'
+                onClick={toggleOutput}
+                onKeyDown={event => {
+                    if (out && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault();
+                        toggleOutput();
+                    }
+                }}
+                role={out ? 'button' : undefined}
+                tabIndex={out ? 0 : undefined}
+                aria-expanded={out ? open : undefined}
+            >
                 <span className={`codicon ${meta.icon} fabi-tc-icon`} />
-                <span className='fabi-tc-label'>{meta.label}</span>
-                {sub && <span className='fabi-tc-sub'>{sub}</span>}
+                <span className='fabi-tc-copy'>
+                    <span className='fabi-tc-label'>{meta.label}</span>
+                    {sub && <span className='fabi-tc-sub'>{sub}</span>}
+                </span>
+                <span className='fabi-tc-activity'>{activity}</span>
                 <span className={`codicon ${statusIcon} fabi-tc-status`} />
                 {out && <span className={`codicon codicon-chevron-${open ? 'down' : 'right'} fabi-tc-caret`} />}
             </div>
@@ -159,7 +180,7 @@ const FabiThinkingBlock: React.FC<{ text: string }> = ({ text }) => {
             <div className='fabi-think-head' onClick={() => setOpen(o => !o)}>
                 <span className='codicon codicon-lightbulb-sparkle fabi-think-icon' />
                 <span className='fabi-think-title'>Réflexion</span>
-                {!open && preview && <span className='fabi-think-preview'>{preview}</span>}
+                {!open && preview && <span key={preview} className='fabi-think-preview'>{preview}</span>}
                 <span className={`codicon codicon-chevron-${open ? 'down' : 'right'} fabi-think-caret`} />
             </div>
             {open && <div className='fabi-think-body'>{text}</div>}

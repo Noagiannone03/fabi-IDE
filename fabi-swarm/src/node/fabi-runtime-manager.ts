@@ -18,6 +18,7 @@ export class FabiRuntimeManager {
     private progress = 0;
     private phase: RuntimeStatus['phase'];
     private lastMessage: string | undefined;
+    private lastLoggedProblem: string | undefined;
 
     /** Localise le binaire parallax sur la machine (sans rien télécharger). */
     findParallax(): LocatedRuntimeCommand | undefined {
@@ -33,6 +34,11 @@ export class FabiRuntimeManager {
         const plat = detectPlatform();
         const found = findParallax();
         const requestAgent = findRequestAgent();
+        const problem = found && requestAgent ? undefined : installedRuntimeProblem();
+        if (problem && problem !== this.lastLoggedProblem) {
+            this.lastLoggedProblem = problem;
+            console.warn('[fabi-runtime] installation locale refusée :', problem);
+        }
         return {
             installed: !!found && !!requestAgent,
             downloading: this.downloading,
@@ -43,9 +49,11 @@ export class FabiRuntimeManager {
             accel: plat.accel,
             version: configuredRuntimeVersion(),
             binary: found && requestAgent ? found.binary : undefined,
-            message: this.lastMessage ?? (found && requestAgent
-                ? undefined
-                : installedRuntimeProblem())
+            // Le diagnostic détaillé (révisions, chemins, manifeste) appartient
+            // aux logs. L'utilisateur reçoit une action compréhensible.
+            message: this.lastMessage ?? (problem
+                ? 'Le moteur local doit être mis à niveau avant de rejoindre le swarm.'
+                : undefined)
         };
     }
 

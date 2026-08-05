@@ -71,6 +71,8 @@ export interface FabiCodePermission {
     /** Id de la demande (à renvoyer dans replyPermission). */
     id: string;
     sessionId: string;
+    /** Chat racine auquel rattacher une permission émise par une sous-tâche. */
+    rootSessionId?: string;
     /** Libellé court (nom de l'outil / type de permission). */
     title: string;
     /** Détail (ex. la commande shell à lancer), best-effort. */
@@ -99,6 +101,8 @@ export interface FabiCodeQuestionItem {
 export interface FabiCodeQuestion {
     id: string;
     sessionId: string;
+    /** Chat racine auquel rattacher une question émise par une sous-tâche. */
+    rootSessionId?: string;
     questions: FabiCodeQuestionItem[];
     callId?: string;
 }
@@ -210,7 +214,13 @@ export interface FabiCodeService {
      * (`onTurnDone` est aussi émis). `directory` cible le workspace.
      * `agent` choisit le mode OpenCode : 'build' (édite) | 'plan' (lecture seule).
      */
-    prompt(sessionId: string, text: string, directory?: string, agent?: string): Promise<void>;
+    prompt(
+        sessionId: string,
+        text: string,
+        directory?: string,
+        agent?: string,
+        permissionMode?: import('./fabi-code-permission-mode').FabiCodePermissionMode
+    ): Promise<void>;
 
     /** Interrompt le tour en cours dans le même scope workspace que le prompt. */
     abort(sessionId: string, directory?: string): Promise<void>;

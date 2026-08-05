@@ -69,6 +69,7 @@ export function buildFabiCodeConfig(input: FabiCodeConfigInput): FabiCodeConfigR
             share: 'disabled',
             permission: {
                 bash: 'ask',
+                edit: 'ask',
                 webfetch: 'ask'
             },
             provider: {

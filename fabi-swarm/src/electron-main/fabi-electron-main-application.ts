@@ -14,33 +14,136 @@
 import { injectable } from '@theia/core/shared/inversify';
 import * as electron from '@theia/core/electron-shared/electron';
 import { ElectronMainApplication } from '@theia/core/lib/electron-main/electron-main-application';
+import { TheiaRendererAPI } from '@theia/core/lib/electron-main/electron-api-main';
+import { CancellationTokenSource } from '@theia/core/lib/common/cancellation';
+import { timeout } from '@theia/core/lib/common/promise-util';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { join } from 'path';
-import { detectPlatform, findParallax, installRuntime } from '../node/fabi-runtime-install';
+import { join, resolve as resolvePath } from 'path';
+import { detectPlatform, findParallax, installedRuntimeProblem, installRuntime } from '../node/fabi-runtime-install';
+import { shouldGateRuntime } from '../common/fabi-runtime-launcher-policy';
 import { FABI_FOX_DATA_URI } from './fabi-launcher-logo';
+import { FabiMandatoryAppUpdater } from './fabi-mandatory-app-updater';
 
 @injectable()
 export class FabiElectronMainApplication extends ElectronMainApplication {
 
     protected launcherHandled = false;
 
+    /**
+     * Backport du correctif déjà présent dans Theia amont : quand le frontend
+     * devient prêt, l'annulation du timer maximal est normale et ne doit pas
+     * devenir un `unhandledRejection`. À retirer lors de la montée de Theia
+     * vers une version qui contient ce changement.
+     */
+    protected override async configureAndShowSplashScreen(mainWindow: electron.BrowserWindow): Promise<electron.BrowserWindow> {
+        const splashScreenOptions = this.getSplashScreenOptions()!;
+        const splashScreenBounds = await this.determineSplashScreenBounds(mainWindow.getBounds());
+        const splashScreenWindow = new electron.BrowserWindow({
+            ...splashScreenBounds,
+            frame: false,
+            alwaysOnTop: true,
+            show: false,
+            transparent: true,
+            webPreferences: {
+                backgroundThrottling: false
+            }
+        });
+
+        if (this.isShowWindowEarly()) {
+            splashScreenWindow.show();
+        } else {
+            splashScreenWindow.on('ready-to-show', () => splashScreenWindow.show());
+        }
+        void splashScreenWindow.loadFile(resolvePath(
+            this.globals.THEIA_APP_PROJECT_PATH,
+            splashScreenOptions.content!
+        ));
+
+        const cancelTokenSource = new CancellationTokenSource();
+        const minTime = timeout(splashScreenOptions.minDuration ?? 0, cancelTokenSource.token);
+        const maxTime = timeout(splashScreenOptions.maxDuration ?? 30_000, cancelTokenSource.token);
+        const ignoreExpectedCancellation = () => undefined;
+        let settled = false;
+        const showWindowAndCloseSplashScreen = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            cancelTokenSource.cancel();
+            if (!mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+                mainWindow.show();
+            }
+            if (!splashScreenWindow.isDestroyed()) {
+                splashScreenWindow.close();
+            }
+        };
+        TheiaRendererAPI.onApplicationStateChanged(mainWindow.webContents, state => {
+            if (state === 'ready') {
+                minTime.then(showWindowAndCloseSplashScreen, ignoreExpectedCancellation);
+            }
+        });
+        maxTime.then(showWindowAndCloseSplashScreen, ignoreExpectedCancellation);
+        return splashScreenWindow;
+    }
+
     protected override showInitialWindow(urlToOpen: string | undefined): void {
         electron.app.whenReady().then(async () => {
             this.applyBranding();
             try {
-                if (!this.launcherHandled && this.shouldRunLauncher()) {
-                    this.launcherHandled = true;
-                    await this.runLauncher();
-                }
+                // L'application distribuée se met à jour avant de créer la
+                // moindre surface IDE/Spaces ou d'installer un nouveau runtime.
+                await new FabiMandatoryAppUpdater().run();
             } catch (err) {
-                console.error('[fabi-launcher] erreur (on ouvre l\'IDE quand même) :', err);
+                // La découverte des mises à jour est déjà fail-open ; ce filet
+                // protège uniquement une erreur d'initialisation inattendue.
+                console.error('[fabi-update] initialisation impossible, démarrage conservé :', err);
+            }
+            if (!await this.ensureQualifiedRuntime()) {
+                return;
             }
             // Surface initiale APRÈS le launcher. Point d'extension : une sous-classe
             // (ex. fabi-spaces) peut ici ouvrir une fenêtre-hôte multi-Spaces plutôt
             // que la fenêtre IDE standard.
             await this.openInitialSurface(urlToOpen);
         });
+    }
+
+    /**
+     * Ne laisse jamais une distribution ouvrir l'IDE avec un moteur incompatible.
+     * Même une panne de création de la fenêtre du launcher mène à un choix clair
+     * Réessayer/Quitter, et non au panneau technique du runtime.
+     */
+    protected async ensureQualifiedRuntime(): Promise<boolean> {
+        if (this.launcherHandled || !this.shouldRunLauncher()) {
+            return true;
+        }
+        this.launcherHandled = true;
+        while (this.shouldRunLauncher()) {
+            try {
+                await this.runLauncher();
+            } catch (error) {
+                console.error('[fabi-launcher] initialisation impossible :', error);
+                if (!electron.app.isPackaged) {
+                    return true;
+                }
+                const choice = await electron.dialog.showMessageBox({
+                    type: 'error',
+                    title: 'Fabi ne peut pas préparer son moteur',
+                    message: 'La mise à niveau du moteur n’a pas pu démarrer.',
+                    detail: 'Vérifie ta connexion, puis réessaie. Aucun composant incompatible ne sera lancé.',
+                    buttons: ['Réessayer', 'Quitter'],
+                    defaultId: 0,
+                    cancelId: 1,
+                    noLink: true
+                });
+                if (choice.response === 1) {
+                    electron.app.quit();
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     /**
@@ -70,37 +173,34 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
         }
     }
 
-    /** Lance le launcher ? Non si désactivé, en dev, déjà installé, ou machine non éligible. */
+    /**
+     * En distribution, un runtime absent ou incompatible bloque le démarrage de
+     * la surface IA jusqu'à sa mise à niveau. Les flags de contournement restent
+     * strictement réservés au développement non packagé.
+     */
     protected shouldRunLauncher(): boolean {
-        if (process.env.FABI_NO_LAUNCHER) {
-            return false;
-        }
-        // Uniquement dans l'app packagée et distribuée — jamais en dev (`theia
-        // start`), pour ne pas popper à chaque lancement pendant le développement.
-        // FABI_FORCE_LAUNCHER permet de le tester volontairement en dev.
-        if (!electron.app.isPackaged && !process.env.FABI_FORCE_LAUNCHER) {
-            return false;
-        }
-        if (findParallax()) {
-            return false; // moteur déjà présent → rien à faire
-        }
-        if (detectPlatform().accel === 'cpu') {
-            return false; // pas de GPU supporté → l'IDE s'ouvre, le panel expliquera
-        }
-        return true;
+        return shouldGateRuntime({
+            packaged: electron.app.isPackaged,
+            forcedInDevelopment: process.env.FABI_FORCE_LAUNCHER === '1',
+            disabledInDevelopment: process.env.FABI_NO_LAUNCHER === '1',
+            runtimeQualified: !!findParallax(),
+            acceleratorSupported: detectPlatform().accel !== 'cpu'
+        });
     }
 
     /**
-     * Affiche la fenêtre launcher, télécharge le moteur, se ferme une fois prêt
-     * (ou si l'utilisateur choisit de continuer sans). Résout toujours — un
-     * échec n'empêche jamais l'IDE de s'ouvrir.
+     * Affiche la fenêtre launcher et télécharge le moteur. Dans une application
+     * distribuée, la gate est obligatoire et offre un vrai retry ; en
+     * développement forcé, « continuer sans moteur » reste disponible.
      */
     protected runLauncher(): Promise<void> {
         return new Promise<void>(resolve => {
+            const mandatory = electron.app.isPackaged;
+            const upgrading = !!installedRuntimeProblem();
             const dir = mkdtempSync(join(tmpdir(), 'fabi-launcher-'));
             const htmlPath = join(dir, 'launcher.html');
             const preloadPath = join(dir, 'preload.js');
-            writeFileSync(htmlPath, LAUNCHER_HTML);
+            writeFileSync(htmlPath, launcherHtml({ mandatory, upgrading }));
             writeFileSync(preloadPath, PRELOAD_JS);
 
             const win = new electron.BrowserWindow({
@@ -118,15 +218,20 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
                     preload: preloadPath,
                     contextIsolation: true,
                     nodeIntegration: false,
+                    sandbox: true,
                     backgroundThrottling: false
                 }
             });
             win.once('ready-to-show', () => win.show());
 
             let settled = false;
+            let installing = false;
+            let allowClose = false;
             const onSkip = () => finish();
+            const onRetry = () => { void attemptInstall(); };
             const cleanup = () => {
                 electron.ipcMain.removeListener('fabi-launcher:skip', onSkip);
+                electron.ipcMain.removeListener('fabi-launcher:retry', onRetry);
                 try { win.setProgressBar(-1); } catch { /* ignore */ }
                 try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
             };
@@ -135,14 +240,22 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
                     return;
                 }
                 settled = true;
+                allowClose = true;
                 cleanup();
                 if (!win.isDestroyed()) {
                     win.close();
                 }
                 resolve();
             };
-            electron.ipcMain.on('fabi-launcher:skip', onSkip);
-            // Fenêtre fermée par l'utilisateur (croix OS) → on continue sans moteur.
+            if (!mandatory) {
+                electron.ipcMain.on('fabi-launcher:skip', onSkip);
+            }
+            electron.ipcMain.on('fabi-launcher:retry', onRetry);
+            win.on('close', event => {
+                if (mandatory && !allowClose) {
+                    event.preventDefault();
+                }
+            });
             win.on('closed', () => {
                 if (!settled) {
                     settled = true;
@@ -151,8 +264,14 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
                 }
             });
 
-            // Démarre l'install dès que la page est chargée.
-            win.webContents.once('did-finish-load', async () => {
+            const attemptInstall = async () => {
+                if (installing || settled) {
+                    return;
+                }
+                installing = true;
+                if (!win.isDestroyed()) {
+                    win.webContents.send('fabi-launcher:starting');
+                }
                 try {
                     await installRuntime(p => {
                         if (win.isDestroyed()) {
@@ -174,10 +293,14 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
                     if (!win.isDestroyed()) {
                         win.webContents.send('fabi-launcher:error', { message });
                     }
-                    // On laisse la fenêtre ouverte : l'utilisateur lit l'erreur et
-                    // peut « continuer sans le moteur » (skip) pour entrer dans l'IDE.
+                } finally {
+                    installing = false;
                 }
-            });
+            };
+
+            // Démarre l'installation dès que la page est chargée. En cas
+            // d'échec, le même chemin idempotent est rappelé par le bouton retry.
+            win.webContents.once('did-finish-load', () => { void attemptInstall(); });
 
             win.loadFile(htmlPath);
         });
@@ -193,16 +316,24 @@ const PRELOAD_JS = `
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('fabi', {
     onProgress: cb => ipcRenderer.on('fabi-launcher:progress', (_e, p) => cb(p)),
+    onStarting: cb => ipcRenderer.on('fabi-launcher:starting', () => cb()),
     onDone: cb => ipcRenderer.on('fabi-launcher:done', () => cb()),
     onError: cb => ipcRenderer.on('fabi-launcher:error', (_e, e) => cb(e)),
-    skip: () => ipcRenderer.send('fabi-launcher:skip')
+    skip: () => ipcRenderer.send('fabi-launcher:skip'),
+    retry: () => ipcRenderer.send('fabi-launcher:retry')
 });
 `;
 
-const LAUNCHER_HTML = `<!DOCTYPE html>
+function launcherHtml(options: { mandatory: boolean; upgrading: boolean }): string {
+    const title = options.upgrading ? 'Mise à niveau du moteur' : 'Préparation de Fabi';
+    const copy = options.upgrading
+        ? 'Une version compatible du moteur est requise. Fabi reprend automatiquement le téléchargement.'
+        : 'Installation du moteur d’inférence. Cette opération n’a lieu qu’une fois.';
+    return `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
 <style>
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
     font-family: -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-user-select: none; cursor: default; }
@@ -223,7 +354,10 @@ const LAUNCHER_HTML = `<!DOCTYPE html>
     background: linear-gradient(90deg, #6b7280, #aab0b8); transition: width .3s ease; }
   .status { margin-top: 12px; font-size: 12px; opacity: .8; min-height: 16px; }
   .pct { font-variant-numeric: tabular-nums; font-weight: 700; }
-  .skip { -webkit-app-region: no-drag; margin-top: 20px; font-size: 11.5px; opacity: .5;
+  .actions { -webkit-app-region: no-drag; display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+  .retry { display: none; border: 0; border-radius: 8px; padding: 8px 14px; background: #ec5b2b;
+    color: #fff; font-size: 11.5px; font-weight: 650; cursor: pointer; }
+  .skip { font-size: 11.5px; opacity: .5;
     text-decoration: underline; cursor: pointer; background: none; border: none; color: inherit; }
   .skip:hover { opacity: .85; }
   .err { color: #ff8a8a; }
@@ -232,18 +366,30 @@ const LAUNCHER_HTML = `<!DOCTYPE html>
 <body>
   <div class="card">
     <img class="fox" src="${FABI_FOX_DATA_URI}" alt="Fabi" />
-    <h1>Préparation de Fabi</h1>
-    <p class="sub" id="sub">Installation du moteur d'inférence (une seule fois). Aucune action requise.</p>
+    <h1>${title}</h1>
+    <p class="sub" id="sub">${copy}</p>
     <div class="track"><div class="bar" id="bar"></div></div>
     <div class="status"><span class="pct" id="pct">0%</span> · <span id="phase">démarrage…</span></div>
-    <button class="skip" id="skip">Continuer sans le moteur</button>
+    <div class="actions">
+      <button class="retry" id="retry">Réessayer</button>
+      <button class="skip" id="skip"${options.mandatory ? ' hidden' : ''}>Continuer sans le moteur</button>
+    </div>
   </div>
 <script>
   const bar = document.getElementById('bar');
   const pct = document.getElementById('pct');
   const phase = document.getElementById('phase');
   const sub = document.getElementById('sub');
+  const retry = document.getElementById('retry');
+  const initialCopy = ${JSON.stringify(copy)};
   const PHASES = { download: 'téléchargement', verify: 'vérification', extract: 'extraction', done: 'prêt' };
+  window.fabi.onStarting(() => {
+    retry.style.display = 'none';
+    phase.className = '';
+    phase.textContent = 'connexion…';
+    sub.className = 'sub';
+    sub.textContent = initialCopy;
+  });
   window.fabi.onProgress(p => {
     bar.style.width = (p.percent || 0) + '%';
     pct.textContent = (p.percent || 0) + '%';
@@ -254,11 +400,16 @@ const LAUNCHER_HTML = `<!DOCTYPE html>
     sub.textContent = 'Moteur installé — ouverture de Fabi…';
   });
   window.fabi.onError(e => {
-    phase.innerHTML = '<span class="err">échec</span>';
-    sub.innerHTML = '<span class="err">' + (e && e.message ? e.message : 'erreur') + '</span>';
-    document.getElementById('skip').textContent = 'Ouvrir Fabi quand même';
+    phase.className = 'err';
+    phase.textContent = 'échec';
+    sub.className = 'sub err';
+    sub.textContent = e && e.message ? e.message : 'erreur';
+    retry.style.display = 'inline-flex';
+    document.getElementById('skip').textContent = 'Ouvrir Fabi sans IA';
   });
   document.getElementById('skip').addEventListener('click', () => window.fabi.skip());
+  retry.addEventListener('click', () => window.fabi.retry());
 </script>
 </body>
 </html>`;
+}

@@ -6718,3 +6718,69 @@ Ubuntu, macOS 15 et Windows : formatage, Clippy, bindings Rust/Python, DHT trois
 nœuds, wheel ABI3, import du wheel et suite protocole/shadow passent sur les
 trois plateformes. Ce commit est donc le seul candidat de ce jalon à
 provisionner en shadow.
+
+## Gate runtime desktop, mise à jour obligatoire et isolation des aperçus du 5 août 2026
+
+Un test visuel local avait ouvert un paquet Electron avec `FABI_NO_LAUNCHER=1`.
+Le runtime partagé encore installé était `main` (`opencode_revision=95c0…`,
+`parallax_revision=a1f9…`) alors que l'IDE exigeait `v2.7.0-rc40`
+(`4e138…` / `f021…`). Le résolveur `findParallax()` refusait déjà correctement
+ce runtime : le défaut venait uniquement du contournement de développement,
+qui avait laissé l'IDE afficher le diagnostic interne complet. Ce diagnostic
+reste désormais dans les logs ; l'UI dit seulement qu'une mise à niveau est
+requise.
+
+Une application packagée ne peut plus désactiver la gate runtime avec une
+variable de développement. Sur Apple Silicon ou NVIDIA, elle ouvre une surface
+obligatoire de mise à niveau avec progression et retry, refuse la fermeture qui
+contournerait le contrat, puis ouvre Spaces seulement après validation exacte
+du manifeste. Même une erreur de création de cette surface mène à
+`Réessayer/Quitter`, jamais à un IDE partiellement utilisable. Les machines sans
+accélérateur supporté ne sont pas enfermées dans l'installateur worker. La
+fenêtre utilise `contextIsolation`, le sandbox Electron et une CSP locale.
+
+Le paquet macOS arm64 a ensuite été lancé sans aucun override. Il a remplacé
+atomiquement le runtime `main` par `v2.7.0-rc40`, puis la fenêtre-hôte Spaces
+s'est ouverte. Le manifeste local vérifié contient exactement les révisions
+qualifiées. Un premier arrêt apparent après l'installation venait de l'arrêt
+manuel du processus de test par Codex, et non du launcher ; le second lancement
+normal a confirmé l'enchaînement automatique dans le même processus.
+
+Ce second test a révélé une interférence de laboratoire distincte : le serveur
+`browser-app` utilisé pour les captures restaurait le même swarm persistant que
+Fabi Desktop et lançait un second worker avec la même identité. Les deux
+superviseurs se remplaçaient alors proprement toutes les 30 secondes ; d'où le
+message `worker arrêté (code=0) — redémarrage auto`. Ce n'était ni un crash,
+ni une panne DHT, ni une décision de pression mémoire. Le backend Electron est
+maintenant propriétaire du worker machine ; un backend navigateur ne peut plus
+en démarrer un sans `FABI_ALLOW_BROWSER_WORKER=1`, réservé au laboratoire.
+Après arrêt de l'ancien aperçu, le worker Electron est resté stable, a conservé
+ses heartbeats via le relay produit et a publié son enveloppe MLX live pendant
+les nouvelles captures sans être interrompu.
+
+Le contrat de mise à jour de l'application repose sur `electron-updater` et le
+provider HTTPS générique stable. La découverte se fait avant toute surface IDE ;
+une panne de découverte conserve l'application signée courante, mais dès qu'une
+version plus récente est authentifiée l'ancienne version ne peut plus ouvrir
+l'IDE : téléchargement, retry, installation et redémarrage sont obligatoires.
+Un paquet complet macOS produit bien `app-update.yml`, le DMG, le ZIP, leurs
+blockmaps et `stable-mac.yml`. La construction locale n'est toutefois **pas une
+release distribuable** : aucune identité `Developer ID Application` n'est
+présente sur ce Mac, l'endpoint stable n'est pas encore provisionné et les
+artefacts n'ont pas été publiés. Ne pas présenter la mise à jour signée comme
+qualifiée avant signature/notarisation macOS et équivalents Windows.
+
+La DA historique IntelliJ/îlots et la navigation Spaces ont été restaurées
+après le prototype visuel rejeté. Le polish restant est volontairement ciblé :
+rayons d'outil desktop plus nets, boutons non-pilules, cartes d'accueil sobres
+et densité légèrement plus compacte, sans overlay global qui remplace la
+structure. Les captures browser ont été refaites après ajout de l'isolation ;
+elles n'ont lancé aucun worker concurrent.
+
+Validation de ce lot IDE : compilation des trois extensions, bundle browser,
+bundle Electron et 69 tests Node passent ; `git diff --check` est vert. Le
+paquet macOS complet est construit séparément sous `/tmp` afin de ne pas
+écraser l'application de test encore ouverte. Il reste à tester ce paquet final
+avec les permissions/outils et modifications de fichiers en Electron, signer
+et publier le canal d'update, puis reprendre le déploiement shadow du placement
+multi-contexte sur VPS + Mac mini + RTX avant toute activation live.
