@@ -6559,3 +6559,60 @@ politique multi-classes et l'optimum CP-SAT, puis réutiliser
 et pannes. Le score ne pourra être publié dans la DHT en shadow qu'après cette
 comparaison, et aucune réallocation réelle ne sera activée avant les tests Mac
 local, Mac mini, RTX, NAT et churn.
+
+### Populations hétérogènes, baseline Petals et autorisation multi-OS du 5 août 2026
+
+La première population synthétique est maintenant reproductible et exprime
+explicitement une **enveloppe stable après OS et applications**, jamais la RAM
+physique annoncée par la machine. Elle utilise la géométrie qualifiée de
+Qwen3-4B : 36 couches, 200 Mio de poids par couche, 4 096 octets de KV par
+token et par couche, plus 256 Mio pour chacun des deux rôles d'extrémité. La
+population contient six enveloppes stables de 4 Gio et quatre de 10 Gio ; les
+frontières mémoire identiques sont mises en cache pour que la simulation reste
+bornée.
+
+Sur une demande dominée par le contexte long, la baseline « maximum de
+couches » produit respectivement 4, 0 et 0 slots complets aux classes 16k,
+40 960 et 65 536. La politique multi-classes produit 2, 2 et 2 slots, et les
+workers sélectionnés retiennent tous la classe 65 536. Ces chiffres ne sont
+pas une promesse de production : ils démontrent, sur une enveloppe et une
+géométrie exactes, qu'optimiser seulement les poids sacrifie bien le service
+agentique long. Le commit moteur correspondant est
+`a94efe6077f3b293ad2d9c0481712137c5442fa1`.
+
+Le sélecteur officiel Petals a été relu au commit
+`22afba627a7eb4fcfe9418c49472c6a51334b8ac`. Sa fonction
+`_choose_best_start` compare lexicographiquement le débit agrégé par couche et
+déplace un serveur vers la zone la moins servie. La baseline Fabi applique ce
+principe à chaque frontière de contexte, puis compare la couverture globale
+après le join. Elle révèle une différence d'exécution importante : une bonne
+couverture couche par couche peut rester inexécutable dans Fabi lorsque les
+spans fixes se chevauchent avec des frontières incompatibles, par exemple
+`[24,32]` et `[28,36]`. Petals peut servir des sous-spans ; le backend Fabi
+`FIXED` les refuse volontairement aujourd'hui. Il faut donc conserver
+l'évaluation de routes complètes par max-flow et ne jamais présenter une
+simple couverture comme une pipeline disponible. Le test comparatif est poussé
+dans `5c7b1d79119fb8fb6d8cb9204d4f0db96d2897e9`.
+
+La première exécution Windows de cette série a aussi exposé une vraie source
+de flakiness dans l'autorisation Biscuit. `biscuit-auth` 6.0 applique par défaut
+une limite murale de seulement 1 ms à l'exécution Datalog ; la politique valide
+de révocation de racine dépassait parfois ce budget sur le runner chargé. Le
+builder de l'authorizer fixe maintenant explicitement 50 ms, tout en conservant
+les limites de 1 000 faits et 100 itérations. La limite est appliquée avant le
+build afin que l'initialisation soit elle aussi couverte. Ce n'est ni une
+désactivation ni une boucle non bornée. Le correctif est poussé dans
+`723959e` (`fix(network): bound capability authorization runtime`).
+
+Le workflow GitHub `Native network` `30983373407`, exécuté au HEAD moteur
+`5c7b1d79119fb8fb6d8cb9204d4f0db96d2897e9`, est entièrement vert sur Ubuntu,
+macOS 15 et Windows. Il qualifie Rust/Clippy, l'autorisation Biscuit, le DHT
+natif trois nœuds, le wheel ABI3 et les tests protocole/simulation. En local,
+la série couvre également 29 tests Rust, 226 tests protocole/config, les deux
+tests CP-SAT isolés, Ruff, `pip check` et `git diff --check`.
+
+La suite immédiate reste la comparaison Exo et oracle sur les mêmes
+populations, puis la calibration file/TTFT/ITL avec `llm-d-inference-sim`. Ce
+n'est qu'après ces baselines que le résumé de demande pourra être publié dans
+la DHT en shadow. Le coordinateur ne distribue toujours pas les couches : les
+workers V3 choisissent localement leur span à partir de l'état DHT signé.
