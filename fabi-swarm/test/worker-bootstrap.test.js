@@ -19,6 +19,7 @@ function rootBytes() {
 function profile(rootSha256) {
     return {
         protocolVersion: 3,
+        catalogSchemaVersion: 2,
         transport: 'iroh',
         relayUrl: 'https://relay.example:4443',
         enrollmentUrl: 'https://registry.example/v1/network/enroll',
@@ -96,5 +97,13 @@ test('rejects a registry root not pinned by the IDE before downloading it', asyn
     await assert.rejects(
         prepareWorkerBootstrap(contract, { FABI_MODEL_REGISTRY_ROOT_SHA256: 'cd'.repeat(32) }),
         /non qualifiée/
+    );
+});
+
+test('rejects an incompatible DHT catalogue schema before starting a worker', async () => {
+    const contract = { ...profile(), catalogSchemaVersion: 3 };
+    await assert.rejects(
+        prepareWorkerBootstrap(contract),
+        /catalogue DHT incompatible.*mise à jour du moteur requise/
     );
 });

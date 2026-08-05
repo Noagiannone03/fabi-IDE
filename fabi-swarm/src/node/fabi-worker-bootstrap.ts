@@ -6,7 +6,9 @@ import {
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 import {
-    FABI_QUALIFIED_MODEL_ROOT_SHA256, WorkerConnectionProfile
+    FABI_QUALIFIED_CATALOG_SCHEMA_VERSION,
+    FABI_QUALIFIED_MODEL_ROOT_SHA256,
+    WorkerConnectionProfile
 } from '../common/fabi-swarm-protocol';
 
 const MAX_TUF_ROOT_BYTES = 1024 * 1024;
@@ -84,6 +86,12 @@ export async function prepareWorkerBootstrap(
 export function validateWorkerConnectionProfile(profile: WorkerConnectionProfile): void {
     if (!profile || profile.protocolVersion !== 3 || profile.transport !== 'iroh') {
         throw new Error('ce swarm ne publie pas un profil worker V3 Iroh compatible');
+    }
+    if (profile.catalogSchemaVersion !== FABI_QUALIFIED_CATALOG_SCHEMA_VERSION) {
+        throw new Error(
+            `catalogue DHT incompatible : schéma=${String(profile.catalogSchemaVersion)}`
+            + ` (attendu ${FABI_QUALIFIED_CATALOG_SCHEMA_VERSION}) — mise à jour du moteur requise`
+        );
     }
     for (const [name, value] of [
         ['relayUrl', profile.relayUrl],

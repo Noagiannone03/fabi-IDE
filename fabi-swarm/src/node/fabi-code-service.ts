@@ -25,7 +25,7 @@ import {
     FabiCodePermission, FabiCodePermissionReply, FabiCodeQuestion, parseFabiCodeQuestion
 } from '../common/fabi-code-protocol';
 import {
-    FabiCodePermissionMode, normalizeFabiCodePermissionMode,
+    automaticPermissionReply, FabiCodePermissionMode, normalizeFabiCodePermissionMode,
     OpenCodeSessionParent, resolveOpenCodeRootSessionId
 } from '../common/fabi-code-permission-mode';
 import {
@@ -86,7 +86,12 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected readyWaiters: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
     /** Parent connu de chaque session OpenCode (racines comprises). */
     protected readonly sessionParents = new Map<string, string | undefined>();
-    /** Politique choisie par le chat racine pour son tour courant. */
+    /**
+     * Politique choisie par chaque chat racine pour toute sa session OpenCode.
+     * Une sous-tâche peut demander un outil après l'événement idle du parent :
+     * supprimer cette entrée à la fin du tour ferait réapparaître une carte de
+     * permission alors que le chat est toujours en mode automatique.
+     */
     protected readonly permissionPolicies = new Map<string, { mode: FabiCodePermissionMode; agent: string }>();
     /** Interactions déjà remises au frontend ou traitées automatiquement. */
     protected readonly publishedPermissionIds = new Set<string>();
@@ -568,13 +573,17 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         const enriched = { ...permission, rootSessionId };
         const policy = this.permissionPolicies.get(rootSessionId);
 
-        // Le mode automatique est un consentement éphémère pour CE tour racine.
-        // `once` évite qu'une autorisation fuite vers un autre chat. Le mode
-        // lecture seule (`plan`) ne peut jamais être élevé par ce broker.
-        if (policy?.mode === 'auto' && policy.agent !== 'plan') {
+        // Le mode automatique appartient à CE chat racine et couvre aussi ses
+        // sous-tâches. `always` évite de refaire transiter les mêmes motifs par
+        // le broker ; les nouvelles catégories restent autorisées ici. La
+        // politique ne fuit jamais vers un autre chat et plan reste non élevé.
+        const automaticReply = policy
+            ? automaticPermissionReply(policy.mode, policy.agent)
+            : undefined;
+        if (automaticReply) {
             this.publishedPermissionIds.add(permission.id);
             try {
-                await this.replyPermission(permission.id, 'once', directory);
+                await this.replyPermission(permission.id, automaticReply, directory);
                 return;
             } catch (error) {
                 this.publishedPermissionIds.delete(permission.id);
@@ -838,7 +847,9 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
         this.turnWaiters.delete(sessionId);
         this.turnPhases.delete(sessionId);
-        this.permissionPolicies.delete(sessionId);
+        // Ne pas effacer permissionPolicies ici : les sessions enfants OpenCode
+        // peuvent encore travailler après l'idle du parent. La politique est
+        // remplacée au prochain prompt et purgée uniquement avec le sidecar.
         waiter.resolve();
         this.partStream.clearSession(sessionId);
         this.setStatus(this.info.status, this.info.detail);

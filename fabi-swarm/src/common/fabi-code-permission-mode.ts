@@ -8,6 +8,21 @@ export function normalizeFabiCodePermissionMode(value: unknown): FabiCodePermiss
     return value === 'auto' ? 'auto' : FABI_CODE_DEFAULT_PERMISSION_MODE;
 }
 
+/**
+ * Réponse OpenCode correspondant au mode sans confirmation de Fabi.
+ *
+ * `always` est volontaire : OpenCode mémorise les motifs proposés pour la
+ * session concernée, tandis que notre broker conserve aussi la politique du
+ * chat racine pour autoriser les nouvelles catégories d'outils et les
+ * sous-tâches. Le mode plan reste non-élevable.
+ */
+export function automaticPermissionReply(
+    mode: FabiCodePermissionMode,
+    agent: string
+): 'always' | undefined {
+    return mode === 'auto' && agent !== 'plan' ? 'always' : undefined;
+}
+
 /** Partie minimale de Session.Info dont le broker d'approbation a besoin. */
 export interface OpenCodeSessionParent {
     id: string;

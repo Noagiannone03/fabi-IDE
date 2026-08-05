@@ -3,6 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
+    automaticPermissionReply,
     FABI_CODE_DEFAULT_PERMISSION_MODE,
     normalizeFabiCodePermissionMode,
     resolveOpenCodeRootSessionId
@@ -13,6 +14,13 @@ test('defaults permissions to explicit user approval', () => {
     assert.equal(normalizeFabiCodePermissionMode(undefined), 'ask');
     assert.equal(normalizeFabiCodePermissionMode('unexpected'), 'ask');
     assert.equal(normalizeFabiCodePermissionMode('auto'), 'auto');
+});
+
+test('treats auto mode as persistent YOLO approval for the whole build chat', () => {
+    assert.equal(automaticPermissionReply('auto', 'build'), 'always');
+    assert.equal(automaticPermissionReply('auto', 'general'), 'always');
+    assert.equal(automaticPermissionReply('ask', 'build'), undefined);
+    assert.equal(automaticPermissionReply('auto', 'plan'), undefined);
 });
 
 test('maps nested OpenCode task sessions back to their root chat', () => {

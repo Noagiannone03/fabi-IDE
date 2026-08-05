@@ -2,8 +2,7 @@ import * as React from '@theia/core/shared/react';
 import * as ReactDOM from '@theia/core/shared/react-dom';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { URI } from '@theia/core';
-import { SelectComponent, SelectOption } from '@theia/core/lib/browser/widgets/select-component';
-import { Hand, WandSparkles } from 'lucide-react';
+import { Bot, Check, ChevronDown, Hand, MessageCircleQuestion, WandSparkles } from 'lucide-react';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
 import { CHAT_VIEW_LANGUAGE_EXTENSION } from '@theia/ai-chat-ui/lib/browser/chat-view-language-contribution';
 import { ChatRequestModel, MutableChatModel } from '@theia/ai-chat/lib/common/chat-model';
@@ -16,55 +15,163 @@ import {
     normalizeFabiCodePermissionMode
 } from '../common/fabi-code-permission-mode';
 
-const FABI_PERMISSION_MODE_OPTIONS: readonly SelectOption[] = [
-    { value: 'ask', label: 'Valider les edits' },
-    { value: 'auto', label: 'Auto-edit' }
+interface FabiModeControlsPortalProps {
+    host: HTMLElement;
+    agentMode: 'build' | 'plan';
+    permissionMode: FabiCodePermissionMode;
+    disabled: boolean;
+    permissionDisabled: boolean;
+    onAgentModeChange: (mode: 'build' | 'plan') => void;
+    onPermissionModeChange: (mode: FabiCodePermissionMode) => void;
+}
+
+interface FabiModeOption<Value extends string> {
+    value: Value;
+    label: string;
+    detail: string;
+    icon: React.ReactNode;
+}
+
+function FabiModeMenu<Value extends string>(props: {
+    ariaLabel: string;
+    className: string;
+    value: Value;
+    options: readonly FabiModeOption<Value>[];
+    disabled: boolean;
+    onChange: (value: Value) => void;
+}): React.ReactElement {
+    const [open, setOpen] = React.useState(false);
+    const root = React.useRef<HTMLDivElement>(null);
+    const selected = props.options.find(option => option.value === props.value) ?? props.options[0];
+
+    React.useEffect(() => {
+        if (!open) {
+            return undefined;
+        }
+        const closeOutside = (event: MouseEvent) => {
+            if (!root.current?.contains(event.target as Node)) {
+                setOpen(false);
+            }
+        };
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                setOpen(false);
+                root.current?.querySelector<HTMLButtonElement>('.fabi-mode-trigger')?.focus();
+            }
+        };
+        document.addEventListener('mousedown', closeOutside);
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.removeEventListener('mousedown', closeOutside);
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [open]);
+
+    return (
+        <div ref={root} className={`fabi-mode-control ${props.className}${open ? ' open' : ''}`}>
+            <button
+                type='button'
+                className='fabi-mode-trigger'
+                aria-label={props.ariaLabel}
+                aria-haspopup='listbox'
+                aria-expanded={open}
+                disabled={props.disabled}
+                onClick={() => setOpen(value => !value)}
+            >
+                <span className='fabi-mode-trigger-icon' aria-hidden='true'>{selected.icon}</span>
+                <span>{selected.label}</span>
+                <ChevronDown className='fabi-mode-chevron' size={12} strokeWidth={1.9} aria-hidden='true' />
+            </button>
+            {open && (
+                <div className='fabi-mode-menu' role='listbox' aria-label={props.ariaLabel}>
+                    {props.options.map(option => (
+                        <button
+                            key={option.value}
+                            type='button'
+                            role='option'
+                            aria-selected={option.value === props.value}
+                            className={`fabi-mode-option${option.value === props.value ? ' selected' : ''}`}
+                            onClick={() => {
+                                props.onChange(option.value);
+                                setOpen(false);
+                            }}
+                        >
+                            <span className='fabi-mode-option-icon' aria-hidden='true'>{option.icon}</span>
+                            <span className='fabi-mode-option-copy'>
+                                <span className='fabi-mode-option-label'>{option.label}</span>
+                                <span className='fabi-mode-option-detail'>{option.detail}</span>
+                            </span>
+                            {option.value === props.value && <Check className='fabi-mode-check' size={13} strokeWidth={2.2} aria-hidden='true' />}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+const AGENT_MODE_OPTIONS: readonly FabiModeOption<'build' | 'plan'>[] = [
+    {
+        value: 'build', label: 'Agent', detail: 'Explore, exécute et modifie le projet',
+        icon: <Bot size={13} strokeWidth={1.9} />
+    },
+    {
+        value: 'plan', label: 'Ask', detail: 'Analyse et répond sans appliquer d’edit',
+        icon: <MessageCircleQuestion size={13} strokeWidth={1.9} />
+    }
 ];
 
-interface FabiPermissionModePortalProps {
-    host: HTMLElement;
-    value: FabiCodePermissionMode;
-    disabled: boolean;
-    onChange: (mode: FabiCodePermissionMode) => void;
-}
+const PERMISSION_MODE_OPTIONS: readonly FabiModeOption<FabiCodePermissionMode>[] = [
+    {
+        value: 'ask', label: 'Ask edits', detail: 'Demander avant les outils sensibles',
+        icon: <Hand size={13} strokeWidth={1.9} />
+    },
+    {
+        value: 'auto', label: 'YOLO', detail: 'Toujours tout autoriser dans ce chat',
+        icon: <WandSparkles size={13} strokeWidth={1.9} />
+    }
+];
 
 /**
  * Le composant d'options appartient à Theia et n'expose pas de slot. Un portail
- * ciblé insère notre sélecteur juste après son sélecteur Agent/Ask, sans forker
- * le widget ni dupliquer l'éditeur de chat.
+ * ciblé remplace visuellement son sélecteur Agent/Ask et ajoute la politique
+ * d'outils, sans forker le widget ni dupliquer l'éditeur de chat.
  */
-function FabiPermissionModePortal(props: FabiPermissionModePortalProps): React.ReactPortal {
+function FabiModeControlsPortal(props: FabiModeControlsPortalProps): React.ReactPortal {
     const mount = React.useMemo(() => document.createElement('span'), []);
     React.useLayoutEffect(() => {
         const target = props.host.querySelector('.theia-ChatInputOptions-left');
         if (!target) {
             return undefined;
         }
-        mount.className = `fabi-permission-mode${props.disabled ? ' disabled' : ''}`;
-        mount.title = props.value === 'auto'
-            ? 'Les outils sont autorisés une fois pour ce tour, y compris dans les sous-tâches.'
-            : 'Fabi demande votre accord avant une commande ou une modification.';
-        mount.setAttribute('aria-disabled', String(props.disabled));
+        mount.className = 'fabi-mode-controls-host';
         const nativeMode = target.querySelector('.theia-ChatInput-ModeSelector')?.parentElement;
+        nativeMode?.classList.add('fabi-native-mode-source');
         target.insertBefore(mount, nativeMode?.nextSibling ?? target.firstChild);
-        return () => mount.remove();
-    }, [mount, props.host, props.disabled, props.value]);
+        return () => {
+            nativeMode?.classList.remove('fabi-native-mode-source');
+            mount.remove();
+        };
+    }, [mount, props.host]);
     return ReactDOM.createPortal(
-        <React.Fragment>
-            <span className='fabi-permission-mode-icon' aria-hidden='true'>
-                {props.value === 'auto' ? <WandSparkles size={13} /> : <Hand size={13} />}
-            </span>
-            <SelectComponent
-                className={`theia-ChatInput-ModeSelector fabi-permission-mode-select${props.disabled ? ' disabled' : ''}`}
-                options={FABI_PERMISSION_MODE_OPTIONS}
-                defaultValue={props.value}
-                onChange={option => {
-                    if (!props.disabled) {
-                        props.onChange(normalizeFabiCodePermissionMode(option.value));
-                    }
-                }}
+        <span className='fabi-mode-controls'>
+            <FabiModeMenu
+                ariaLabel='Mode de travail'
+                className='fabi-agent-mode'
+                value={props.agentMode}
+                options={AGENT_MODE_OPTIONS}
+                disabled={props.disabled}
+                onChange={props.onAgentModeChange}
             />
-        </React.Fragment>,
+            <FabiModeMenu
+                ariaLabel='Politique des outils'
+                className={`fabi-permission-mode fabi-permission-${props.permissionMode}`}
+                value={props.permissionMode}
+                options={PERMISSION_MODE_OPTIONS}
+                disabled={props.permissionDisabled}
+                onChange={props.onPermissionModeChange}
+            />
+        </span>,
         mount
     );
 }
@@ -223,11 +330,14 @@ export class FabiChatInputWidget extends AIChatInputWidget {
             <React.Fragment>
                 <FabiSwarmSelector frontend={this.swarm} engine={this.engine} />
                 {super.render()}
-                <FabiPermissionModePortal
+                <FabiModeControlsPortal
                     host={this.node}
-                    value={visiblePermissionMode}
-                    disabled={permissionModeDisabled}
-                    onChange={mode => {
+                    agentMode={this.receivingAgent?.currentModeId === 'plan' ? 'plan' : 'build'}
+                    permissionMode={visiblePermissionMode}
+                    disabled={this.requestInProgress || !this.ready}
+                    permissionDisabled={permissionModeDisabled}
+                    onAgentModeChange={mode => { void this.handleModeChange(mode); }}
+                    onPermissionModeChange={mode => {
                         const mutableModel = this._chatModel as MutableChatModel;
                         mutableModel.setSettings({
                             ...(this._chatModel.settings ?? {}),

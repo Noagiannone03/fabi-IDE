@@ -125,7 +125,11 @@ const FabiToolCard: React.FC<{ content: ToolCallChatResponseContent }> = ({ cont
                 : 'Terminé';
 
     return (
-        <div className={`fabi-tc fabi-tc-${status}`} aria-live='polite'>
+        <div
+            className={`fabi-tc fabi-tc-${status}${out ? ' fabi-tc-expandable' : ''}`}
+            aria-live='polite'
+            aria-busy={status === 'running'}
+        >
             <div
                 className='fabi-tc-head'
                 onClick={toggleOutput}
@@ -177,12 +181,17 @@ const FabiThinkingBlock: React.FC<{ text: string }> = ({ text }) => {
     const preview = lines.length ? lines[lines.length - 1] : '';
     return (
         <div className={`fabi-think${open ? ' open' : ''}`}>
-            <div className='fabi-think-head' onClick={() => setOpen(o => !o)}>
+            <button
+                type='button'
+                className='fabi-think-head'
+                aria-expanded={open}
+                onClick={() => setOpen(o => !o)}
+            >
                 <span className='codicon codicon-lightbulb-sparkle fabi-think-icon' />
                 <span className='fabi-think-title'>Réflexion</span>
                 {!open && preview && <span key={preview} className='fabi-think-preview'>{preview}</span>}
                 <span className={`codicon codicon-chevron-${open ? 'down' : 'right'} fabi-think-caret`} />
-            </div>
+            </button>
             {open && <div className='fabi-think-body'>{text}</div>}
         </div>
     );

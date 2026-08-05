@@ -19,6 +19,7 @@ const {
 const MODEL_SWARM_ID = '46e338001cbca3a457b8e513950d62cc10fc7866226529e7b27825a737797b57';
 const profile = {
     protocolVersion: 3,
+    catalogSchemaVersion: 2,
     transport: 'iroh',
     relayUrl: 'https://relay.example.test',
     enrollmentUrl: 'https://registry.example.test/v1/relay/enroll',

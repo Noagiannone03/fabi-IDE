@@ -32,9 +32,9 @@ export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** Contrat immuable du runtime qualifié avec le swarm Mac/Windows réel. */
 export const FABI_REPO = process.env.FABI_RUNTIME_REPO || 'Noagiannone03/fabi';
-export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc40';
-export const QUALIFIED_OPENCODE_COMMIT = '4e1381353f718eb8e1e31cbd54d59a84150f88f4';
-export const QUALIFIED_PARALLAX_COMMIT = 'f02149e7a5af47ea4d8442538e2c69bc8f1450b1';
+export const QUALIFIED_RUNTIME_VERSION = 'v2.7.0-rc41';
+export const QUALIFIED_OPENCODE_COMMIT = '95c0b2013f4e46aa8010033b8a2c622a4bfe48d0';
+export const QUALIFIED_PARALLAX_COMMIT = 'a1f9fe02fe3d87e19cbdb8fd93aab55e939f8d6a';
 export const QUALIFIED_NATIVE_NETWORK_VERSION = '0.1.0';
 const RELOCATE_PLACEHOLDER = '__FABI_INSTALL_ROOT__';
 
