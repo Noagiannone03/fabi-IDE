@@ -6506,3 +6506,56 @@ deux tests CP-SAT isolés passent. La CI native multi-OS déclenchée sur le
 premier commit était encore en cours au moment de cette mise à jour ; une
 nouvelle exécution doit qualifier le second commit avant tout bundle ou
 déploiement.
+
+### Qualification du score borné et de la CI native du 5 août 2026
+
+Le premier échec du workflow natif sur `913990a` ne venait ni du réseau natif,
+ni de Rust, ni d'une différence Windows/macOS. Le wheel de base se construisait
+et s'importait correctement sur les trois systèmes, mais le job collectait
+désormais les tests de `placement_simulator.py` sans installer son extra de
+simulation NetworkX. NetworkX reste volontairement absent du runtime produit :
+le workflow installe `networkx>=3.4,<4` uniquement dans l'environnement de
+tests qui mesure les graphes max-flow.
+
+Le simulateur possède maintenant une vraie sélection autonome en deux passes.
+Pour chaque worker, tous les points de sa frontière mémoire sont d'abord
+classés par le déficit cumulatif de couches et de classes de contexte ; seuls
+les 32 meilleurs par défaut subissent ensuite l'évaluation max-flow plus
+coûteuse des routes complètes, slots KV et redondances. La couverture existante
+est calculée une fois par worker pour la passe peu coûteuse, et non une fois par
+point. Cette limite borne le coût du shadow scoring sans transformer le
+simulateur ou son oracle en autorité de placement.
+
+Un cas déterministe protège le besoin agentique : un worker peut choisir soit
+le modèle complet en 10k, soit sa moitié en 20k, puis un second worker peut
+fermer la route longue. Lorsque la demande agrégée 20k est dix fois plus forte,
+la sélection prend la moitié 20k et forme finalement une pipeline 20k complète,
+au lieu de tomber dans la route courte immédiatement disponible. Les poids ne
+sont pas une constante produit ; ils proviendront du résumé de demande borné et
+expirable.
+
+Le commit moteur
+`8c7f9f33fc9a9ddf5eced2d05fc7a87747ff4cfc` (`test(v3): bound
+multi-context placement scoring`) est poussé sur
+`codex/swarm-protocol-v3`. Les validations locales donnent : 5 tests ciblés du
+simulateur, 224 tests protocole/config, 267 tests correspondant exactement au
+workflow `Native network`, 839 tests dans la régression large avec 6 skips et
+les 2 variantes `test_decode_pipeline_multiple_steps` explicitement exclues,
+ainsi que 2 tests CP-SAT dans le venv OR-Tools isolé. Ruff ciblé, `pip check` et
+`git diff --check` passent.
+
+Le workflow GitHub `Native network` `30982153670` est vert sur Ubuntu,
+macOS 15 et Windows pour ce commit exact. Chaque runner a vérifié formatage et
+Clippy Rust, le DHT natif trois nœuds, la construction et l'import du wheel ABI3,
+puis la suite protocole V3. L'avertissement GitHub restant concerne uniquement
+la migration Node.js des versions d'actions utilisées ; ce n'est pas un échec
+Fabi.
+
+La prochaine tranche ne doit toujours pas modifier les workers live. Elle doit
+générer des populations déterministes à enveloppes stables dominées par 8/16
+Gio, comparer le placement maximal, le déficit Petals, le partage Exo, la
+politique multi-classes et l'optimum CP-SAT, puis réutiliser
+`llm-d-inference-sim` pour les files, sessions longues, croissance après outils
+et pannes. Le score ne pourra être publié dans la DHT en shadow qu'après cette
+comparaison, et aucune réallocation réelle ne sera activée avant les tests Mac
+local, Mac mini, RTX, NAT et churn.
