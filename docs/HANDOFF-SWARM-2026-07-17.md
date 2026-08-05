@@ -6784,3 +6784,238 @@ paquet macOS complet est construit séparément sous `/tmp` afin de ne pas
 avec les permissions/outils et modifications de fichiers en Electron, signer
 et publier le canal d'update, puis reprendre le déploiement shadow du placement
 multi-contexte sur VPS + Mac mini + RTX avant toute activation live.
+
+## Schéma DHT V2, runtime rc41 et interaction Agent du 5 août 2026
+
+Le long état « consulte le catalogue distribué » observé après le dernier
+déploiement n'était ni un échec Iroh ni un téléchargement Hugging Face bloqué.
+Le catalogue produit contenait les nouveaux champs V3, notamment
+`SpanLease.max_context_tokens`, alors que l'ancien runtime desktop `f02149e…`
+utilisait un modèle Pydantic strict qui refusait ces records. Le moteur
+`a1f9fe02fe3d87e19cbdb8fd93aab55e939f8d6a` savait les lire ; l'IDE qualifiait
+encore le runtime précédent. Cette incompatibilité silencieuse explique pourquoi
+le réseau était joignable mais aucun chemin n'apparaissait dans ce client.
+
+Le runtime qualifié est désormais `v2.7.0-rc41`, tag poussé depuis le commit
+`f2e2a5a050976719de27d8036719be2357c39c1a`. Il épingle OpenCode
+`95c0b2013f4e46aa8010033b8a2c622a4bfe48d0`, Parallax
+`a1f9fe02fe3d87e19cbdb8fd93aab55e939f8d6a` et le transport natif `0.1.0`.
+Le registre runtime, commit `9a61a16fcd909e82cdaaea59114a932b48c49a69`, publie maintenant
+`workerConnection.catalogSchemaVersion=2`. L'IDE vérifie ce nombre avant de
+lancer un worker et refuse donc explicitement une future divergence de schéma
+au lieu de rester en bootstrap. Les 27 tests du registre passent. Le nouveau
+binaire tourne sur le VPS dans `/opt/fabi-registry/fabi-registry`; l'ancien est
+conservé dans `/opt/fabi-registry/fabi-registry.pre-catalog-schema-v2`.
+
+Le Mac courant et le Mac mini ont été installés avec le tarball `rc41` et leurs
+manifestes contiennent exactement les trois versions qualifiées. Le scheduler
+VPS reste volontairement sur le moteur live prouvé `a1f9fe…`; le candidat
+`bb22f…`, qui ne concerne que le signal de demande shadow, n'a pas remplacé le
+data plane. Après reconstruction des tranches, les trois peers du laboratoire
+sont `ready`, le routage est disponible et le cluster annonce 32 768 tokens.
+Une génération OpenAI/SSE réelle depuis le Request Agent local `rc41` a streamé
+jusqu'à `[DONE]`, puis la réservation a été libérée. Le PC RTX tourne encore
+sur l'installation `rc40` avec le source candidat `a1f9fe…` tant que l'artefact
+Windows `rc41` n'est pas publié ; il ne faut pas présenter ce dernier hôte comme
+installé exactement avant cette transaction.
+
+L'intégration IDE correspond aux commits `f906e47` puis `4a0552c` sur `main`.
+La DA IntelliJ/Spaces est conservée. Les deux sélecteurs natifs du prompt sont
+remplacés localement par des contrôles compacts Agent/Ask et Ask edits/YOLO,
+avec icônes, focus, fermeture Escape et menus orientés vers le haut. Une carte
+d'outil active reçoit un balayage lumineux gauche-droite ; l'effet disparaît
+dès que l'appel termine. La dernière ligne de réflexion est animée seulement
+quand le texte change, afin de montrer le travail réel sans faux spinner.
+Toutes ces animations respectent `prefers-reduced-motion` : le menu reste
+fonctionnel et les états textuels restent visibles, mais le balayage et les
+transitions non essentielles sont supprimés pour l'utilisateur concerné.
+
+Le mode YOLO signifie zéro dialogue de permission pour le chat racine et ses
+sous-tâches. La cause de la réapparition précédente était la suppression de la
+politique dès l'événement `idle` du parent, alors qu'une session enfant OpenCode
+pouvait encore demander un outil. La politique vit maintenant pendant toute la
+session racine et est purgée avec le sidecar ou remplacée au prompt suivant.
+Chaque permission est acquittée `once` par le broker : visuellement tout est
+automatique, mais repasser vers Ask edits prend effet immédiatement et aucune
+règle OpenCode `always` cachée ne subsiste dans un enfant. Le mode Plan ne peut
+jamais être élevé automatiquement.
+
+Validation IDE : 71 tests Node, compilation TypeScript, `git diff --check`,
+bundles browser/node/Electron et paquet macOS arm64 `package:dir` sont verts
+avec Node 22. Le paquet exact a été relancé sans erreur frontend. Il est encore
+non signé et, parce que `package:dir` n'est pas une release, ne contient pas
+`app-update.yml`; l'avertissement updater correspondant est attendu et ne vaut
+pas qualification du canal de distribution. Une capture écran automatisée n'a
+pas pu être produite faute d'autorisation macOS de capture ; le rendu ouvert a
+donc été laissé visible pour validation humaine.
+
+La CI runtime `30996839033`, au SHA exact `f2e2a5a…`, est entièrement verte :
+transactions installateur Ubuntu et Windows, Darwin arm64 MLX, Darwin x64 CPU,
+Linux arm64/x64 CPU, Linux x64 CUDA, Windows x64 CUDA et publication finale des
+installateurs.
+
+Le déploiement Windows `rc41` est maintenant terminé depuis le `install.ps1`
+attaché au tag. Les deux parties CUDA ont été réunies et vérifiées, onze fichiers
+Python ont été relocalisés et la transaction atomique a conservé le rollback
+immédiat dans
+`C:\Users\gmbhl\AppData\Local\fabi.backup-20260805133821991`. Le manifeste
+actif annonce exactement `v2.7.0-rc41`, la cible `bun-windows-x64`, CUDA,
+Python 3.12.7 et les révisions OpenCode `95c0b20…`, Parallax `a1f9fe0…` et
+réseau natif `0.1.0`. Le pointeur de candidat est absent et tous les processus
+du worker exécutent le source sous `runtime\parallax-src`, plus sous
+`runtime-candidates`.
+
+Le premier redémarrage distant a isolé une limite Windows distincte du moteur :
+la tâche historique utilisait `InteractiveToken`, mais aucune session desktop
+n'était ouverte. Une tâche de ce type ne peut démarrer que dans une session
+interactive existante. Le helper de laboratoire enregistre désormais le worker
+comme `SYSTEM`/`ServiceAccount`, sans limite d'exécution ni arrêt sur batterie,
+et épingle explicitement les chemins utilisateur nécessaires (token de compte,
+cache Hugging Face, racines runtime et réseau). Une première tentative a échoué
+proprement parce que la variable automatique PowerShell `$HOME` reste celle de
+`systemprofile`; le journal bootstrap ajouté l'a rendu explicite. Le token de
+compte et `HF_HOME` sont maintenant transmis par variables dédiées. Cette
+configuration est un mécanisme de qualification headless du PC de laboratoire,
+pas le launcher desktop distribué.
+
+Le redémarrage final du 5 août à 13:44 a conservé l'identité Iroh
+`c4a8c520…`, publié une enveloppe CUDA live de 13,18 Gio, choisi localement une
+réplique complète `[0,36)` à 16 384 tokens, chargé vLLM puis vérifié les poids
+avant de passer `ready`. La géométrie live annonce 23 264 tokens KV et le GPU
+réside à environ 13 275 Mio. Pendant toute la matérialisation, le scheduler a
+continué de servir la route Mac `[0,14) -> [14,36)` à 32 768 tokens ; il a
+marqué la RTX `waiting_contract`/`scheduler_transition` jusqu'à la preuve READY,
+sans faux timeout ni indisponibilité. Une fois publiée dans la DHT, la RTX est
+devenue une seconde route indépendante et a été choisie pour les requêtes 16k,
+mais la route Mac 32k n'est ensuite **pas** restée admissible : le Mac courant
+s'est déplacé de `[0,14)` vers `[1,14)`, laissant la seule route complète RTX à
+16 384 tokens. Une requête réelle de 17 018 tokens d'entrée plus 16 tokens de
+sortie a alors été refusée en 2,61 s avec une capacité maximale annoncée de
+16 384. Cette observation invalide explicitement la première conclusion de
+qualification 32k ; elle ne doit pas être masquée par les smokes courts réussis.
+
+La cause se trouve dans le placement autonome et non dans le planificateur de
+requête. Ce dernier filtrait déjà chaque lease selon
+`SpanLease.max_context_tokens`, mais `_coverage()` et
+`_fixed_route_boundaries()` additionnaient toutes les tranches, quel que soit
+leur contexte. La réplique RTX 16k faisait donc croire au Mac que sa couche zéro
+32k était redondante. Le correctif `48378d75f01b88bae693cbb763cfe36f7939b734`
+rend la couverture cumulative par classe de contexte : pour décider une route
+de contexte C, seules les leases capables de servir au moins C sont comptées.
+Une route longue protège ainsi une route courte, jamais l'inverse. Le test de
+régression construit une tête et une queue 32k plus une réplique complète 16k
+et vérifie que la tête refuse de se déplacer malgré une pression de demande
+sur la queue. Les 21 tests de placement passent ; la suite complète donne 853
+réussites, 7 skips et un échec MLX par cache KV réduit à 32 tokens sous la
+pression mémoire cumulée du processus. Ce test MLX passe isolément en 6,97 s.
+La CI native `31004268683` est verte sous Linux, macOS et Windows : formatage,
+lint, tests Python/DHT, wheel ABI3 réinstallé et contrats V3 passent sur les
+trois plateformes. La qualification runtime et la preuve lab restent néanmoins
+nécessaires avant de considérer le correctif déployé ou la route 32k restaurée.
+
+Deux générations OpenAI/SSE réelles ont ensuite traversé le Request Agent local
+`rc41` et la RTX. La première, volontairement bornée à 32 tokens, a fini
+`length` après 35 événements et `[DONE]`. La seconde utilise `/no_think`, a
+retourné HTTP 200, 16 événements, `finish_reason=stop`, le contenu exact
+`RC41-RTX-OK` et `[DONE]` en 11,275 s. Après chaque tour,
+`active_routes=[]` et les trois réservations KV sont revenues à zéro. Le paquet
+Electron a enfin été reconstruit et relancé avec ce dernier CSS ; 71 tests Node,
+la compilation des trois extensions, le bundle Electron, `bash -n` du helper
+et `git diff --check` passent.
+
+Limite observée sans la masquer : l'installation a tenté de supprimer cinq
+anciens rollbacks Windows et a produit cinq avertissements dont le chemin était
+vide. La transaction rc41 et le rollback courant sont intacts, mais le `catch`
+de `Remove-StaleRuntimeBackups` réutilise `$_` (devenu l'`ErrorRecord`) au lieu
+du dossier capturé. Les six anciens répertoires sont donc encore présents ;
+aucun nettoyage destructif supplémentaire n'a été présenté comme réussi.
+
+Le source de la prochaine release corrige ce diagnostic sur `fabi/main`, commits
+`67d2ad8`, `12fd0d1` puis `8cf46d7`. Le chemin est capturé avant le `try` et
+l'avertissement contient désormais la cible ainsi que le message Windows exact.
+Le test transactionnel crée un ancien rollback, maintient `locked.bin` ouvert
+sans partage, lance une quatrième mise à niveau, vérifie que le nouveau runtime
+est tout de même activé et que cible et cause restent dans le journal. Une
+première assertion a révélé la normalisation légitime du chemin TEMP 8.3
+`RUNNER~1` vers `runneradmin`; elle compare maintenant les identités stables du
+dossier et du fichier au lieu de cette représentation propre à la machine. Le
+workflow final `31003594056`, au SHA `8cf46d7…`, est vert pour les transactions
+Ubuntu et Windows. Ce changement est sur `main` mais ne modifie évidemment pas
+le tag immuable `rc41` déjà publié.
+
+La chaîne de qualification suivante est cohérente de bout en bout. Le CLI
+`fabi-cli/dev` au commit `f0f157e134f07a04533f55f240ea00d224c2fac9`
+épingle le moteur `48378d75…`; ses 63 tests swarm et son typecheck passent. Le
+runtime `fabi/main` au commit `e006d984364c9d7121b072cc9f5b50b8596f39b4`
+épingle exactement les deux sources et passe `verify-runtime-lock.sh`. Ses
+transactions installateur Ubuntu et Windows sont vertes dans les runs
+`31004845076` puis `31004903847`. Le tag `v2.7.0-rc42` pointe sur ce commit ;
+ses six artefacts multi-OS sont en cours de construction au moment de cette
+entrée. Ne pas annoncer `rc42` qualifié, ni reconstruire l'application produit
+contre cette release, avant la publication complète des actifs et les
+installations Mac/RTX.
+
+Le sélecteur Agent/Ask et Ask edits/YOLO conserve la DA IntelliJ/Spaces et
+supporte désormais aussi la navigation clavier complète : ouverture par les
+flèches, déplacement circulaire, Home/End, Escape et restitution du focus au
+bouton. Le balayage lumineux reste strictement attaché à l'état réel `running`
+des outils, et `prefers-reduced-motion` supprime les mouvements non essentiels.
+La compilation des trois extensions et les 71 tests IDE passent avec les pins
+préparés pour `rc42`.
+
+## Migration signée du contrat multi-contexte du 5 août 2026
+
+L'installation publique `rc42` sur les deux Mac a révélé une incompatibilité
+de registre qui n'était pas couverte par les fixtures moteur. Le runtime
+`48378d75…` exige correctement `ModelManifest.model_max_context_tokens` et
+`context_classes`, mais la cible TUF publique génération 5 avait été signée
+avant leur introduction. Les deux workers Mac atteignent Iroh puis passent
+`rejected` avec une `ValidationError` explicite ; la RTX `rc41` reste la seule
+route 16k active. Ce n'est ni une décision mémoire ni une panne de placement.
+
+Le bundle de remplacement n'a pas été modifié à la main. L'outil opérateur a
+relu le commit Hub immuable Qwen3-4B `1cfa9a72…`, hashé 8 044 936 192 octets et
+398 tenseurs SafeTensors, puis reconstruit le contrat. L'index d'artefacts est
+strictement identique à celui de la cible publique et aucun champ historique
+ne change. Les deux seuls ajouts sont la limite modèle signée `40 960` et les
+classes `(4096, 8192, 16384, 32768, 40960)`. La nouvelle identité canonique est
+`f983b250aff867f026586306e342d683de15546a71c7b167dfcf042ff455e05f`.
+
+La préparation a aussi intercepté un rollback potentiel avant publication :
+le timer online avait renouvelé `timestamp.json` jusqu'à la version 31, tandis
+que `TufRegistryPublisher.publish()` réutilisait la prochaine version targets,
+6, pour les trois rôles. Le commit moteur
+`697821281977e10c7251d316cac9d1ecea98e179` versionne maintenant targets,
+snapshot et timestamp indépendamment, et n'accepte le numéro courant que si
+un root retenu l'authentifie, y compris pendant une rotation de root. Les 20
+tests TUF/opérateur passent et la CI native `31007157845` est verte sur Linux,
+macOS et Windows.
+
+Une publication complète a été simulée dans une copie temporaire synchronisée
+sur le vrai timestamp 31. Elle produit targets 6, snapshot 6 et timestamp 32 ;
+le client `TrustedModelRegistry` vérifie la chaîne, résout la nouvelle identité,
+retrouve les cinq classes de contexte et accepte toujours le keyset de capacité
+génération 1. Le registre public n'a pas encore été modifié.
+
+Le registre runtime `fabi/main` au commit
+`ccfd1a9e9a3e6d36a5da10d077630fc147978dbf` publiera l'epoch de compatibilité
+3. Les anciens IDE refuseront donc la migration avant de démarrer un worker au
+lieu de boucler sur un catalogue qu'ils ne savent pas lire. Ses 27 tests, son
+typecheck et le workflow `31007264432` passent. L'IDE attend localement le même
+epoch et distingue désormais un worker `rejected` d'une recherche normale de
+tranche ; ses 71 tests passent.
+
+Enfin, l'image scheduler `local/parallax-scheduler:swarm-v3-48378d7` a été
+construite sur le VPS avec le label OCI exact, puis son smoke isolé a vérifié le
+transport natif, les champs signés et la couverture par classe de contexte.
+Elle n'a pas remplacé le conteneur actif. Le compose Qwen3-4B source au commit
+`c5f5605` est maintenant autoritaire : nom V3, cinq labels de découverte, 30
+variables applicatives, cinq mounts, volumes nommés et chemins de secrets
+configurables. Sa résolution sur le VPS reproduit l'image, l'identité et le
+volume d'état historiques sans exposer de secret.
+
+Ordre restant avant preuve 32k : attendre les actifs CUDA Linux/Windows de
+`rc42`, installer le tarball Windows exact, publier TUF génération 6 avec le
+timestamp en dernier, basculer le scheduler et le registre epoch 3, relancer
+RTX puis les deux Mac, et seulement ensuite rejouer route longue, SSE et E2E
+Electron. Ne pas présenter la migration comme live avant ces étapes.
