@@ -6616,3 +6616,92 @@ populations, puis la calibration file/TTFT/ITL avec `llm-d-inference-sim`. Ce
 n'est qu'après ces baselines que le résumé de demande pourra être publié dans
 la DHT en shadow. Le coordinateur ne distribue toujours pas les couches : les
 workers V3 choisissent localement leur span à partir de l'état DHT signé.
+
+### Baselines Exo, calibration llm-d et demande DHT signée du 5 août 2026
+
+La baseline Exo a été construite après lecture du code officiel au commit
+`b5375f8cee4368d09e1ce96a56b9f81fb0bc81aa`. Exo sélectionne d'abord un cycle
+de topologie connecté, tient compte de la RAM, du backend, de RDMA et des
+téléchargements déjà présents, puis répartit les couches proportionnellement à
+la mémoire par la méthode du plus grand reste. L'adaptation Fabi conserve cette
+répartition mais résout les frontières exactes imposées par les spans `FIXED`.
+Sur la population six × 4 Gio plus quatre × 10 Gio, Exo produit les longueurs
+`[2,2,2,2,2,2,6,6,6,6]` : quatre slots concurrents, mais une seule route
+indépendante. La politique V3 multi-contexte produit deux slots et deux routes
+indépendantes aux trois classes. La baseline Petals longue conserve une bonne
+couverture mais toujours aucune route Fabi `FIXED` exacte avec ses frontières
+incompatibles.
+
+L'oracle CP-SAT a été corrigé afin de ne plus confondre sessions et domaines de
+panne. Deux flux conservés partagent désormais la même capacité : le flux de
+sessions peut utiliser `max_sessions`, tandis que le flux de redondance plafonne
+chaque option de worker à une unité. Un worker possédant quatre sessions compte
+donc pour quatre slots mais une seule route indépendante. Le schéma JSON sépare
+`target_concurrent_slots` de `target_independent_routes`. Ce lot est poussé au
+commit moteur `c6f4dd9e8c7d2190dee017ece63a5e47a978dfa8`; le workflow GitHub
+`30984683108` est vert sur Ubuntu, macOS 15 et Windows.
+
+Le simulateur officiel `llm-d-inference-sim` a ensuite été qualifié à partir du
+source `0d46c7142a2e6d30e48c4ec732917af515442479` et de l'image officielle
+`ghcr.io/llm-d/llm-d-inference-sim:v0.10.2`, digest
+`sha256:7f3a1f72875c5dd5d00299ad358dc1f6e17041a5124609a43aa17ad318bbed32`.
+Le conteneur temporaire a tourné sur le VPS sans modifier les services produit,
+puis a été supprimé avec son image. Le profil Qwen3-4B qualifié expose 65 536
+tokens, quatre séquences, 500 ms d'overhead prefill, 1,335 ms/token de prefill
+et 130 ms d'ITL. Une requête de 12 220 tokens d'entrée donne 16,842 s de TTFT,
+contre 16,824 s dans le labo réel. Huit requêtes concurrentes montrent
+exactement quatre running et quatre waiting ; 62 000 + 4 096 tokens est refusé
+HTTP 400 en 87 ms avant prefill.
+
+Une anomalie upstream a été isolée sans la transformer en calibration Fabi :
+avec `time-factor-under-load=2`, la métrique asynchrone `nRunningReqs` peut
+encore valoir zéro au premier calcul et la formule du simulateur produit alors
+un facteur 0,667, donc une latence artificiellement inférieure au baseline. Les
+mesures retenues utilisent `time-factor-under-load=1` et la file séparément. De
+même, un essai 22 000 + 4 096 n'a pas été refusé puisque ce profil simulé
+supporte 65 536 ; il a été interrompu et n'est pas présenté comme un test de la
+route labo historique 25 072. Les outils reproductibles vivent sous
+`tools/agentic_workload_sim`. Le commit `ff2da84c74f11859bc4694da6ce4dfdf573fbf34`
+est qualifié par le workflow multi-OS `30985411024`, entièrement vert.
+
+La demande réelle est maintenant publiée dans la DHT en **shadow uniquement**
+au commit `f85d8c2c21d275fd22f904fcc884a4db195b502f`. Le nouveau type natif
+`context_demand` est signé par l'identité Iroh et sa clé lie modèle, hash de
+région et endpoint publisher. Les workers n'acceptent que l'endpoint épinglé
+pour leur région par `FABI_SWARM_V3_DEMAND_AUTHORITIES`; une valeur absente,
+expirée, mal formée, issue d'un autre modèle ou d'un autre publisher est
+ignorée et la politique autonome de référence reste active. Il n'y a ni TOFU,
+ni prompt, ni compte, ni identifiant de requête dans la valeur publiée.
+
+Le coordinateur observe les admissions exactes qu'il réalise déjà et maintient
+une fenêtre bornée par classe de contexte. Le signal contient le débit admis,
+les refus sans route, les générations en cours et le p95 de service. Le besoin
+de slots combine requêtes actives et loi de Little (arrivées × durée p95), avec
+des limites explicites. Une génération plus longue que la fenêtre conserve son
+signal à la fin : son échantillon de durée n'est pas perdu lorsque son événement
+d'admission ancien expire. La boucle de publication est indépendante du SSE,
+des heartbeats et du renouvellement des leases ; son échec ne bloque jamais une
+génération et l'ancien record expire naturellement.
+
+Chaque worker lit ce résumé hors du thread de génération, recalcule localement
+une décision avec la demande de sa classe, puis expose baseline, recommandation
+et différence avec `applied=false`. Le VPS ne choisit et n'envoie donc toujours
+aucune couche. Cette tranche ne compare pas encore toutes les options de la
+frontière span/contexte dans le worker live : elle qualifie d'abord le transport
+et l'influence du signal sur le placement actuel. L'activation multi-contexte
+reste interdite avant les comparaisons Mac mini + RTX et les tests de churn.
+
+Validation locale de ce lot : 279 tests correspondant au workflow natif, 852
+tests complets avec 7 skips déclarés, 30 tests Rust avec bindings Python,
+Rustfmt, Clippy `--all-targets --all-features`, Ruff et `git diff --check` sont
+verts. `cargo test --all-features` seul ne lie pas localement le cdylib PyO3 :
+le Python du venv n'est pas exporté au linker et le toolchain Homebrew courant
+cible un macOS plus récent que le minimum 11.0. Le workflow reproductible utilise
+`PYO3_PYTHON=python cargo test --features python`; sa nouvelle exécution
+`30986686407` pour `f85d8c2` était encore en cours au moment de cette écriture.
+
+Prochaine étape : attendre cette CI, provisionner en shadow la région et le pin
+de l'autorité sur le VPS/Mac mini/RTX, comparer les décisions sans recharger de
+couches, puis implémenter la sélection live sur la frontière multi-contexte et
+la qualifier sous NAT/churn. Ensuite seulement reprendre le redesign complet de
+l'IDE, le contrat d'update signé obligatoire et l'E2E Electron/OpenCode.
