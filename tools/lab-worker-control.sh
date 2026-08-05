@@ -14,7 +14,7 @@ set -euo pipefail
 
 action="${1:-status}"
 target="${2:-all}"
-network_mode="${3:-${FABI_LAB_NETWORK_MODE:-tailscale}}"
+network_mode="${3:-${FABI_LAB_NETWORK_MODE:-iroh}}"
 
 vps_host="${FABI_LAB_VPS_SSH:-vps}"
 mac_ssh="${FABI_LAB_MAC_SSH:-gmbh@100.82.190.118}"
@@ -28,7 +28,7 @@ Environment overrides:
   FABI_LAB_VPS_SSH       default: vps
   FABI_LAB_MAC_SSH       default: gmbh@100.82.190.118
   FABI_LAB_WINDOWS_SSH   default: gmbhl@100.105.234.82
-  FABI_LAB_NETWORK_MODE  default: tailscale
+  FABI_LAB_NETWORK_MODE  default: iroh
   FABI_LAB_ENGINE_SHA    optional committed engine candidate under runtime-candidates
 EOF
 }
@@ -246,21 +246,38 @@ function Start-FabiWorker {
     \$quotedSource = \$ParallaxSource.Replace("'", "''")
     \$quotedRoot = \$RegistryRoot.Replace("'", "''")
     \$quotedLauncher = \$Launcher.Replace("'", "''")
+    \$UserHome = [Environment]::GetFolderPath('UserProfile')
+    \$quotedHome = \$UserHome.Replace("'", "''")
+    \$quotedLocalAppData = \$env:LOCALAPPDATA.Replace("'", "''")
+    \$quotedAppData = \$env:APPDATA.Replace("'", "''")
+    \$quotedAccountToken = (Join-Path \$UserHome ".config\\fabi\\account-token").Replace("'", "''")
+    \$quotedHfHome = (Join-Path \$UserHome ".cache\\huggingface").Replace("'", "''")
+    \$BootstrapLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-task-bootstrap.log"
+    Remove-Item -LiteralPath \$BootstrapLog -Force -ErrorAction SilentlyContinue
+    \$quotedBootstrapLog = \$BootstrapLog.Replace("'", "''")
     # Conserver littéralement les références PowerShell env jusqu'à l'exécution de
     # la tâche. Une chaîne PowerShell double les développerait ici et
     # enregistrerait une commande invalide commençant par un signe égal.
     \$taskCommand = (
-      '\$env:FABI_PARALLAX_SOURCE = ''{0}''; ' +
-      '\$env:FABI_MODEL_REGISTRY_ROOT = ''{1}''; ' +
+      '\$env:USERPROFILE = ''{0}''; \$env:HOME = ''{0}''; ' +
+      '\$env:LOCALAPPDATA = ''{1}''; \$env:APPDATA = ''{2}''; ' +
+      '\$env:FABI_ACCOUNT_TOKEN_FILE = ''{3}''; \$env:HF_HOME = ''{4}''; ' +
+      '\$env:FABI_PARALLAX_SOURCE = ''{5}''; ' +
+      '\$env:FABI_MODEL_REGISTRY_ROOT = ''{6}''; ' +
       '\$env:FABI_SWARM_V3_COORDINATION_MODE = ''client''; ' +
-      '& ''{2}''; exit \$LASTEXITCODE'
-    ) -f \$quotedSource, \$quotedRoot, \$quotedLauncher
+      'try {{ & ''{7}''; exit \$LASTEXITCODE }} catch {{ ' +
+      '(\$_ | Format-List * -Force | Out-String) | Set-Content -LiteralPath ''{8}'' -Encoding UTF8; exit 1 }}'
+    ) -f \$quotedHome, \$quotedLocalAppData, \$quotedAppData, \$quotedAccountToken, \$quotedHfHome, \$quotedSource, \$quotedRoot, \$quotedLauncher, \$quotedBootstrapLog
     \$encodedTaskCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\$taskCommand))
     \$TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument (
       "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + \$encodedTaskCommand
     )
-    \$CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    \$TaskPrincipal = New-ScheduledTaskPrincipal -UserId \$CurrentUser -LogonType Interactive -RunLevel Highest
+    # Le PC de labo peut être déconnecté pendant une qualification distante.
+    # InteractiveToken refuse alors silencieusement le lancement faute de
+    # session desktop. SYSTEM est le contexte de service Windows prévu pour un
+    # processus headless ; les chemins utilisateur nécessaires sont épinglés
+    # explicitement ci-dessus au lieu de dépendre du profil systemprofile.
+    \$TaskPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
     # Long-lived inference must not inherit Task Scheduler desktop defaults
     # (stop on battery/idle transition and a finite execution limit).
     \$TaskSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -DontStopOnIdleEnd -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
@@ -300,6 +317,9 @@ function Show-FabiStatus {
   if (Test-Path \$OutLog) { Get-Content \$OutLog -Tail 40 }
   Write-Output "last_stderr:"
   if (Test-Path \$ErrLog) { Get-Content \$ErrLog -Tail 40 }
+  Write-Output "bootstrap_log:"
+  \$BootstrapLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-task-bootstrap.log"
+  if (Test-Path \$BootstrapLog) { Get-Content \$BootstrapLog -Tail 80 }
 }
 
 switch (\$Action) {
