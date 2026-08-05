@@ -19,7 +19,7 @@ function rootBytes() {
 function profile(rootSha256) {
     return {
         protocolVersion: 3,
-        catalogSchemaVersion: 2,
+        catalogSchemaVersion: 3,
         transport: 'iroh',
         relayUrl: 'https://relay.example:4443',
         enrollmentUrl: 'https://registry.example/v1/network/enroll',
@@ -100,8 +100,8 @@ test('rejects a registry root not pinned by the IDE before downloading it', asyn
     );
 });
 
-test('rejects an incompatible DHT catalogue schema before starting a worker', async () => {
-    const contract = { ...profile(), catalogSchemaVersion: 3 };
+test('rejects an incompatible signed contract epoch before starting a worker', async () => {
+    const contract = { ...profile(), catalogSchemaVersion: 2 };
     await assert.rejects(
         prepareWorkerBootstrap(contract),
         /catalogue DHT incompatible.*mise à jour du moteur requise/

@@ -42,6 +42,8 @@ export function requireContribution(
     const definitive = ['invalid_credential', 'missing_credential'].includes(access.reason);
     const memoryStandby = access.reason === 'no_eligible_worker'
         && access.workerState === 'insufficient_memory';
+    const contractRejected = access.reason === 'no_eligible_worker'
+        && access.workerState === 'rejected';
     const usableMemory = access.workerUsableMemoryBytes !== undefined
         ? `${(access.workerUsableMemoryBytes / 1024 ** 3).toFixed(2)} Gio sûrs disponibles`
         : undefined;
@@ -53,11 +55,15 @@ export function requireContribution(
             ? 'Compte Fabi non reconnu'
             : memoryStandby
                 ? 'Contribution en veille'
+                : contractRejected
+                    ? 'Contrat du modèle incompatible'
                 : 'Préparation de ta contribution',
         activity: definitive
             ? 'ce compte ne possède aucun worker prêt sur ce modèle'
             : memoryStandby
                 ? `mémoire insuffisante pour une tranche sûre${usableMemory ? ` — ${usableMemory}` : ''}`
+            : contractRejected
+                ? 'Fabi a refusé le manifeste ou les artefacts signés de ce modèle'
             : access.reason === 'no_eligible_worker'
                 ? access.workerState === 'building'
                     ? 'ton worker télécharge, vérifie et charge sa tranche du modèle…'
@@ -69,6 +75,8 @@ export function requireContribution(
             ? 'Reconnecte le worker avec le même compte Fabi que cet IDE.'
             : memoryStandby
                 ? 'Ferme une application gourmande si tu veux contribuer maintenant ; le worker réessaiera automatiquement sans perturber les routes actives.'
+            : contractRejected
+                ? 'Mets Fabi à jour. Si tu utilises déjà la dernière version, le réseau est en cours de mise à niveau et le worker réessaiera automatiquement.'
             : undefined
     };
 }

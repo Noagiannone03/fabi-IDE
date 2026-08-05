@@ -140,6 +140,15 @@ test('keeps the prompt locked until contribution is authorized', () => {
     assert.match(memoryStandby.activity, /0\.17 Gio/);
     assert.match(memoryStandby.detail, /réessaiera automatiquement/);
 
+    const rejectedContract = requireContribution(
+        transport,
+        { allowed: false, reason: 'no_eligible_worker', workerState: 'rejected' }
+    );
+    assert.equal(rejectedContract.headline, 'Contrat du modèle incompatible');
+    assert.match(rejectedContract.activity, /manifeste ou les artefacts signés/);
+    assert.match(rejectedContract.detail, /réessaiera automatiquement/);
+    assert.doesNotMatch(rejectedContract.activity, /cherche une tranche/);
+
     const denied = requireContribution(
         transport,
         { allowed: false, reason: 'invalid_credential' }

@@ -23,8 +23,8 @@ export const FABI_FALLBACK_SCHEDULER_PEER = 'e88817843267aed089d8aa88bcca70426c3
 export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-4B';
 /** TUF root qualifiée avec le moteur V3. Une rotation impose une release Fabi. */
 export const FABI_QUALIFIED_MODEL_ROOT_SHA256 = '7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce';
-/** Signed DHT membership schema understood by the qualified runtime. */
-export const FABI_QUALIFIED_CATALOG_SCHEMA_VERSION = 2;
+/** Compatibility epoch for signed discovery and model-execution contracts. */
+export const FABI_QUALIFIED_CATALOG_SCHEMA_VERSION = 3;
 /** Id du provider tel qu'enregistré dans Theia AI. */
 export const FABI_MODEL_ID = 'fabi-swarm';
 
