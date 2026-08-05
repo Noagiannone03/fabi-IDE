@@ -6705,3 +6705,16 @@ de l'autorité sur le VPS/Mac mini/RTX, comparer les décisions sans recharger d
 couches, puis implémenter la sélection live sur la frontière multi-contexte et
 la qualifier sous NAT/churn. Ensuite seulement reprendre le redesign complet de
 l'IDE, le contrat d'update signé obligatoire et l'E2E Electron/OpenCode.
+
+Addendum de qualification : le durcissement final est poussé dans
+`bb22f4751a0052efce62942173f011afdb3ea2b9` (`fix(v3): fail closed on stale
+demand pins`). Il refuse les régions dupliquées après normalisation, valide les
+endpoint IDs d'autorité avec le parseur Iroh natif dès le démarrage et revérifie
+l'expiration à chaque comparaison shadow, même si un ancien snapshot reste en
+cache. L'exécution précédente `30986686407` a été annulée automatiquement par
+la règle de concurrence lors de ce push ; ce n'est pas un échec de test. Le
+workflow de remplacement `30986990925`, au SHA exact `bb22f475...`, est vert sur
+Ubuntu, macOS 15 et Windows : formatage, Clippy, bindings Rust/Python, DHT trois
+nœuds, wheel ABI3, import du wheel et suite protocole/shadow passent sur les
+trois plateformes. Ce commit est donc le seul candidat de ce jalon à
+provisionner en shadow.
