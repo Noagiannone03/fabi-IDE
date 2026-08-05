@@ -17,8 +17,8 @@ test('defaults permissions to explicit user approval', () => {
 });
 
 test('treats auto mode as persistent YOLO approval for the whole build chat', () => {
-    assert.equal(automaticPermissionReply('auto', 'build'), 'always');
-    assert.equal(automaticPermissionReply('auto', 'general'), 'always');
+    assert.equal(automaticPermissionReply('auto', 'build'), 'once');
+    assert.equal(automaticPermissionReply('auto', 'general'), 'once');
     assert.equal(automaticPermissionReply('ask', 'build'), undefined);
     assert.equal(automaticPermissionReply('auto', 'plan'), undefined);
 });

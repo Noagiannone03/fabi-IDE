@@ -574,9 +574,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         const policy = this.permissionPolicies.get(rootSessionId);
 
         // Le mode automatique appartient à CE chat racine et couvre aussi ses
-        // sous-tâches. `always` évite de refaire transiter les mêmes motifs par
-        // le broker ; les nouvelles catégories restent autorisées ici. La
-        // politique ne fuit jamais vers un autre chat et plan reste non élevé.
+        // sous-tâches. Chaque demande est acquittée par le broker avec `once` :
+        // l'utilisateur peut ainsi revenir immédiatement à Ask edits sans
+        // conserver de règle `always` cachée dans une session OpenCode enfant.
+        // La politique ne fuit jamais vers un autre chat et plan reste non élevé.
         const automaticReply = policy
             ? automaticPermissionReply(policy.mode, policy.agent)
             : undefined;

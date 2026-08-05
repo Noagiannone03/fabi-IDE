@@ -11,16 +11,16 @@ export function normalizeFabiCodePermissionMode(value: unknown): FabiCodePermiss
 /**
  * Réponse OpenCode correspondant au mode sans confirmation de Fabi.
  *
- * `always` est volontaire : OpenCode mémorise les motifs proposés pour la
- * session concernée, tandis que notre broker conserve aussi la politique du
- * chat racine pour autoriser les nouvelles catégories d'outils et les
- * sous-tâches. Le mode plan reste non-élevable.
+ * `once` est volontaire : le broker conserve la politique du chat racine et
+ * acquitte chaque demande, y compris celles des sous-tâches, sans inscrire de
+ * règle persistante OpenCode qui survivrait à un retour vers Ask edits. Le
+ * mode plan reste non-élevable.
  */
 export function automaticPermissionReply(
     mode: FabiCodePermissionMode,
     agent: string
-): 'always' | undefined {
-    return mode === 'auto' && agent !== 'plan' ? 'always' : undefined;
+): 'once' | undefined {
+    return mode === 'auto' && agent !== 'plan' ? 'once' : undefined;
 }
 
 /** Partie minimale de Session.Info dont le broker d'approbation a besoin. */
