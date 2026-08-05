@@ -44,6 +44,25 @@ function FabiModeMenu<Value extends string>(props: {
     const root = React.useRef<HTMLDivElement>(null);
     const selected = props.options.find(option => option.value === props.value) ?? props.options[0];
 
+    const focusTrigger = React.useCallback(() => {
+        root.current?.querySelector<HTMLButtonElement>('.fabi-mode-trigger')?.focus();
+    }, []);
+
+    const focusOption = React.useCallback((position: 'selected' | 'first' | 'last' | 'next' | 'previous') => {
+        const options = Array.from(root.current?.querySelectorAll<HTMLButtonElement>('.fabi-mode-option') ?? []);
+        if (options.length === 0) {
+            return;
+        }
+        const active = options.indexOf(document.activeElement as HTMLButtonElement);
+        const selectedIndex = Math.max(0, props.options.findIndex(option => option.value === props.value));
+        const index = position === 'first' ? 0
+            : position === 'last' ? options.length - 1
+                : position === 'next' ? (active < 0 ? selectedIndex : (active + 1) % options.length)
+                    : position === 'previous' ? (active < 0 ? selectedIndex : (active - 1 + options.length) % options.length)
+                        : selectedIndex;
+        options[index]?.focus();
+    }, [props.options, props.value]);
+
     React.useEffect(() => {
         if (!open) {
             return undefined;
@@ -56,7 +75,7 @@ function FabiModeMenu<Value extends string>(props: {
         const closeOnEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 setOpen(false);
-                root.current?.querySelector<HTMLButtonElement>('.fabi-mode-trigger')?.focus();
+                focusTrigger();
             }
         };
         document.addEventListener('mousedown', closeOutside);
@@ -65,7 +84,13 @@ function FabiModeMenu<Value extends string>(props: {
             document.removeEventListener('mousedown', closeOutside);
             document.removeEventListener('keydown', closeOnEscape);
         };
-    }, [open]);
+    }, [focusTrigger, open]);
+
+    React.useEffect(() => {
+        if (open) {
+            focusOption('selected');
+        }
+    }, [focusOption, open]);
 
     return (
         <div ref={root} className={`fabi-mode-control ${props.className}${open ? ' open' : ''}`}>
@@ -77,13 +102,32 @@ function FabiModeMenu<Value extends string>(props: {
                 aria-expanded={open}
                 disabled={props.disabled}
                 onClick={() => setOpen(value => !value)}
+                onKeyDown={event => {
+                    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                        event.preventDefault();
+                        setOpen(true);
+                    }
+                }}
             >
                 <span className='fabi-mode-trigger-icon' aria-hidden='true'>{selected.icon}</span>
                 <span>{selected.label}</span>
                 <ChevronDown className='fabi-mode-chevron' size={12} strokeWidth={1.9} aria-hidden='true' />
             </button>
             {open && (
-                <div className='fabi-mode-menu' role='listbox' aria-label={props.ariaLabel}>
+                <div
+                    className='fabi-mode-menu'
+                    role='listbox'
+                    aria-label={props.ariaLabel}
+                    onKeyDown={event => {
+                        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                            event.preventDefault();
+                            focusOption(event.key === 'ArrowDown' ? 'next' : 'previous');
+                        } else if (event.key === 'Home' || event.key === 'End') {
+                            event.preventDefault();
+                            focusOption(event.key === 'Home' ? 'first' : 'last');
+                        }
+                    }}
+                >
                     {props.options.map(option => (
                         <button
                             key={option.value}
@@ -94,6 +138,7 @@ function FabiModeMenu<Value extends string>(props: {
                             onClick={() => {
                                 props.onChange(option.value);
                                 setOpen(false);
+                                focusTrigger();
                             }}
                         >
                             <span className='fabi-mode-option-icon' aria-hidden='true'>{option.icon}</span>

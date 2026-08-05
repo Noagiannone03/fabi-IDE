@@ -1167,6 +1167,12 @@
     animation: fabi-think-pulse 1.1s ease-in-out 2;
 }
 @keyframes fabi-think-pulse { 50% { opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) {
+    .fabi-mode-menu,
+    .fabi-think-preview,
+    .fabi-think-preview::after { animation: none; }
+    .fabi-tc-running::after { display: none; }
+}
 .fabi-think-caret { font-size: 12px !important; opacity: 0.5; }
 .fabi-think-body {
     margin-top: 6px; padding-left: 20px;
