@@ -7127,3 +7127,119 @@ kills prefill/decode avec
 `replan_cold`, une deuxième route complète, le vrai E2E entre NAT indépendants,
 l'E2E Electron et le device pairing. Le handoff ne présente aucune de ces
 validations live comme déjà acquise.
+
+## Isolation heartbeat/maintenance révélée par le vrai bootstrap rc44
+
+Le workflow release `rc44` et ses 31 actifs sont valides, et l'installation
+transactionnelle du tag exact réussit sur le Mac courant et le Mac mini. Les
+deux manifestes annoncent bien runtime `v2.7.0-rc44`, OpenCode `009cfab…`,
+Parallax `669fa35…` et transport natif `0.1.0`. L'installation Windows a d'abord
+été refusée avant mutation par le lanceur opérateur : Windows PowerShell 5
+interprète le contenu `application/octet-stream` renvoyé par GitHub comme un
+tableau d'octets. La relance via `WebClient.DownloadString` exécute bien le même
+`install.ps1` immuable et télécharge actuellement les deux parties CUDA. Ce
+premier refus n'a touché ni le runtime actif ni les caches du PC.
+
+Le démarrage produit Electron sur le Mac courant a correctement lancé le
+worker et le Request Agent depuis `rc44`. Le premier vrai bootstrap du Mac mini
+a en revanche révélé une course de cycle de vie dans le nouveau nettoyage KV :
+la boucle d'annonce appelait `consume_expired_routes()` avant l'existence du
+premier contrat de service signé. L'erreur attendue du data plane, `worker has
+no verified serving contract`, s'échappait de la maintenance et terminait le
+thread d'annonce. Le worker chargeait ensuite sa tranche, mais ne pouvait plus
+maintenir le heartbeat ni publier son refus mémoire mesuré de 32 768 vers
+31 744 tokens; le downgrade fenced ne pouvait donc pas aboutir.
+
+Le commit moteur `480c4204d2466ec410be7d08ad7b993e140371bc` corrige l'invariant
+à deux niveaux. Le nettoyage idempotent est vide avant le premier contrat car
+aucune réservation ne peut alors exister, tandis que les commandes et le data
+plane restent stricts. La boucle envoie désormais le heartbeat avant la
+maintenance locale, et une panne imprévue de cette maintenance est journalisée
+sans pouvoir interrompre la liveness. Ce découplage suit le principe des Node
+Leases Kubernetes, où le renouvellement léger reste indépendant des mises à
+jour d'état, et le comportement documenté de `threading.Thread`, dont une
+exception non interceptée termine bien `run()`.
+
+Les deux régressions nouvelles couvrent le nettoyage avant contrat et une
+exception de nettoyage qui ne s'échappe pas vers le heartbeat. Les 52 tests
+ciblés passent. Une première suite globale lancée en même temps que le worker
+Electron a donné 867 réussites, 7 skips et un échec MLX par zéro bloc KV sous
+pression mémoire; le test fautif passe seul après l'arrêt propre de l'IDE. La
+suite globale rejouée sans exécuteur concurrent donne 868 réussites et 7 skips.
+Ruff et `git diff --check` passent. La CI native multi-OS `31087490064` est
+verte sur Linux, macOS et Windows.
+
+La preuve live a ensuite été faite sur le Mac mini avec le moteur exact
+`480c420…` : le worker charge `[0,19)` avec 32 768 tokens KV, publie sa lease V3
+READY et renouvelle ses heartbeats à environ neuf secondes sans nouvelle mort
+du thread d'annonce. Cette preuve ne constitue pas encore une route complète,
+les autres workers étant volontairement arrêtés pendant l'isolation du test.
+
+Le pin CLI correspondant est `31387f40f9aeb8c61c861f8065f2fa5af4c31a70`
+(63 tests swarm et typecheck verts). Le runtime
+`3a06e567f073cfd11a89cbd833b8085a5987111d` verrouille ce CLI et le moteur
+`480c420…`; sa CI transactionnelle Linux/Windows `31088067543` est verte. Le
+tag annoté `v2.7.0-rc45` est publié. Son workflow release `31088179269` construit
+actuellement les six cibles : ne pas promouvoir les pins IDE ni redéployer tout
+le labo avant que tous les builds, attestations et l'installateur final soient
+verts.
+
+## Gestion disque des packs de couches — ajout prioritaire à la roadmap V3
+
+Les packs sélectifs actuels sont déjà des objets déterministes indépendants :
+une couche produit `model-fabi-layer-NNNNN.safetensors`, tandis que l'embedding
+et la sortie ont leurs propres packs. Une réallocation réutilise donc les packs
+existants et ne télécharge que les plages Xet signées manquantes. En revanche,
+aucune politique ne borne encore leur accumulation quand un utilisateur change
+souvent de modèle ou de span. Le PC RTX n'a plus qu'environ 12,6 Go libres après
+l'installation de `rc44`; le défaut est désormais observable dans le vrai labo.
+
+L'invariant de conception est de ne jamais mélanger placement et popularité du
+cache. La politique autonome continue de choisir le meilleur span selon la
+mémoire, le contexte, la couverture et la demande. Une étape locale séparée
+vérifie ensuite, avec les tailles signées exactes, que les octets manquants sont
+matérialisables sur le volume. Un cache hit ne doit jamais faire gagner un span
+moins utile; le stockage ne peut qu'accepter le choix, libérer des objets froids
+non protégés, ou refuser proprement une matérialisation physiquement impossible.
+
+Le design retenu combine des mécanismes éprouvés plutôt qu'une suppression
+ad hoc : leases/racines de GC à la containerd pour protéger les packs en cours
+de téléchargement ou d'utilisation, hystérésis de pression comme le GC images
+du kubelet pour éviter les nettoyages oscillants, et priorité coût/taille/
+fréquence avec vieillissement de type GreedyDual. Un journal local transactionnel
+doit mémoriser les usages réussis par modèle et par pack. Le GC ne touche jamais
+un pack leased, la cible courante, un téléchargement temporaire ou les fichiers
+de métadonnées nécessaires à sa vérification. Les révisions du cache partagé
+Hugging Face devront être supprimées uniquement via `scan_cache_dir()` et
+`delete_revisions()`, qui préservent les blobs référencés ailleurs; aucun blob HF
+partagé ne doit être effacé manuellement comme le fait encore Petals.
+
+Le socle est implémenté dans le commit moteur
+`d1121d7daaa52b6ff8a119f53fee37886f7a6896`. Il calcule la croissance nette
+exacte de chaque pack et métadonnée signée, réserve séparément un espace de
+travail atomique borné, empêche deux téléchargements de surengager les mêmes
+octets, protège les objets par PID et heure de création du processus, récupère
+les leases mortes, journalise uniquement les usages vérifiés dans SQLite et
+évince par GDSF avec vieillissement. Les seuils automatiques et leurs overrides
+sont documentés dans `docs/model-registry-operations.md`. La croissance
+persistante, et non le workspace transitoire, est la seule valeur comptée dans
+un quota explicite.
+
+Les 11 tests ciblés couvrent la réutilisation, la fréquence, une lease active,
+le choix courant protégé contre son propre GC, une réservation morte, l'ordre
+d'éviction, un quota et deux téléchargements concurrents. La suite globale
+donne 874 réussites et 7 skips. Les fichiers touchés sont Ruff-verts; un Ruff
+global échoue avant pytest sur 85 alertes historiques hors de ce changement,
+principalement dans les benchmarks et modèles MLX, et cette dette n'a pas été
+mélangée au commit stockage. Le commit
+`b4a2f14dd06f4dc390968028f7aadf0d880e7641` étend le workflow natif aux deux
+modules et deux suites cache, avec leurs dépendances explicites. La CI
+multi-OS `31089583543` est en file au moment de cette entrée : ne pas qualifier
+ce moteur avant ses résultats Ubuntu/macOS/Windows.
+
+Il reste avant qualification produit : prouver le comportement sur le vrai
+cache et le vrai espace libre du Mac mini et du PC Windows, vérifier un refus
+sans boucle de redémarrage lorsque même le GC ne peut satisfaire le span,
+tester une interruption réelle pendant Xet, puis exposer proprement l'état
+stockage dans les statuts worker/IDE. Le cache HF partagé et ses révisions ne
+sont volontairement pas encore nettoyés automatiquement.
