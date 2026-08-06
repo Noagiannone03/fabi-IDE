@@ -7461,3 +7461,127 @@ comportement live : installer maintenant ce contrat exact sur le Mac mini et la
 RTX, vérifier leurs manifestes actifs, puis qualifier les volumes multiples,
 l'interruption Xet, l'espace insuffisant et le replan avant le grand E2E
 OpenCode.
+
+## Qualification live stockage, contexte et abort du 6 août 2026
+
+Le runtime immuable `v2.7.0-rc46` a finalement été installé sur les deux hôtes
+du labo. Le manifeste actif du Mac mini et celui de la RTX portent exactement
+OpenCode/CLI `b86c6f504265810b4e14a01ccaf7cebc0440838c`, moteur
+`5114117a0624848a3448f06387cd571c9d1dd1b5` et transport natif `0.1.0`.
+L'installation Windows CUDA a terminé avec environ 67 Gio libres sur `C:`. Une
+première commande de labo mal quotée avait résolu par erreur le canal `latest`
+vers `rc11`; son processus et son temporaire ont été arrêtés avant activation,
+puis l'installation exacte `rc46` a été reprise et vérifiée par son manifeste.
+
+Le scheduler VPS tourne toujours sur l'image exacte
+`local/parallax-scheduler:swarm-v3-5114117`, avec le volume d'état
+`parallax-state-qwen3-4b-v3-eb3d4ff` et l'identité persistante
+`/opt/parallax-runtime/network/scheduler-2fabfbf.key`. Une tentative de
+redéploiement avait brièvement utilisé un volume vide et une autre clé, ce qui
+créait une nouvelle identité de scheduler; elle a été annulée et le conteneur
+qualifié a été restauré avec zéro redémarrage. Ne pas recréer ce service sans
+ces trois références exactes.
+
+### Vrai volume Windows et reprise après interruption
+
+Le helper `tools/lab-worker-control.sh` accepte maintenant
+`FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE` et transmet le chemin à la tâche
+Windows sans l'enregistrer dans le produit. Le worker RTX a été lancé avec le
+volume explicitement autorisé `D:\Fabi\model-cache`, qui disposait d'environ
+999 Go libres. Le placement autonome a choisi `[0,36)` et réservé exactement
+8 061 947 851 octets. Le worker a été arrêté pendant la matérialisation du pack
+de couche 3 : quatre packs finaux vérifiés sont restés, ainsi qu'un temporaire
+caché de 201 862 992 octets et une lease morte.
+
+Au redémarrage avec la même identité et le même volume, la nouvelle réservation
+n'était plus que de 6 662 533 080 octets. Les quatre packs déjà validés ont donc
+été réutilisés, la couche 3 a été reprise, les 38 packs ont terminé, puis la RTX
+a chargé `[0,36)` avec une capacité KV mesurée de 23 264 tokens. Les logs
+portaient toutefois `network_bytes: 0` : le cache Hugging Face complet de `C:`
+servait de source locale. Cette expérience prouve l'interruption et la reprise
+de la projection sélective, mais **pas encore** une interruption du transport
+Xet réseau. Un vrai test Xet doit employer un `HF_HOME` neuf et un cache Fabi
+neuf sur un volume de labo.
+
+Le temporaire caché de la couche 3 survivait même après la reprise réussie. La
+cause est structurelle : `tempfile.mkstemp()` laisse le nettoyage à l'appelant,
+et un processus tué ne peut pas exécuter son `finally`. Le correctif moteur
+`d683fbdc9d23e3254304571f6fdd1a2a73d0e676` récupère d'abord les leases mortes,
+puis supprime uniquement les noms temporaires Fabi exacts dans une projection
+hexadécimale sans lease vivante, sous le verrou global et le verrou de
+projection non bloquant. Il ne suit jamais un symlink et conserve un fichier
+encore verrouillé par Windows; ses octets restent alors naturellement facturés
+par l'espace libre réel. Ce choix suit le contrat de nettoyage de
+[Python tempfile](https://docs.python.org/3/library/tempfile.html), le publish
+vérifié des fichiers incomplets de
+[huggingface_hub](https://github.com/huggingface/huggingface_hub/blob/main/src/huggingface_hub/file_download.py)
+et le modèle de contenu adressé par digest de
+[l'OCI Image Spec](https://github.com/opencontainers/image-spec/blob/main/descriptor.md).
+
+Ruff et 122 tests ciblés passent. La suite globale donne `887 passed, 7
+skipped` avec l'override de test `FABI_MODEL_CACHE_MIN_FREE_BYTES=0`. Sans cet
+override, le Mac de développement ne disposait plus que d'environ 5,5 Gio
+libres et quatre tests de matérialisation ont été refusés par le plan produit,
+qui réserve automatiquement 10 Gio : `883 passed, 7 skipped, 4 failed`. C'est
+une admission de stockage attendue, pas une régression masquée. La CI Native
+network `31100944184` du commit `d683fbd…` est entièrement verte sur Ubuntu,
+macOS 15 et Windows, wheel ABI3 reconstruit et importé sur chaque OS.
+
+### Générations Request Agent `rc46`
+
+Après chargement, le Mac mini annonçait d'abord `[0,21)` avec environ 4,67 Go de
+poids et 25 856 tokens KV; un redémarrage avec la pression live suivante a
+retenu `[0,26)` et 17 696 tokens KV. La RTX annonce `[0,36)`, 23 264 tokens KV
+et un frontend effectif à 16 384. Elle tente correctement le contrat 32k,
+reçoit le refus mémoire, se fence et recharge une fois à 16k. Les heartbeats
+continuent pendant la vérification des packs, le chargement et ce repli. La
+route active complète choisie est actuellement la RTX seule; le Mac reste un
+worker READY utile pour une autre couverture, mais il ne faut pas prétendre
+qu'il participe à chaque token de cette route particulière.
+
+Un Request Agent `rc46` isolé sur le Mac mini a ensuite traversé le vrai chemin
+catalogue TUF, DHT, permis de contribution, réservation, Iroh direct vers le
+head RTX et SSE local : HTTP 200, TTFT 17,435 s, fin 22,366 s, exactement un
+`[DONE]`. Le test OpenCode synthétique a calibré 12 220 tokens selon le
+tokenizer local et réservé 4 096 tokens. Le head final en a compté 12 229 après
+son propre chat template, soit 16 325 au total; la réconciliation a admis la
+requête, qui a renvoyé la sentinelle exacte en 32,461 s. Une requête volontaire
+de 12 300 + 4 096 tokens a été refusée en 9,887 s par HTTP 400
+`context_length_exceeded`, avec le maximum live exact 16 384 et aucune lease
+résiduelle.
+
+Enfin, un client SSE a fermé explicitement sa connexion après le premier delta
+réel, reçu à 18,455 s. Le journal est passé de zéro à un abort, puis a exposé
+zéro route et zéro requête active. Ce test ne déduit pas une panne d'un timeout :
+il valide le signal d'abort causé par une vraie fermeture client.
+
+Le launcher manuel de ce Request Agent avait injecté le token avec `screen
+env`, ce qui l'exposait dans l'`argv` local du Mac mini. Le processus a été
+arrêté et ce secret a été considéré compromis. Un nouveau token aléatoire a été
+déployé atomiquement sur le Mac de développement, le Mac mini et la RTX, puis
+les deux workers ont été redémarrés. La gate publique confirme ensuite
+`eligible_workers=2`, `allowed=true`, et le cluster est revenu à deux workers
+READY, route 16 384 disponible. Le chemin Electron normal transmet le secret
+dans l'environnement de `spawn`, pas dans les arguments; ne pas réutiliser le
+launcher manuel fautif.
+
+### Candidate de correction `rc47`
+
+Le CLI `fabi-cli/dev` `e207aabfcd5cdbd7555a4e90b5eebefcbbfb99f4`
+épingle maintenant le moteur `d683fbd…`; ses 63 tests swarm et le typecheck
+monorepo passent. Le runtime `fabi/main`
+`358d65e0931009b24eb4fc7d732d5bd435c2346d` verrouille ces deux commits et
+inclut aussi les correctifs Windows de suppression de rollback à chemin long
+`d8cf39d`, `10f2ba0` et `e3dc301`. Le préflight du lock, la transaction POSIX,
+la neutralisation des chemins et la CI de branche `31101870504` passent.
+
+Le tag annoté `v2.7.0-rc47` est publié. Son workflow release
+`31101887906` construit les six artefacts au moment de cette entrée. Ne pas
+promouvoir les pins IDE ni installer `rc47` avant le vert complet de Windows
+CUDA, Linux CUDA, Darwin, attestations et job final. Ensuite : installer le tag
+exact sur Mac mini et RTX, vérifier que le temporaire orphelin est récupéré sans
+toucher une projection vivante, puis effectuer le vrai test Xet et le refus
+stockage. Restent ensuite l'E2E Electron/OpenCode permissions-outils-modification
+de fichiers, le changement de modèle, la seconde route complète et les kills
+prefill/decode avec `replan_cold`, deux NAT indépendants et le device pairing
+multi-machine.

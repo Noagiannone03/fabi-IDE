@@ -19,6 +19,7 @@ network_mode="${3:-${FABI_LAB_NETWORK_MODE:-iroh}}"
 vps_host="${FABI_LAB_VPS_SSH:-vps}"
 mac_ssh="${FABI_LAB_MAC_SSH:-gmbh@100.82.190.118}"
 win_ssh="${FABI_LAB_WINDOWS_SSH:-gmbhl@100.105.234.82}"
+win_model_cache="${FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE:-}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -30,6 +31,8 @@ Environment overrides:
   FABI_LAB_WINDOWS_SSH   default: gmbhl@100.105.234.82
   FABI_LAB_NETWORK_MODE  default: iroh
   FABI_LAB_ENGINE_SHA    optional committed engine candidate under runtime-candidates
+  FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE
+                         optional absolute cache root for a Windows storage qualification
 EOF
 }
 
@@ -173,6 +176,8 @@ SH
 run_windows() {
   local win_action="$1"
   local encoded
+  local win_model_cache_b64
+  win_model_cache_b64="$(printf '%s' "$win_model_cache" | base64 | tr -d '\r\n')"
   encoded="$(
     iconv -f UTF-8 -t UTF-16LE <<PS | base64 | tr -d '\r\n'
 \$ErrorActionPreference = "Stop"
@@ -180,6 +185,9 @@ run_windows() {
 \$Action = "$win_action"
 \$NetworkMode = "$network_mode"
 \$EngineSha = "${FABI_LAB_ENGINE_SHA:-}"
+\$ModelArtifactCache = [Text.Encoding]::UTF8.GetString(
+  [Convert]::FromBase64String("$win_model_cache_b64")
+)
 \$Runtime = Join-Path \$env:LOCALAPPDATA "fabi\\runtime"
 \$RegistryRoot = Join-Path \$env:LOCALAPPDATA "fabi\\trust\\model-registry-root-7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce.json"
 \$TaskName = if (\$NetworkMode -eq "iroh") {
@@ -252,6 +260,7 @@ function Start-FabiWorker {
     \$quotedAppData = \$env:APPDATA.Replace("'", "''")
     \$quotedAccountToken = (Join-Path \$UserHome ".config\\fabi\\account-token").Replace("'", "''")
     \$quotedHfHome = (Join-Path \$UserHome ".cache\\huggingface").Replace("'", "''")
+    \$quotedModelArtifactCache = \$ModelArtifactCache.Replace("'", "''")
     \$BootstrapLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-task-bootstrap.log"
     Remove-Item -LiteralPath \$BootstrapLog -Force -ErrorAction SilentlyContinue
     \$quotedBootstrapLog = \$BootstrapLog.Replace("'", "''")
@@ -264,10 +273,13 @@ function Start-FabiWorker {
       '\$env:FABI_ACCOUNT_TOKEN_FILE = ''{3}''; \$env:HF_HOME = ''{4}''; ' +
       '\$env:FABI_PARALLAX_SOURCE = ''{5}''; ' +
       '\$env:FABI_MODEL_REGISTRY_ROOT = ''{6}''; ' +
+      \$(if (\$quotedModelArtifactCache) {
+        '\$env:FABI_MODEL_ARTIFACT_CACHE = ''{7}''; '
+      } else { '' }) +
       '\$env:FABI_SWARM_V3_COORDINATION_MODE = ''client''; ' +
-      'try {{ & ''{7}''; exit \$LASTEXITCODE }} catch {{ ' +
-      '(\$_ | Format-List * -Force | Out-String) | Set-Content -LiteralPath ''{8}'' -Encoding UTF8; exit 1 }}'
-    ) -f \$quotedHome, \$quotedLocalAppData, \$quotedAppData, \$quotedAccountToken, \$quotedHfHome, \$quotedSource, \$quotedRoot, \$quotedLauncher, \$quotedBootstrapLog
+      'try {{ & ''{8}''; exit \$LASTEXITCODE }} catch {{ ' +
+      '(\$_ | Format-List * -Force | Out-String) | Set-Content -LiteralPath ''{9}'' -Encoding UTF8; exit 1 }}'
+    ) -f \$quotedHome, \$quotedLocalAppData, \$quotedAppData, \$quotedAccountToken, \$quotedHfHome, \$quotedSource, \$quotedRoot, \$quotedModelArtifactCache, \$quotedLauncher, \$quotedBootstrapLog
     \$encodedTaskCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\$taskCommand))
     \$TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument (
       "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + \$encodedTaskCommand
