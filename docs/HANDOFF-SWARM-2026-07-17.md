@@ -7243,3 +7243,93 @@ sans boucle de redémarrage lorsque même le GC ne peut satisfaire le span,
 tester une interruption réelle pendant Xet, puis exposer proprement l'état
 stockage dans les statuts worker/IDE. Le cache HF partagé et ses révisions ne
 sont volontairement pas encore nettoyés automatiquement.
+
+## Replan stockage, volumes autorisés et réglages IDE du 6 août 2026
+
+La CI du socle cache `31089583543` est finalement entièrement verte sur
+Ubuntu, macOS et Windows. Les mesures non destructives du labo donnaient alors
+environ 10,6 Gio libres et 7,5 Gio de packs Fabi sur le Mac courant, 98,3 Gio
+libres et 7,7 Gio de packs sur le Mac mini, puis 12,61 Go libres et 8,06 Go de
+packs sur le PC RTX. Ces nombres sont des lectures des vrais volumes, pas des
+capacités supposées. Aucun pack n'a été supprimé pendant ces mesures.
+
+Le commit moteur `5114117a0624848a3448f06387cd571c9d1dd1b5` termine le cycle
+de refus et de replan. Une impossibilité de stockage est maintenant une erreur
+typée `artifact_storage` transmise de l'exécuteur au superviseur puis au
+contrôleur P2P. Un join froid abandonne uniquement le span exact qui ne tient
+pas et essaie le candidat suivant dans le classement normal; une migration
+échouée revient au contrat vérifié précédent. Le cache ne participe jamais au
+score de placement. Si tous les spans exacts physiquement admissibles en
+mémoire sont refusés par le disque, le worker reste en standby et le gate
+renvoie `insufficient_storage` avec le nombre d'octets manquants. Le launcher
+attend ensuite une vraie évolution d'allocation, sans timeout de redémarrage.
+
+Le même commit ajoute un pool multi-volume. Le primaire reste
+`FABI_MODEL_ARTIFACT_CACHE`; les emplacements supplémentaires explicitement
+autorisés sont transmis sous forme de tableau JSON portable dans
+`FABI_MODEL_ARTIFACT_CACHE_ROOTS`. Le pool fait d'abord un plan exact et non
+destructif sur chaque volume, puis choisit après le placement selon trois clés :
+le moins d'octets de contenu manquants, le moins d'éviction nécessaire, puis le
+plus de marge sûre. Une projection complète reste sur un seul volume. Un disque
+externe débranché est ignoré sans recréer son ancien chemin de montage, et un
+volume insuffisant n'est pas nettoyé si un autre peut satisfaire la réservation.
+Cette séparation reprend l'idée des répertoires de modèles explicites d'Exo,
+mais conserve la réservation transactionnelle, les leases et le GDSF propres à
+Fabi. L'énumération automatique de tous les disques Windows/macOS a été écartée :
+elle ne constitue pas une autorisation d'écrire sur une clé USB, un NAS ou un
+volume chiffré.
+
+La validation locale de ce lot donne 884 tests Python réussis et 7 skips sur la
+dernière suite globale, puis 143 tests ciblés réussis après l'ajout de deux
+régressions de relance sans changement de code moteur. Ruff ciblé et
+`git diff --check` sont verts. La CI Native network
+`31092754728` du commit `5114117…` est en cours : ne pas construire `rc46` ni
+promouvoir le labo avant son résultat multi-OS.
+
+Le commit IDE `bb38fc51e31a775b415061d90e509d974ef7289f` expose le même contrat
+dans l'onglet `Fabi` de la configuration IA Theia. La section « Stockage des
+modèles » utilise le sélecteur de dossier natif, crée uniquement
+`Fabi/model-cache` sous le dossier autorisé, mesure l'espace libre, la réserve
+du moteur, la marge utilisable et le cache Fabi, puis permet de retirer une
+autorisation sans supprimer de fichiers. La configuration est écrite
+atomiquement dans le data root Fabi et limitée à huit volumes supplémentaires.
+Les chemins sont canonicalisés, notamment le couple macOS `/var` et
+`/private/var`. Le volume système n'est pas retirable.
+
+Une modification redémarre uniquement le worker de contribution. Si le journal
+du Request Agent contient une génération active, l'IDE publie un état de relance
+en attente et attend l'événement de fin ou d'abort; aucun timer arbitraire ne
+coupe un tour long. OpenCode et le Request Agent restent vivants. L'IDE affiche
+également « Espace de stockage insuffisant » et le déficit exact lorsque le gate
+confirme qu'aucune tranche utile ne tient. Les 76 tests `fabi-swarm`, la
+compilation des trois extensions, le bundle Electron complet et un contrôle
+visuel réel par DevTools passent. Le panneau conserve la DA IntelliJ/Spaces et
+affichait sur le Mac courant environ 9,6 Go libres, 4,6 Go réservés, 5 Go
+utilisables et 7,5 Go de cache au moment de la capture.
+
+Pendant ce contrôle visuel, deux lancements Electron de développement arrêtés
+par `Ctrl+C` ont laissé leur backend helper orphelin. Chacun consommait environ
+un cœur CPU complet et avait relancé un Request Agent; c'est la cause du freeze
+observé, pas une pression RAM du cache ou du worker. `memory_pressure` indiquait
+75 % de mémoire disponible pendant l'incident, puis 77 % après arrêt ciblé des
+deux arbres. Aucun processus Fabi n'est resté. Pour les prochains contrôles, ne
+pas interpréter l'arrêt du shell de développement comme une fermeture produit :
+fermer Electron par son cycle normal ou vérifier explicitement tout l'arbre
+backend après un signal de laboratoire.
+
+Enfin, le workflow release `v2.7.0-rc45` `31088179269` est désormais entièrement
+vert, y compris Windows CUDA, Linux CUDA, les deux Darwin, les builds CPU, les
+attestations et le job final des installateurs. Il reste néanmoins antérieur au
+commit stockage `5114117…`; il sert de runtime qualifié précédent et ne contient
+pas ce nouveau replan.
+
+Ordre restant : attendre la CI `31092754728`, épingler `5114117…` dans le CLI et
+le runtime, publier `rc46`, promouvoir les constantes IDE, puis installer le tag
+exact sur Mac mini et RTX. Rejouer ensuite l'ajout/retrait d'un vrai volume,
+l'interruption Xet, le manque de disque sans boucle, le gros contexte
+OpenCode, le changement de modèle et l'abort. Les étapes suivantes restent la
+seconde route complète et les kills prefill/decode avec `replan_cold`, les deux
+NAT indépendants et le device pairing multi-machine. Le nettoyage des révisions
+du cache Hugging Face partagé reste volontairement hors de l'automatisation tant
+qu'un cache HF possédé par Fabi et sa politique officielle de suppression ne
+sont pas qualifiés.
