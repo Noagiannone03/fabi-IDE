@@ -7019,3 +7019,86 @@ Ordre restant avant preuve 32k : attendre les actifs CUDA Linux/Windows de
 timestamp en dernier, basculer le scheduler et le registre epoch 3, relancer
 RTX puis les deux Mac, et seulement ensuite rejouer route longue, SSE et E2E
 Electron. Ne pas présenter la migration comme live avant ces étapes.
+
+## Routes longues, demande de contexte et streams pilotés par lease du 6 août 2026
+
+L'entrée précédente est désormais historique. La cible TUF génération 6 est
+publique avec `targets=6`, `snapshot=6` et `timestamp=32`; le registre epoch 3
+et le scheduler moteur `48378d75f01b88bae693cbb763cfe36f7939b734` sont actifs.
+Le Mac courant, le Mac mini et le PC RTX ont été remis sur le runtime qualifié
+`rc42`. La RTX publie une route complète `[0,36)` à 16 384 tokens, tandis que
+les deux Mac ont convergé vers `[0,19) -> [19,36)` à 32 768 tokens. Le statut
+public annonce trois workers ready et `max_supported_context_tokens=32768`.
+
+Le signal de demande longue introduit par le moteur
+`58bb42dd5ba1dfef3ce86db72588c8d92729edf2` était incomplet : il observait les
+refus du frontend central hérité, alors que le chemin produit est
+IDE/OpenCode -> Request Agent local -> workers Iroh. Le correctif courant ajoute
+`POST /v1/swarm/context-demand`, authentifié par le compte contributeur et lié
+au `model_swarm_id` signé. Le Request Agent rapporte l'enveloppe exacte refusée;
+le VPS ne reçoit que cette pression bornée et idempotente, puis la DHT publie
+l'agrégat de placement existant. Un compte étranger, un autre modèle ou une
+réponse mal formée échouent fermés.
+
+La release `v2.7.0-rc43`, runtime
+`0cc5c33fe8780e73f0e6748958214a26ede330b3`, a terminé ses six builds, y compris
+Windows CUDA, dans le workflow vert `31014766530`. Elle reste volontairement
+intermédiaire et n'a pas été installée : elle contient `58bb42d`, mais pas la
+chaîne Request Agent ci-dessus ni la correction de stream ci-dessous.
+
+Une requête produit réelle de 18 642 tokens a réservé la route Mac 32k avec une
+capability `replan_cold`; les renewals d'autorité et de KV sont restés sains et
+aucun worker n'a quitté READY. Après environ 610,103 secondes, le HTTP 200 s'est
+cependant fermé sans événement, sans `[DONE]` et sans erreur SSE. Le journal a
+été marqué aborted et le frontend du Mac mini a reçu ensuite un abort explicite.
+Les logs et le code isolent trois limites héritées de dix minutes : le délai de
+lecture HTTPX du proxy loopback, l'attente du stream RPC natif et le watchdog
+d'exécution Parallax. Ce n'était ni une expiration de lease ni une panne DHT.
+
+Le commit moteur
+`669fa3508fefe44cf5fc94c723af557c02d8a12e` corrige le contrat, sans simplement
+augmenter ces nombres :
+
+- le délai RPC streaming borne seulement l'établissement connexion/open/write;
+  une fois accepté, le stream finit par résultat explicite, cancellation, perte
+  QUIC, fencing ou expiration de lease;
+- HTTPX conserve des bornes connect/write/pool mais n'impose plus de read
+  timeout à un prefill silencieux;
+- le frontend OpenAI local émet des commentaires WHATWG `: keepalive`, ignorés
+  par le journal et les parseurs SSE comme données modèle;
+- une exception RPC produit une erreur SSE typée puis `[DONE]`, ou déclenche le
+  `replan_cold` exact si son journal et une nouvelle route le permettent;
+- le watchdog fixe de Parallax reste réservé aux requêtes legacy. Une requête
+  V3 est gouvernée par ses leases renouvelables;
+- pour éviter toute fuite si le Request Agent disparaît, chaque worker consomme
+  une réservation V3 nouvellement expirée exactement une fois et injecte un
+  abort local fenced dans son exécuteur, ce qui libère le KV sans attendre un
+  token ni un timeout arbitraire.
+
+Validation locale du commit : 866 tests Python réussis, 7 skips, 31 tests Rust
+réussis, `cargo fmt`, Ruff et Clippy strict verts. Le test Rust retarde le premier
+chunk au-delà du timeout unary du dispatcher et prouve que le stream établi le
+livre tout de même puis termine explicitement. Les tests Python couvrent le
+keepalive, sa cancellation, l'erreur SSE terminale, l'expiration one-shot du
+lease, l'abort local et le feedback de contexte authentifié. La CI Native
+network `31079863398` est maintenant entièrement verte sous Linux, macOS et
+Windows : formatage, Clippy, tests Python/DHT, wheel ABI3 reconstruite et
+réinstallée, puis contrats V3 passent sur les trois plateformes.
+
+Le CLI `fabi-cli/dev` au commit
+`009cfab54146410e8c17a992449a584b5dae21aa` épingle ce moteur; ses 63 tests
+swarm et son typecheck passent. Le runtime `fabi/main` au commit
+`4a252d7105fc209ae78ee6a00574fff2a92fd3b5` épingle exactement ces deux
+sources. Son contrôle de lock, les tests de transaction/rollback POSIX, la
+neutralisation des chemins locaux et le workflow installateur Linux/Windows
+`31080939836` passent. Le tag annoté `v2.7.0-rc44` pointe sur ce commit; ses six
+artefacts multi-OS sont en construction dans le workflow `31080987508` au
+moment de cette mise à jour. Ne pas qualifier ni installer `rc44` avant la fin
+verte de ce workflow.
+
+Ordre restant : attendre les six artefacts `rc44`, installer exactement cette
+release sur les trois workers, puis rejouer le test 18 642 tokens au-delà de dix
+minutes. Ensuite seulement viennent les kills prefill/decode avec
+`replan_cold`, une deuxième route complète, le vrai E2E entre NAT indépendants,
+l'E2E Electron et le device pairing. Le handoff ne présente aucune de ces
+validations live comme déjà acquise.
