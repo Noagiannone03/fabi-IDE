@@ -7439,3 +7439,25 @@ d'installation, Linux ARM64 CPU, Linux x64 CPU et Darwin ARM64 MLX. Darwin x64,
 Windows CUDA et Linux CUDA construisent encore leurs tarballs. Cette release
 reste correctement non spéculative et sa qualification stockage peut continuer
 indépendamment une fois les six cibles vertes.
+
+### Release stockage rc46 complète et pins IDE promus
+
+Le workflow release `31093349468` est désormais entièrement vert. Les deux
+tests d'installation transactionnelle, les six builds Linux/macOS/Windows CPU,
+MLX et CUDA, leurs attestations de provenance, leurs uploads ainsi que le job
+final qui attache `install.sh`, `install.ps1` et `install.cmd` ont réussi. Le
+tag annoté `v2.7.0-rc46` résout exactement vers le runtime
+`1c47da0e0bc4f622225472823e012c3709027855`; la branche distante `main` pointe
+sur le même commit. Les actifs Windows CUDA sont bien présents sous forme de
+deux parties, avec manifeste de parties, SHA-256 et décompresseur autonome.
+
+Après cette barrière verte seulement, les constantes qualifiées de l'IDE ont
+été promues vers runtime `v2.7.0-rc46`, OpenCode/Fabi CLI
+`b86c6f504265810b4e14a01ccaf7cebc0440838c` et moteur Parallax/Fabi V3
+`5114117a0624848a3448f06387cd571c9d1dd1b5`. Le transport natif reste `0.1.0`.
+Les 76 tests `fabi-swarm`, dont le contrat exact de manifeste, passent et les
+trois extensions Theia compilent. Cette validation ne prouve pas encore le
+comportement live : installer maintenant ce contrat exact sur le Mac mini et la
+RTX, vérifier leurs manifestes actifs, puis qualifier les volumes multiples,
+l'interruption Xet, l'espace insuffisant et le replan avant le grand E2E
+OpenCode.
