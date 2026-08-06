@@ -7091,14 +7091,39 @@ swarm et son typecheck passent. Le runtime `fabi/main` au commit
 `4a252d7105fc209ae78ee6a00574fff2a92fd3b5` épingle exactement ces deux
 sources. Son contrôle de lock, les tests de transaction/rollback POSIX, la
 neutralisation des chemins locaux et le workflow installateur Linux/Windows
-`31080939836` passent. Le tag annoté `v2.7.0-rc44` pointe sur ce commit; ses six
-artefacts multi-OS sont en construction dans le workflow `31080987508` au
-moment de cette mise à jour. Ne pas qualifier ni installer `rc44` avant la fin
-verte de ce workflow.
+`31080939836` passent. Le tag annoté `v2.7.0-rc44` pointe sur ce commit. Le
+workflow release `31080987508` est entièrement vert : les six builds
+darwin/linux/windows, y compris Linux et Windows CUDA, puis le job final des
+installateurs ont réussi. La release immuable contient 31 actifs `uploaded`,
+dont les deux parties CUDA sur chaque plateforme concernée, leurs manifestes,
+checksums, décompresseurs et `install.sh`/`install.ps1`/`install.cmd`.
 
-Ordre restant : attendre les six artefacts `rc44`, installer exactement cette
-release sur les trois workers, puis rejouer le test 18 642 tokens au-delà de dix
-minutes. Ensuite seulement viennent les kills prefill/decode avec
+Le scheduler VPS a en revanche déjà été basculé sur l'image immuable
+`local/parallax-scheduler:swarm-v3-669fa35`. L'image a été reconstruite depuis
+le SHA complet, son label OCI, l'import du transport natif, le schéma de demande
+18 642 tokens et la présence des nouveaux chemins stream/expiry ont été vérifiés
+avant activation. Compose a conservé le volume
+`parallax-state-qwen3-4b-v3-eb3d4ff`, la clé d'identité et l'EndpointId
+`e8881784…b625`; l'ancienne image `swarm-v3-48378d7` reste disponible pour un
+rollback. Le premier appel Compose sans nom de projet explicite a été refusé
+avant mutation par un conflit de nom; la seconde invocation a réutilisé le
+projet historique `fabi-qwen3-4b-v3` et a recréé le seul service attendu. Les
+deux workers historiques ont rejoint à nouveau par heartbeat. L'API
+`/v1/swarm/context-demand` répond et refuse sans credential avec l'erreur typée
+`missing_credential`. La DHT ne voit encore que l'offre du Mac mini : l'ancien
+processus RTX `rc42` n'annonce plus sa lease V3 même si son heartbeat legacy
+reste sain. Ce point doit être réévalué après le redémarrage exact `rc44`, pas
+présenté comme une route fonctionnelle actuelle.
+
+Les pins IDE sont donc promus vers `v2.7.0-rc44`, OpenCode `009cfab…` et
+Parallax `669fa35…`. Cette combinaison passe les 71 tests `fabi-swarm`, la
+compilation des trois extensions et les bundles Theia browser/node/Electron
+avec zéro erreur. Ce changement est nécessaire : laisser les constantes
+`rc42` ferait refuser par l'application un runtime `rc44` pourtant cohérent.
+
+Ordre restant : installer exactement `rc44` sur les trois workers, puis rejouer
+le test 18 642 tokens au-delà de dix minutes. Ensuite seulement viennent les
+kills prefill/decode avec
 `replan_cold`, une deuxième route complète, le vrai E2E entre NAT indépendants,
 l'E2E Electron et le device pairing. Le handoff ne présente aucune de ces
 validations live comme déjà acquise.
