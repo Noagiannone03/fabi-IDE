@@ -3051,7 +3051,7 @@
   dependencies:
     undici-types ">=7.24.0 <7.24.7"
 
-"@types/node@^22.7.7":
+"@types/node@22.19.21", "@types/node@^22.7.7":
   version "22.19.21"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-22.19.21.tgz#5c9d843ea385b31ee937a9f743443830620a32de"
   integrity sha512-VMeFBSCKQKmm2swI2kW51SFusDqekC6q9trBCvJ/JliDchFSuoYYKN7yVNjPthP1HKZcx3U1gI/wTcEBjEFKTA==

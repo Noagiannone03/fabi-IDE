@@ -17,7 +17,8 @@ target="${2:-all}"
 network_mode="${3:-${FABI_LAB_NETWORK_MODE:-iroh}}"
 
 vps_host="${FABI_LAB_VPS_SSH:-vps}"
-mac_ssh="${FABI_LAB_MAC_SSH:-gmbh@100.82.190.118}"
+vps_control_path="${FABI_LAB_VPS_CONTROL_PATH:-}"
+mac_ssh="${FABI_LAB_MAC_SSH:-gmbh@100.76.201.20}"
 win_ssh="${FABI_LAB_WINDOWS_SSH:-gmbhl@100.105.234.82}"
 win_model_cache="${FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE:-}"
 win_hf_home="${FABI_LAB_WINDOWS_HF_HOME:-}"
@@ -28,7 +29,9 @@ Usage: tools/lab-worker-control.sh <status|start|stop|restart> <mac|windows|all>
 
 Environment overrides:
   FABI_LAB_VPS_SSH       default: vps
-  FABI_LAB_MAC_SSH       default: gmbh@100.82.190.118
+  FABI_LAB_VPS_CONTROL_PATH
+                         optional existing OpenSSH ControlMaster socket
+  FABI_LAB_MAC_SSH       default: gmbh@100.76.201.20 (mac-mini-projet-ia)
   FABI_LAB_WINDOWS_SSH   default: gmbhl@100.105.234.82
   FABI_LAB_NETWORK_MODE  default: iroh
   FABI_LAB_ENGINE_SHA    optional committed engine candidate under runtime-candidates
@@ -54,9 +57,17 @@ case "$network_mode" in
   *) usage; exit 2 ;;
 esac
 
+ssh_vps() {
+  if [ -n "$vps_control_path" ]; then
+    ssh -S "$vps_control_path" "$vps_host" "$@"
+  else
+    ssh "$vps_host" "$@"
+  fi
+}
+
 run_mac() {
   local mac_action="$1"
-  ssh "$vps_host" "ssh $mac_ssh 'bash -s'" -- "$mac_action" "$network_mode" "${FABI_LAB_ENGINE_SHA:-}" <<'SH'
+  ssh_vps "ssh $mac_ssh 'bash -s'" -- "$mac_action" "$network_mode" "${FABI_LAB_ENGINE_SHA:-}" <<'SH'
 set -euo pipefail
 action="$1"
 network_mode="$2"
@@ -356,7 +367,7 @@ switch (\$Action) {
 }
 PS
   )"
-  ssh "$vps_host" "ssh $win_ssh 'powershell -NoLogo -NoProfile -NonInteractive -EncodedCommand $encoded'"
+  ssh_vps "ssh $win_ssh 'powershell -NoLogo -NoProfile -NonInteractive -EncodedCommand $encoded'"
 }
 
 if [ "$target" = "mac" ] || [ "$target" = "all" ]; then

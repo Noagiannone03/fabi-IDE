@@ -7650,3 +7650,79 @@ supprimer ni réutiliser le cache utilisateur. Cette commande n'a pas encore ét
 lancée : attendre d'abord le vert complet du workflow release `31101887906`,
 installer ses artefacts exacts, puis observer interruption, reprise, octets
 réseau, nettoyage du temporaire et refus d'espace insuffisant.
+
+## Qualification live du placement adaptatif `rc48` du 7 août 2026
+
+La release `v2.7.0-rc48` est entièrement publiée. Son workflow
+`31108536272` est vert sur les deux transactions d'installation et les six
+artefacts Linux, macOS et Windows, dont Windows CUDA. Le tag résout exactement
+vers le runtime `7f1d0bb37824276b0a62f7c303c5a5f4caf83089`, qui verrouille le
+CLI/OpenCode `c7c18eca56f7337573f2dacdd2651f5b7a3fcea7` et le moteur
+`0d03213e7aa8e220d92bcba3d056deb644161ac9`.
+
+Le scheduler VPS a été promu vers l'image exacte
+`local/parallax-scheduler:swarm-v3-0d03213` sans changer le volume
+`parallax-state-qwen3-4b-v3-eb3d4ff` ni l'identité persistante
+`/opt/parallax-runtime/network/scheduler-2fabfbf.key`. Son endpoint reste
+`e88817843267aed089d8aa88bcca70426c3bfe93670289eaddd6abb74009b625` et son
+compteur de restart est nul. Les manifestes actifs du Mac mini et du PC RTX
+portent tous deux exactement `rc48`, le CLI et le moteur ci-dessus et le
+transport natif `0.1.0`; Windows annonce bien `accel=cuda`.
+
+Au cold start, le Mac mini a mesuré une enveloppe utilisable de
+7 024 230 400 octets et a matérialisé `[0,18)` à 32 768 tokens : environ
+4,108 Go de poids et 2,25 Go de KV, sans swap. La RTX a annoncé 13,18 Gio CUDA
+utilisables, tenté `[0,36)` à 32k puis conservé le plafond exact de 28 512
+tokens mesuré après chargement au lieu de le rabattre sur une classe 16k. Les
+deux workers sont READY et sains. La route complète choisie est la RTX seule à
+28 512 tokens; le Mac reste une couverture READY `[0,18)` à 32k. Le lien
+RTX vers Mac a été observé directement par Iroh, avec un RTT variant selon les
+probes live; aucune route de génération ne dépend d'une adresse Tailscale.
+
+Une requête Request Agent volontairement trop grande a ensuite été tokenisée à
+29 013 tokens de prompt et 2 048 tokens de sortie réservée, soit 31 061 tokens.
+Elle a reçu HTTP 400 `context_length_exceeded` avec le maximum live exact de
+28 512, sans démarrer d'inférence ni laisser de réservation. Le scheduler a
+agrégé ce refus puis publié dans la DHT un `ContextCapacityDemandMap` signé par
+son endpoint : une classe exacte à 31 061 tokens, `no_route_rejections=1`, deux
+routes et deux slots souhaités, avec un DDSketch protobuf de précision relative
+1 %, `count=1`, minimum et maximum 31 061. Le record ne contient ni prompt ni
+identifiant de requête.
+
+La même politique que les workers a été rejouée sur le snapshot DHT live, les
+offers et les leases exactes, après le cooldown. Le Mac conserve `[0,18) @
+32768` avec `context_movement_would_remove_last_ready_layer_coverage`. La RTX
+conserve `[0,36) @ 28512` avec
+`context_movement_would_remove_the_last_executable_route`. Ce n'est pas un
+signal ignoré : la demande est valide et appliquée, mais le contrôleur refuse
+de détruire l'unique route disponible pour tenter d'en reconstruire une plus
+longue. Un troisième worker ou une seconde route complète permettra le
+déplacement sans coupure. Sur plus de dix minutes d'observation, aucun reload
+ni changement de génération de placement n'a eu lieu et la route est restée
+READY.
+
+Le Request Agent `rc48`, isolé en loopback sur le Mac mini, a enfin exécuté une
+génération réelle par la DHT, le permis, PREPARE/COMMIT, Iroh et le worker RTX.
+Résultat : HTTP 200, premier événement à 20,282 s, premier contenu à 20,698 s,
+13 événements JSON, `finish_reason=stop`, sentinelle exacte `FABI_RC48_OK` et
+un unique `[DONE]` en 21,629 s. Après la fin, le scheduler exposait zéro route
+active, zéro requête en cours et zéro token réservé sur chaque worker.
+
+Un second client a fermé réellement le flux juste après son premier contenu,
+reçu à 18,791 s. Le contrôle n'a pas attendu un délai arbitraire : il a sondé
+les invariants jusqu'à observer, en 0,241 s, zéro route active, zéro requête et
+zéro réservation, avec les deux workers toujours READY. Cette qualification
+prouve donc également le chemin d'abort `rc48`.
+
+Les constantes IDE locales peuvent maintenant être promues vers `rc48`,
+`c7c18e…` et `0d03213…`. Le helper de labo pointe par défaut vers
+`mac-mini-projet-ia` (`100.76.201.20`) et accepte un socket ControlMaster
+OpenSSH existant. `bash -n` et `git diff --check` passent. La commande de test
+du paquet a d'abord révélé que son TypeScript 5.4 résolvait un `@types/node`
+transitif trop récent et ne typait plus `fs.Dir` comme itérable asynchrone.
+Le paquet épingle maintenant `@types/node 22.19.21`, version cohérente avec
+Electron 39/Node 22, et déclare explicitement la bibliothèque ES2018 requise
+par `for await`. Les 76 tests `fabi-swarm` passent ensuite. Ces changements
+doivent encore être commités et poussés. La qualification n'a pas encore couvert une
+seconde route complète, les kills prefill/decode avec `replan_cold`, deux NAT
+indépendants, le grand E2E Electron/OpenCode ni le device pairing.
