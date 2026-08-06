@@ -7355,3 +7355,87 @@ fin verte des six artefacts, attestations et installateurs. L'inventaire
 non-mutant effectué pendant les builds montre le Mac mini encore actif sur le
 candidat moteur `480c420…`; le worker RTX est arrêté et son GPU est libre. Ce
 n'est pas encore une preuve `rc46` et aucun de ces deux hôtes n'a été modifié.
+
+### Audit du speculative decoding Gradient/Parallax avant qualification
+
+L'article Gradient du 24 novembre 2025 et le papier arXiv `2511.11733`
+présentent bien Decentralized Speculative Decoding (DSD) : un petit drafter
+propose plusieurs tokens pendant que la latence réseau serait autrement perdue,
+le modèle cible les vérifie en une traversée distribuée, puis seul le préfixe
+accepté est commis. Le papier annonce jusqu'à `2,56x` sur HumanEval et `2,59x`
+sur GSM8K, avec `15–20 %` supplémentaires pour sa vérification adaptative. Ces
+résultats de recherche ne signifient toutefois pas que la fonctionnalité est
+exposée dans le dépôt public Parallax.
+
+L'audit du `main` public Gradient exact
+`162354a03234a28cf6e2946e2e0b2203da7c3721` ne trouve aucun coordinateur DSD,
+aucun `DraftID`, aucun batch settlement ni configuration de draft. Au contraire,
+le backend vLLM construit explicitement `VllmConfig(speculative_config=None)` et
+son KV manager avec `use_eagle=False`; les deux constructions SGLang utilisent
+`SpeculativeAlgorithm.NONE`. L'interprétation la plus prudente est donc que
+l'implémentation décrite par Gradient appartient à un prototype, une branche ou
+un build non publié. Elle n'est pas activable dans le `main` public inspecté.
+
+Une seconde passe exhaustive a ensuite construit un miroir de toutes les refs
+GitHub exposées par le serveur : six branches, quatre tags et les têtes de PR,
+soit 386 refs publiques au total. La recherche dans tous les arbres et tout leur
+historique ne trouve aucune implémentation DSD, aucun commit speculative, aucun
+`DraftID` ni protocole draft/verify/accepted-prefix. Toutes les branches et tous
+les tags encore publiés forcent SGLang à `SpeculativeAlgorithm.NONE`; ceux qui
+contiennent vLLM utilisent également `speculative_config=None`, `use_eagle=False`
+et un `scheduled_spec_decode_tokens={}` vide. Ce dernier champ est seulement la
+forme exigée par la structure `SchedulerOutput` de vLLM : le decode correspondant
+programme explicitement un token par requête.
+
+Une ancienne tête de PR conservée (`#3`, support Qwen3-Next) contient du code
+générique EAGLE/MTP copié avec un `ModelRunner` SGLang. Ce code dormant n'était
+pas une intégration Parallax : les `ServerArgs` Parallax n'exposaient aucun
+réglage speculative et `batch_info.py` forçait déjà l'algorithme à `NONE`. De
+même, le tout premier protobuf possédait un tableau `next_token_ids`, mais
+l'encodeur ajoutait exactement un token par requête batchée et le décodeur
+prenait `next_token_ids[index]`; ce n'était pas plusieurs propositions pour une
+même séquence. Enfin, l'issue officielle `#108`, « Speculative decoding », reste
+ouverte, demande encore d'améliorer l'executor pipeline pour EAGLE/MTP et
+n'affiche aucune branche ni PR liée. La conclusion est donc certaine pour tout
+le code Git public accessible au 6 août 2026; elle ne peut naturellement pas
+prouver l'absence d'une branche privée ou d'un binaire interne Gradient.
+
+La V3 Fabi exacte `5114117…` est elle aussi non spéculative. Son protobuf
+`forward.proto` transporte un unique `next_token_id`; le premier shard réinjecte
+uniquement le dernier token commis au tour suivant; vLLM et SGLang conservent les
+mêmes désactivations explicites que l'amont. Le journal Request Agent sait
+persister atomiquement plusieurs tokens déjà produits, mais ce batch de
+persistance n'exécute ni ne vérifie plusieurs candidats dans une traversée du
+modèle. Aucun flag de lancement IDE, CLI, runtime ou labo ne peut donc activer
+DSD aujourd'hui.
+
+Trois anciens commits Fabi existent sur `origin/production`, `origin/dp-mode`
+et `origin/codex/production-swarm-handoff` : `3756704`, `a3b0c7f` et `2be5fec`.
+Ils ajoutent un bon noyau de recherche inspiré de Shard : proposition n-gram,
+petit draft model, acceptation greedy exacte, K adaptatif et coordinateur avec
+un callback `verify_fn`. Ils ne sont pas ancêtres de la V3. Surtout, aucun de ces
+commits ne modifie le protobuf ni les exécuteurs distribués; les tests remplacent
+le modèle cible par une fonction déterministe simulée. Leur propre documentation
+indique que la vérification K+1 distribuée et le rollback KV paginé restent à
+raccorder. La mention « GPU-validated » des phases B à D n'est donc pas une
+preuve reproductible dans les changements Git correspondants. Même sur ces
+anciennes branches, `PARALLAX_SPECULATIVE=1` ne branche pas le prototype sur une
+génération réelle.
+
+Ne pas cherry-pick ni activer ce prototype pendant la qualification stockage
+`rc46`. Une intégration produit devra être une feature séparée et négociée par
+route : capacité annoncée par chaque shard, vérification K+1 réellement causale
+en une traversée, transaction KV commit/rollback idempotente et fenced par epoch
+et `DraftID`, streaming uniquement après commit, abort/replay/replan corrects,
+et preuve de conservation exacte de la distribution pour le sampling. Le
+chemin greedy du prototype ne suffit pas aux températures non nulles. Commencer
+par le draft n-gram sans modèle supplémentaire est cohérent avec le code et la
+pression mémoire de Fabi, mais il ne doit être auto-activé que sur une route WAN
+où une mesure A/B prouve un gain; l'ancien benchmark A40 rapportait lui-même
+`0,66x` en local, donc un ralentissement sans latence inter-nœuds.
+
+Au moment de cet audit, le workflow release `rc46` a déjà validé les transactions
+d'installation, Linux ARM64 CPU, Linux x64 CPU et Darwin ARM64 MLX. Darwin x64,
+Windows CUDA et Linux CUDA construisent encore leurs tarballs. Cette release
+reste correctement non spéculative et sa qualification stockage peut continuer
+indépendamment une fois les six cibles vertes.
