@@ -18,6 +18,7 @@ export function requireContribution(
         reason: string;
         workerState?: string;
         workerUsableMemoryBytes?: number;
+        workerStorageMissingBytes?: number;
     }
 ): ConnectionInfo {
     // Le gate est un second niveau d'admission. Dès que le transport n'est
@@ -44,15 +45,28 @@ export function requireContribution(
         && access.workerState === 'insufficient_memory';
     const contractRejected = access.reason === 'no_eligible_worker'
         && access.workerState === 'rejected';
+    const storageBlocked = access.reason === 'no_eligible_worker'
+        && access.workerState === 'insufficient_storage';
     const usableMemory = access.workerUsableMemoryBytes !== undefined
         ? `${(access.workerUsableMemoryBytes / 1024 ** 3).toFixed(2)} Gio sûrs disponibles`
+        : undefined;
+    const missingStorage = access.workerStorageMissingBytes !== undefined
+        ? access.workerStorageMissingBytes >= 1024 ** 3
+            ? `${(access.workerStorageMissingBytes / 1024 ** 3).toFixed(2)} Gio`
+            : `${Math.ceil(access.workerStorageMissingBytes / 1024 ** 2)} Mio`
         : undefined;
     return {
         ...transport,
         ready: false,
-        reason: definitive ? 'contribution-required' : 'contribution-pending',
+        reason: definitive
+            ? 'contribution-required'
+            : storageBlocked
+                ? 'insufficient-storage'
+                : 'contribution-pending',
         headline: definitive
             ? 'Compte Fabi non reconnu'
+            : storageBlocked
+                ? 'Espace de stockage insuffisant'
             : memoryStandby
                 ? 'Contribution en veille'
                 : contractRejected
@@ -60,6 +74,8 @@ export function requireContribution(
                 : 'Préparation de ta contribution',
         activity: definitive
             ? 'ce compte ne possède aucun worker prêt sur ce modèle'
+            : storageBlocked
+                ? `aucune tranche utile ne tient encore sur ce disque${missingStorage ? ` — libère au moins ${missingStorage}` : ''}`
             : memoryStandby
                 ? `mémoire insuffisante pour une tranche sûre${usableMemory ? ` — ${usableMemory}` : ''}`
             : contractRejected
@@ -73,6 +89,8 @@ export function requireContribution(
                 : 'le scheduler confirme ton worker et son allocation…',
         detail: definitive
             ? 'Reconnecte le worker avec le même compte Fabi que cet IDE.'
+            : storageBlocked
+                ? 'Fabi a déjà nettoyé ses tranches froides sans toucher aux modèles utilisés. Libère de l’espace ou ajoute un volume de cache, puis relance la contribution.'
             : memoryStandby
                 ? 'Ferme une application gourmande si tu veux contribuer maintenant ; le worker réessaiera automatiquement sans perturber les routes actives.'
             : contractRejected

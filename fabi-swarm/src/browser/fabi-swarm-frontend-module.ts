@@ -43,6 +43,9 @@ import { MaestroWidget } from './maestro/maestro-widget';
 import { MaestroConversationWidget, MAESTRO_CONVERSATION_FACTORY_ID } from './maestro/maestro-conversation-widget';
 import { MaestroModeContribution } from './maestro/maestro-mode';
 import { MaestroSurfaceReporter } from './maestro/maestro-surface-reporter';
+import { AIConfigurationContainerWidget } from '@theia/ai-ide/lib/browser/ai-configuration/ai-configuration-widget';
+import { FabiAIConfigurationContainerWidget } from './fabi-ai-configuration-widget';
+import { FabiModelStorageSettingsWidget } from './fabi-model-storage-settings';
 
 // Renomme le panneau IA « AI Chat » → « Fabi AI ». LABEL est le champ statique
 // utilisé par ChatViewWidget pour son titre/caption ; on le change au chargement
@@ -56,6 +59,15 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // Façade frontend : proxy RPC client-aware + Events. Singleton partagé.
     bind(FabiSwarmFrontend).toSelf().inSingletonScope();
     bind(FabiSwarmService).toDynamicValue(ctx => ctx.container.get(FabiSwarmFrontend).service).inSingletonScope();
+
+    // Onglet produit « Fabi » dans les paramètres IA existants. On étend le
+    // conteneur Theia au lieu d'ouvrir une modale parallèle ou de refaire sa DA.
+    bind(FabiModelStorageSettingsWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(ctx => ({
+        id: FabiModelStorageSettingsWidget.ID,
+        createWidget: () => ctx.container.get(FabiModelStorageSettingsWidget)
+    })).inSingletonScope();
+    rebind(AIConfigurationContainerWidget).to(FabiAIConfigurationContainerWidget);
 
     // === CERVEAU IA = OPENCODE, RENDU DANS LE CHAT THEIA (relais) ===
     // FabiCodeAgent est un ChatAgent Theia qui ne porte aucun modèle/prompt :

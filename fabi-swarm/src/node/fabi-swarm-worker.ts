@@ -12,6 +12,7 @@ import { WorkerConnectionProfile, WorkerState, WorkerStage } from '../common/fab
 import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
 import type { RuntimeCommand } from './fabi-runtime-install';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
+import { ModelStorageEnvironment } from './fabi-model-storage';
 
 // Parallax intercepte SIGINT et accorde ensuite 5 s à SIGINT puis 5 s à SIGTERM
 // avant son propre SIGKILL. Fabi attend cette séquence amont avant d'escalader.
@@ -39,6 +40,7 @@ export function spawnWorker(
     swarmId: string,
     profile: WorkerConnectionProfile,
     bootstrap: PreparedWorkerBootstrap,
+    modelStorage: ModelStorageEnvironment,
     onUpdate: (state: WorkerState) => void
 ): WorkerHandle {
     let stopped = false;
@@ -48,7 +50,7 @@ export function spawnWorker(
 
     const startChild = (): void => {
         const args = [...command.argsPrefix, ...buildJoinArgs(peer)];
-        const env = buildWorkerEnv(profile, bootstrap, swarmId);
+        const env = buildWorkerEnv(profile, bootstrap, swarmId, modelStorage);
         const log = openWorkerLog(swarmId);
         // Nettoyer avant le spawn supprime toute course où le nouveau CLI (ou
         // son launch.py) serait pris pour un ancien worker. Le filtre ne cible

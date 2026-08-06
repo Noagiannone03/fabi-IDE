@@ -10,6 +10,7 @@ import { join } from 'path';
 import { getAccountToken } from './fabi-account-token';
 import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
 import { WorkerConnectionProfile } from '../common/fabi-swarm-protocol';
+import { ModelStorageEnvironment } from './fabi-model-storage';
 
 export type Accelerator = 'apple-silicon' | 'cuda' | 'generic';
 
@@ -120,7 +121,8 @@ export function prefixCacheEnabled(): boolean {
 export function buildWorkerEnv(
     profile: WorkerConnectionProfile,
     bootstrap: PreparedWorkerBootstrap,
-    swarmId = 'default'
+    swarmId = 'default',
+    modelStorage?: ModelStorageEnvironment
 ): NodeJS.ProcessEnv {
     const env = { ...process.env };
     const hw = getHardware();
@@ -157,6 +159,10 @@ export function buildWorkerEnv(
     env.FABI_MODEL_REGISTRY_ROOT = bootstrap.rootPath;
     env.FABI_MODEL_REGISTRY_METADATA_URL = profile.modelRegistry.metadataUrl;
     env.FABI_MODEL_REGISTRY_TARGETS_URL = profile.modelRegistry.targetsUrl;
+    if (modelStorage) {
+        env.FABI_MODEL_ARTIFACT_CACHE = modelStorage.primaryPath;
+        env.FABI_MODEL_ARTIFACT_CACHE_ROOTS = JSON.stringify(modelStorage.extraPaths);
+    }
     env.FABI_FORCE_RELAY = '0';
     env.FABI_INITIAL_ALLOCATION_TIMEOUT_SECONDS = '0';
     env.PARALLAX_KEY_PATH = join(bootstrap.dataRoot, 'identity');

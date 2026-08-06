@@ -149,6 +149,20 @@ test('keeps the prompt locked until contribution is authorized', () => {
     assert.match(rejectedContract.detail, /réessaiera automatiquement/);
     assert.doesNotMatch(rejectedContract.activity, /cherche une tranche/);
 
+    const storageBlocked = requireContribution(
+        transport,
+        {
+            allowed: false,
+            reason: 'no_eligible_worker',
+            workerState: 'insufficient_storage',
+            workerStorageMissingBytes: 734_003_200
+        }
+    );
+    assert.equal(storageBlocked.reason, 'insufficient-storage');
+    assert.equal(storageBlocked.headline, 'Espace de stockage insuffisant');
+    assert.match(storageBlocked.activity, /700 Mio/);
+    assert.doesNotMatch(storageBlocked.activity, /cherche une tranche/);
+
     const denied = requireContribution(
         transport,
         { allowed: false, reason: 'invalid_credential' }

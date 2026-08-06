@@ -19,6 +19,7 @@ const PHASE_OF: Record<ConnectionReason, Phase> = {
     'pick-model': 'waiting',
     'need-more-peers': 'waiting',
     'insufficient-capacity': 'waiting',
+    'insufficient-storage': 'waiting',
     'route-busy': 'waiting',
     'contribution-pending': 'connecting',
     'contribution-required': 'error',

@@ -1181,3 +1181,192 @@
     color: var(--theia-descriptionForeground); opacity: 0.78;
     font-size: 12.5px; line-height: 1.6; white-space: pre-wrap;
 }
+
+/* ===================================================================== */
+/* Paramètres IA Fabi : stockage sélectif des modèles.                   */
+/* Conserve la densité et les tokens du panneau de configuration Theia.  */
+/* ===================================================================== */
+.fabi-storage-settings-widget .ai-configuration-widget-content {
+    box-sizing: border-box;
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 28px 34px 36px;
+}
+.fabi-storage-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 22px;
+}
+.fabi-storage-heading h2 {
+    margin: 0 0 6px;
+    color: var(--theia-foreground);
+    font: 600 20px/1.25 var(--theia-ui-font-family);
+}
+.fabi-storage-heading p,
+.fabi-storage-footnote {
+    max-width: 68ch;
+    margin: 0;
+    color: var(--theia-descriptionForeground);
+    font: 400 12px/1.55 var(--theia-ui-font-family);
+}
+.fabi-storage-add {
+    flex: 0 0 auto;
+    display: inline-flex !important;
+    align-items: center;
+    gap: 7px;
+    white-space: nowrap;
+}
+.fabi-storage-add:active,
+.fabi-storage-remove:active { transform: translateY(1px); }
+.fabi-storage-notice,
+.fabi-storage-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border-left: 2px solid var(--theia-focusBorder, #EC5B2B);
+    background: color-mix(in srgb, var(--theia-editorWidget-background) 94%, #EC5B2B 6%);
+    color: var(--theia-foreground);
+    font-size: 12px;
+}
+.fabi-storage-error {
+    border-left-color: var(--theia-errorForeground, #f85149);
+    color: var(--theia-errorForeground, #f85149);
+}
+.fabi-storage-locations {
+    border-top: 1px solid var(--theia-widget-border, var(--theia-input-border));
+}
+.fabi-storage-location {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.25fr) 28px;
+    align-items: center;
+    gap: 22px;
+    min-height: 88px;
+    padding: 15px 4px;
+    border-bottom: 1px solid var(--theia-widget-border, var(--theia-input-border));
+}
+.fabi-storage-location.unavailable { opacity: 0.68; }
+.fabi-storage-location-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 11px;
+    min-width: 0;
+}
+.fabi-storage-location-main > .codicon {
+    margin-top: 2px;
+    color: var(--theia-descriptionForeground);
+    font-size: 17px;
+}
+.fabi-storage-location-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+.fabi-storage-location-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--theia-foreground);
+    font-size: 12px;
+    font-weight: 600;
+}
+.fabi-storage-location-copy code {
+    overflow: hidden;
+    color: var(--theia-descriptionForeground);
+    font: 400 11px/1.35 var(--theia-code-font-family);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fabi-storage-location-message {
+    color: var(--theia-errorForeground, #f85149);
+    font-size: 11px;
+}
+.fabi-storage-state {
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+}
+.fabi-storage-state.ready {
+    background: color-mix(in srgb, var(--theia-testing-iconPassed, #3fb950) 12%, transparent);
+    color: var(--theia-testing-iconPassed, #3fb950);
+}
+.fabi-storage-state.offline {
+    background: color-mix(in srgb, var(--theia-errorForeground, #f85149) 10%, transparent);
+    color: var(--theia-errorForeground, #f85149);
+}
+.fabi-storage-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(72px, 1fr));
+    gap: 14px;
+}
+.fabi-storage-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+.fabi-storage-stat span {
+    color: var(--theia-descriptionForeground);
+    font-size: 10px;
+    line-height: 1.2;
+}
+.fabi-storage-stat strong {
+    overflow: hidden;
+    color: var(--theia-foreground);
+    font: 600 12px/1.25 var(--theia-code-font-family);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fabi-storage-remove {
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--theia-descriptionForeground);
+    cursor: pointer;
+}
+.fabi-storage-remove:hover:not(:disabled) {
+    background: var(--theia-list-hoverBackground);
+    color: var(--theia-errorForeground, #f85149);
+}
+.fabi-storage-remove:focus-visible,
+.fabi-storage-add:focus-visible {
+    outline: 1px solid var(--theia-focusBorder, #EC5B2B);
+    outline-offset: 2px;
+}
+.fabi-storage-footnote { margin-top: 14px; }
+.fabi-storage-skeleton {
+    display: grid;
+    gap: 10px;
+    padding: 12px 0;
+}
+.fabi-storage-skeleton span {
+    display: block;
+    height: 18px;
+    background: var(--theia-editorWidget-background);
+    opacity: 0.7;
+}
+.fabi-storage-skeleton span:nth-child(2) { width: 82%; }
+.fabi-storage-skeleton span:nth-child(3) { width: 64%; }
+@media (max-width: 860px) {
+    .fabi-storage-settings-widget .ai-configuration-widget-content { padding: 22px 18px 30px; }
+    .fabi-storage-heading { flex-direction: column; gap: 14px; }
+    .fabi-storage-location { grid-template-columns: minmax(0, 1fr) 28px; gap: 12px; }
+    .fabi-storage-stats { grid-column: 1 / -1; grid-row: 2; }
+    .fabi-storage-remove { grid-column: 2; grid-row: 1; }
+}
+@media (max-width: 560px) {
+    .fabi-storage-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .fabi-storage-add,
+    .fabi-storage-remove { transition: none; }
+}

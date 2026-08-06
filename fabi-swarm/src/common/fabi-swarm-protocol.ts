@@ -156,6 +156,7 @@ export type ConnectionReason =
     | 'connecting'             // handshake / join / découverte
     | 'need-more-peers'        // pas assez de nœuds pour bootstrapper
     | 'insufficient-capacity'  // assez de nœuds mais pipeline impossible
+    | 'insufficient-storage'   // aucune tranche locale ne tient après GC sûr
     | 'route-busy'             // pipeline chargé, capacité momentanément réservée
     | 'contribution-pending'   // pipeline prêt, admission du compte en confirmation
     | 'contribution-required'  // aucun worker prêt de ce compte n'est reconnu
@@ -223,6 +224,8 @@ export interface FabiSwarmClient {
     onConnectionChanged(info: ConnectionInfo): void;
     /** Métriques live de la machine + du worker (moniteur de perfs). */
     onMetricsChanged(metrics: FabiMetrics): void;
+    /** Emplacements de cache autorisés et état de leur volume. */
+    onModelStorageChanged(settings: ModelStorageSettings): void;
 }
 
 /** Un process (ou groupe de process de même nom) qui consomme. */
@@ -284,6 +287,30 @@ export interface FabiMetrics {
     topProcs: FabiProcInfo[];
 }
 
+/** Un cache de poids explicitement autorisé par l'utilisateur. */
+export interface ModelStorageLocation {
+    /** Chemin absolu transmis au moteur. */
+    path: string;
+    kind: 'primary' | 'extra';
+    /** Le volume est actuellement monté et le dossier accessible. */
+    available: boolean;
+    writable: boolean;
+    totalBytes?: number;
+    freeBytes?: number;
+    /** Réserve de sécurité réellement appliquée par le moteur sur ce volume. */
+    minimumFreeBytes?: number;
+    /** Poids/projections appartenant à Fabi sur cet emplacement. */
+    cacheBytes: number;
+    message?: string;
+}
+
+/** Snapshot des réglages de stockage du moteur local. */
+export interface ModelStorageSettings {
+    locations: ModelStorageLocation[];
+    /** Une modification attend la fin du tour local avant de relancer le worker. */
+    workerRestartPending: boolean;
+}
+
 /**
  * Service backend (Node) : il seul peut spawn le worker Parallax (sous-process
  * Python), interroger le registry/scheduler et installer le runtime. Le frontend
@@ -335,4 +362,10 @@ export interface FabiSwarmService {
 
     /** Dernière photo de métriques (pour l'affichage initial). */
     getMetrics(): Promise<FabiMetrics | undefined>;
+    /** Lit les emplacements de cache autorisés et leur capacité réelle. */
+    getModelStorageSettings(): Promise<ModelStorageSettings>;
+    /** Autorise un dossier choisi nativement ; Fabi y crée son sous-dossier privé. */
+    addModelStorageLocation(parentPath: string): Promise<ModelStorageSettings>;
+    /** Retire l'autorisation sans supprimer le moindre poids. */
+    removeModelStorageLocation(path: string): Promise<ModelStorageSettings>;
 }

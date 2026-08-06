@@ -4,7 +4,7 @@ import { RemoteConnectionProvider, ServiceConnectionProvider } from '@theia/core
 import {
     FabiSwarmService, FabiSwarmClient, FABI_SWARM_SERVICE_PATH,
     SwarmEntry, WorkerState, RuntimeStatus, ConnectionInfo, FabiMetrics,
-    RequestAgentActivity, RequestAgentState
+    RequestAgentActivity, RequestAgentState, ModelStorageSettings
 } from '../common/fabi-swarm-protocol';
 
 /**
@@ -26,6 +26,7 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     protected readonly runtimeEmitter = new Emitter<RuntimeStatus>();
     protected readonly connectionEmitter = new Emitter<ConnectionInfo>();
     protected readonly metricsEmitter = new Emitter<FabiMetrics>();
+    protected readonly modelStorageEmitter = new Emitter<ModelStorageSettings>();
 
     /** Dernières valeurs poussées (pour un rendu immédiat à l'attache). */
     swarms: SwarmEntry[] = [];
@@ -36,6 +37,7 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     runtime: RuntimeStatus | undefined;
     connection: ConnectionInfo | undefined;
     metrics: FabiMetrics | undefined;
+    modelStorage: ModelStorageSettings | undefined;
 
     readonly onSwarmsChangedEvent: Event<SwarmEntry[]> = this.swarmsEmitter.event;
     readonly onWorkerChangedEvent: Event<WorkerState> = this.workerEmitter.event;
@@ -46,6 +48,7 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     readonly onRuntimeChangedEvent: Event<RuntimeStatus> = this.runtimeEmitter.event;
     readonly onConnectionChangedEvent: Event<ConnectionInfo> = this.connectionEmitter.event;
     readonly onMetricsChangedEvent: Event<FabiMetrics> = this.metricsEmitter.event;
+    readonly onModelStorageChangedEvent: Event<ModelStorageSettings> = this.modelStorageEmitter.event;
 
     constructor(
         @inject(RemoteConnectionProvider) connectionProvider: ServiceConnectionProvider
@@ -86,5 +89,9 @@ export class FabiSwarmFrontend implements FabiSwarmClient {
     onMetricsChanged(metrics: FabiMetrics): void {
         this.metrics = metrics;
         this.metricsEmitter.fire(metrics);
+    }
+    onModelStorageChanged(settings: ModelStorageSettings): void {
+        this.modelStorage = settings;
+        this.modelStorageEmitter.fire(settings);
     }
 }

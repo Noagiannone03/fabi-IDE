@@ -5,7 +5,8 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import {
     FabiSwarmService, FabiSwarmClient, SwarmEntry, WorkerState, RuntimeStatus,
-    ConnectionInfo, FABI_REGISTRY_URL, RequestAgentActivity, RequestAgentState
+    ConnectionInfo, FABI_REGISTRY_URL, RequestAgentActivity, RequestAgentState,
+    ModelStorageSettings
 } from '../common/fabi-swarm-protocol';
 import { spawnWorker, fetchSchedulerPeer, WorkerHandle } from './fabi-swarm-worker';
 import { FabiRuntimeManager } from './fabi-runtime-manager';
@@ -20,6 +21,7 @@ import {
 } from './fabi-request-agent';
 import type { RuntimeCommand } from './fabi-runtime-install';
 import { shouldStartMachineWorker } from '../common/fabi-worker-host-policy';
+import { FabiModelStorage } from './fabi-model-storage';
 
 const SWARM_STATE_PATH = join(homedir(), '.config', 'fabi', 'swarm-state.json');
 
@@ -41,6 +43,7 @@ interface ContributionAccess {
     maxConcurrentRequests: number;
     workerState?: string;
     workerUsableMemoryBytes?: number;
+    workerStorageMissingBytes?: number;
 }
 
 const UNKNOWN_CONTRIBUTION: ContributionAccess = {
@@ -78,6 +81,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
 
     protected client: FabiSwarmClient | undefined;
     protected readonly runtime = new FabiRuntimeManager();
+    protected readonly modelStorage = new FabiModelStorage();
     protected feed: RegistryFeed | undefined;
 
     protected handle: WorkerHandle | undefined;
@@ -102,6 +106,8 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected contributionCheckAttempts = 0;
     protected contributionRetry: ReturnType<typeof setTimeout> | undefined;
     protected contributionEpoch = 0;
+    protected storageRevision = 0;
+    protected storageRestartInFlight = false;
 
     protected metrics: FabiMetricsCollector | undefined;
 
@@ -121,6 +127,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             if (m) {
                 client.onMetricsChanged(m);
             }
+            void this.publishModelStorage();
             this.tryAutoReconnect(this.feed?.snapshot() ?? []);
         }
     }
@@ -142,6 +149,111 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     async getMetrics(): Promise<FabiMetrics | undefined> {
         this.ensureMetrics();
         return this.metrics?.getLatest();
+    }
+
+    async getModelStorageSettings(): Promise<ModelStorageSettings> {
+        return this.modelStorage.snapshot();
+    }
+
+    async addModelStorageLocation(parentPath: string): Promise<ModelStorageSettings> {
+        await this.modelStorage.addParent(parentPath);
+        return this.modelStorageChanged();
+    }
+
+    async removeModelStorageLocation(path: string): Promise<ModelStorageSettings> {
+        await this.modelStorage.remove(path);
+        return this.modelStorageChanged();
+    }
+
+    protected async modelStorageChanged(): Promise<ModelStorageSettings> {
+        this.storageRevision += 1;
+        const shouldRestart = !!this.handle && !!this.activeSwarm;
+        this.modelStorage.setRestartPending(shouldRestart);
+        const snapshot = await this.publishModelStorage();
+        if (shouldRestart) {
+            void this.tryApplyModelStorageRestart();
+        }
+        return snapshot;
+    }
+
+    protected async publishModelStorage(): Promise<ModelStorageSettings> {
+        const snapshot = await this.modelStorage.snapshot();
+        this.client?.onModelStorageChanged(snapshot);
+        return snapshot;
+    }
+
+    /**
+     * Recharge uniquement le worker de contribution. Une génération locale en
+     * cours constitue la preuve d'activité : aucun timer arbitraire ne peut la
+     * couper. Le Request Agent/OpenCode reste vivant.
+     */
+    protected async tryApplyModelStorageRestart(): Promise<void> {
+        if (!this.modelStorageRestartIsPending() || this.storageRestartInFlight
+            || this.switching || this.requestAgentActivity.activeRequests.length > 0) {
+            return;
+        }
+        const swarm = this.activeSwarm;
+        const previous = this.handle;
+        if (!swarm || !previous || !swarm.workerConnection) {
+            this.modelStorage.setRestartPending(false);
+            await this.publishModelStorage();
+            return;
+        }
+        const revision = this.storageRevision;
+        this.storageRestartInFlight = true;
+        try {
+            const command = this.runtime.findParallax();
+            if (!command) {
+                throw new Error('Moteur Fabi absent pendant l’application du stockage.');
+            }
+            let peer = swarm.schedulerPeer ?? undefined;
+            if (!peer) {
+                peer = await fetchSchedulerPeer(swarm.schedulerUrl);
+            }
+            if (!peer) {
+                throw new Error('Aucun peer scheduler pour appliquer le stockage.');
+            }
+            const bootstrap = await prepareWorkerBootstrap(swarm.workerConnection);
+            if (this.activeSwarm?.id !== swarm.id || this.handle !== previous) {
+                return;
+            }
+            await previous.stop();
+            if (this.handle === previous) {
+                this.handle = undefined;
+            }
+            if (this.activeSwarm?.id !== swarm.id) {
+                return;
+            }
+            this.setWorkerState({ kind: 'starting', swarmId: swarm.id });
+            this.handle = spawnWorker(
+                command,
+                peer,
+                swarm.id,
+                swarm.workerConnection,
+                bootstrap,
+                this.modelStorage.environment(),
+                state => this.setWorkerState(state)
+            );
+        } catch (error) {
+            this.setWorkerState({
+                kind: 'error',
+                swarmId: swarm.id,
+                message: error instanceof Error ? error.message : String(error)
+            });
+        } finally {
+            this.storageRestartInFlight = false;
+            if (revision === this.storageRevision) {
+                this.modelStorage.setRestartPending(false);
+            }
+            await this.publishModelStorage();
+            if (this.modelStorageRestartIsPending()) {
+                void this.tryApplyModelStorageRestart();
+            }
+        }
+    }
+
+    protected modelStorageRestartIsPending(): boolean {
+        return this.modelStorage.isRestartPending();
     }
 
     protected ensureFeed(): void {
@@ -352,6 +464,10 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 workerUsableMemoryBytes: typeof raw.worker_usable_memory_bytes === 'number'
                     && Number.isFinite(raw.worker_usable_memory_bytes)
                     ? raw.worker_usable_memory_bytes
+                    : undefined,
+                workerStorageMissingBytes: typeof raw.worker_storage_missing_bytes === 'number'
+                    && Number.isFinite(raw.worker_storage_missing_bytes)
+                    ? raw.worker_storage_missing_bytes
                     : undefined
             };
         } finally {
@@ -387,6 +503,9 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected setRequestAgentActivity(activity: RequestAgentActivity): void {
         this.requestAgentActivity = activity;
         this.client?.onRequestAgentActivityChanged(activity);
+        if (activity.activeRequests.length === 0) {
+            void this.tryApplyModelStorageRestart();
+        }
     }
 
     protected resetRequestAgentActivity(): void {
@@ -702,6 +821,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 swarmId,
                 swarm.workerConnection,
                 bootstrap,
+                this.modelStorage.environment(),
                 s => this.setWorkerState(s)
             );
             this.launchRequestAgent(requestAgent, swarm, bootstrap);
@@ -709,6 +829,9 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             this.setWorkerState({ kind: 'error', swarmId, message: e instanceof Error ? e.message : String(e) });
         } finally {
             this.switching = false;
+            if (this.modelStorageRestartIsPending()) {
+                void this.tryApplyModelStorageRestart();
+            }
         }
         return this.workerState;
     }
@@ -716,11 +839,13 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     async disconnect(): Promise<WorkerState> {
         this.autoReconnectSettled = true;
         this.clearPersistedSwarmId();
+        this.modelStorage.setRestartPending(false);
         await this.stopRequestAgent();
         if (this.handle) {
             await this.handle.stop();
             this.handle = undefined;
         }
+        void this.publishModelStorage();
         this.setActiveSwarm(undefined);
         this.setWorkerState({ kind: 'stopped' });
         return this.workerState;
@@ -744,6 +869,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     async onStop(): Promise<void> {
         this.cancelContributionCheck();
         this.metrics?.stop();
+        this.modelStorage.setRestartPending(false);
         for (const waiter of this.readyWaiters) {
             clearTimeout(waiter.timer);
             waiter.reject(new Error('Fabi IDE est en cours de fermeture.'));
