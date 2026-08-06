@@ -7333,3 +7333,25 @@ NAT indépendants et le device pairing multi-machine. Le nettoyage des révision
 du cache Hugging Face partagé reste volontairement hors de l'automatisation tant
 qu'un cache HF possédé par Fabi et sa politique officielle de suppression ne
 sont pas qualifiés.
+
+### Publication candidate stockage `rc46`
+
+La CI Native network `31092754728` du moteur
+`5114117a0624848a3448f06387cd571c9d1dd1b5` est finalement entièrement verte
+sur Ubuntu, macOS 15 et Windows. Chaque cible a reconstruit puis importé son
+wheel ABI3 et rejoué les contrats V3, trust, découverte, shadow et stockage.
+
+Le CLI `fabi-cli/dev` épingle maintenant ce moteur au commit
+`b86c6f504265810b4e14a01ccaf7cebc0440838c`. Ses 63 tests swarm, le typecheck
+du paquet et le hook monorepo à quatre tâches passent. Le runtime `fabi/main`
+`1c47da0e0bc4f622225472823e012c3709027855` verrouille exactement ce CLI et le
+moteur `5114117…`. Le préflight du lock, la transaction POSIX, la
+neutralisation des chemins et la CI transactionnelle Linux/Windows
+`31093293305` sont verts.
+
+Le tag annoté `v2.7.0-rc46` est publié. Son workflow release `31093349468` est
+en cours : ne pas promouvoir les constantes IDE ni installer le labo avant la
+fin verte des six artefacts, attestations et installateurs. L'inventaire
+non-mutant effectué pendant les builds montre le Mac mini encore actif sur le
+candidat moteur `480c420…`; le worker RTX est arrêté et son GPU est libre. Ce
+n'est pas encore une preuve `rc46` et aucun de ces deux hôtes n'a été modifié.
