@@ -7585,3 +7585,66 @@ stockage. Restent ensuite l'E2E Electron/OpenCode permissions-outils-modificatio
 de fichiers, le changement de modèle, la seconde route complète et les kills
 prefill/decode avec `replan_cold`, deux NAT indépendants et le device pairing
 multi-machine.
+
+## Capacité KV exacte et préparation Xet du 6 août 2026
+
+Le redémarrage consécutif à la rotation du credential a fourni une nouvelle
+baseline utile. La RTX est restée READY sur `[0,36)` avec 23 264 tokens KV et
+la route complète 16 384 est demeurée `route_ready`. Le Mac mini avait d'abord
+chargé `[0,26)` à 16 384. Après le cooldown de placement de dix minutes, la
+politique uniforme a préféré davantage de couverture et proposé `[0,33)`.
+L'executor MLX chargé a mesuré un plafond réel de 12 960 tokens pour ce span.
+La sécurité a correctement refusé le contrat 16 384, mais la fonction de
+réconciliation a ensuite arrondi ce plafond au palier 8 192. Le Mac a donc
+publié 10 432 tokens KV après allocation, sans jamais abaisser la route RTX
+16 384 ni laisser une réservation active.
+
+Cette observation sépare deux sujets. Le refus runtime est l'invariant correct :
+vLLM et MLX ne connaissent leur workspace et leur KV disponibles qu'après le
+chargement effectif. En revanche, les classes 4k/8k/16k/32k du manifeste sont
+des buckets cumulatifs de demande et ne doivent jamais devenir des limites de
+machine. Petals, relu au commit officiel `22afba6`, choisit un nombre fixe de
+blocs puis équilibre le débit minimal par couche; il ne fournit pas
+d'optimisation conjointe span/contexte qui résoudrait ce cas à notre place.
+
+Le commit moteur
+`9bfae652d712c743f9982519e2a9d54c9feff1b1` (`fix(v3): preserve measured KV
+context ceiling`) conserve désormais la valeur exacte retournée par le backend.
+Une mesure 30 752 reste 30 752 au lieu de tomber à 16 384; une valeur sous le
+minimum utile échoue toujours fermée. La lease BUILDING est remplacée avec sa
+géométrie recalculée, puis le même backend doit encore la vérifier avant READY.
+Les 316 tests protocole/placement ciblés et la suite complète `887 passed, 7
+skipped` passent, ainsi que Ruff et `git diff --check`. Le workflow Native
+network `31103630639` est encore en cours : ce commit n'est donc pas encore un
+runtime qualifié et n'a pas été installé dans le labo.
+
+Le design `FABI-CONTEXT-AWARE-PLACEMENT-V3.md` distingue maintenant trois
+plans : bornes réellement qualifiées du modèle, histogramme de demande et
+capacités exactes des workers. La future demande ne doit pas dépendre de
+frontières produit inventées. La base retenue pour la prochaine évolution est
+un histogramme exponentiel borné et fusionnable conforme au modèle stable
+[OpenTelemetry ExponentialHistogram](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exponentialhistogram),
+ou la bibliothèque maintenue
+[DDSketch](https://github.com/DataDog/sketches-py) si son format est choisi.
+Le placement comparera les quantiles observés, les plafonds KV exacts présents
+et les limites du modèle. Les cooldowns/hystérésis ne servent qu'à amortir un
+déplacement de poids; ils ne déterminent jamais une capacité, une panne ou la
+fin d'une génération.
+
+Le scheduler actif ne possède actuellement aucune variable
+`FABI_SWARM_V3_DEMAND_*`; son statut expose `context_demand=null`. Les workers
+ne consomment donc pas encore le score shadow, conformément à l'interdiction
+de l'activer avant comparaison live. L'ordre reste : publier et pinner ce signal
+en shadow sans rechargement, comparer la baseline et la recommandation sur Mac
+mini + RTX, simuler churn/pression, puis seulement autoriser une politique
+multi-contexte à déplacer des spans.
+
+Pour la qualification réseau du stockage, le PC expose en plus de `D:` un
+volume `E:` d'environ 500 Go libres. Le helper de labo accepte maintenant
+`FABI_LAB_WINDOWS_HF_HOME` en plus de
+`FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE`. Il pourra lancer `rc47` avec deux
+racines neuves sur `E:` et prouver un vrai téléchargement Xet interrompu, sans
+supprimer ni réutiliser le cache utilisateur. Cette commande n'a pas encore été
+lancée : attendre d'abord le vert complet du workflow release `31101887906`,
+installer ses artefacts exacts, puis observer interruption, reprise, octets
+réseau, nettoyage du temporaire et refus d'espace insuffisant.

@@ -142,11 +142,18 @@ context_classes
 prefill_chunk_profiles
 ```
 
-Les classes sont dérivées de limites communes et des bornes qualifiées du modèle, puis dédupliquées.
-Exemple possible pour une variante native 40 960 : `8 192, 16 384, 32 768, 40 960`. Une variante
-YaRN qualifiée jusqu'à 131 072 peut ajouter `65 536, 131 072`.
+Les limites signées décrivent uniquement des bornes réellement qualifiées et, si nécessaire, des
+objectifs de service stables. Elles ne décrivent jamais la capacité d'une machine. La lease d'un
+worker annonce toujours son plafond KV exact mesuré et aligné sur les pages de son backend :
+`10 432`, `12 960` ou `23 264` sont des valeurs valides qui ne doivent pas être arrondies à une
+puissance de deux.
 
-Les classes ne sont pas des allocations séparées. Elles servent à :
+Une échelle compacte comme `8 192, 16 384, 32 768, 40 960` peut rester utile pour afficher des SLO
+et comparer des scénarios reproductibles, mais elle n'est ni une allocation, ni un mécanisme de
+repli mémoire, ni la représentation primaire de la demande. Modifier la distribution des requêtes
+ou connecter un nouveau worker ne doit pas changer le manifeste signé ni le `ModelSwarmId`.
+
+Ces objectifs ne sont pas des allocations séparées. Ils servent à :
 
 - compresser la télémétrie de demande ;
 - exprimer les déficits de capacité ;
@@ -156,7 +163,7 @@ Les classes ne sont pas des allocations séparées. Elles servent à :
 Une capacité dans une classe haute compte aussi pour toutes les classes inférieures. Les calculs de
 déficit doivent donc être cumulatifs afin de ne pas compter deux fois la même route.
 
-## 6. `CapacityDemandMap` multidimensionnel
+## 6. Demande multidimensionnelle sans seuils matériels prédéfinis
 
 Le tableau uniforme actuel par couche devient un résumé versionné par :
 
@@ -164,7 +171,22 @@ Le tableau uniforme actuel par couche devient un résumé versionné par :
 ModelSwarmId × région réseau × classe de contexte
 ```
 
-Pour chaque classe, il contient au minimum :
+La distribution des tailles de requête est transportée par un histogramme exponentiel borné et
+fusionnable, suivant le modèle stable `ExponentialHistogram` d'OpenTelemetry (ou une bibliothèque
+DDSketch maintenue si son format de sérialisation est retenu). Cela évite des frontières produit
+inventées : la résolution s'adapte à la plage observée, plusieurs résumés régionaux se fusionnent,
+et une réduction de résolution conserve un sous-ensemble exact des frontières dans le cas
+OpenTelemetry.
+
+Le planificateur dérive à chaque snapshot un petit ensemble de points de décision à partir :
+
+- des quantiles de demande observés et de la longue traîne ;
+- des plafonds KV exacts annoncés par les workers READY/BUILDING ;
+- des limites natives ou étendues réellement qualifiées du modèle ;
+- des objectifs de service explicitement garantis.
+
+Un point transitoire comme `21 758` ou `30 752` peut donc influencer le score sans devenir une
+constante de code, un nouveau manifeste ou un quota physique. Le résumé conserve au minimum :
 
 - taux d'arrivée admis et légitime ;
 - demandes en file et refus `no_context_route` ;
@@ -183,9 +205,9 @@ de requêtes. Les poids finaux sont agrégés, bornés par crédit et publiés s
 
 Les compteurs sont agrégés sans prompt ni identité utilisateur. Ils sont bornés par compte et par
 crédit afin qu'un attaquant ne puisse pas provoquer mille rechargements avec de fausses requêtes
-128k. Une esquisse quantile fusionnable telle que DDSketch peut conserver la distribution exacte
-des longueurs en télémétrie ; le protocole de placement consomme ensuite les compteurs des classes
-stables.
+128k. L'histogramme ne déclenche jamais seul un mouvement : le protocole convertit ses quantiles en
+conseil expirant, puis exige toujours gain de route complète, hystérésis, drain et validation
+mémoire du backend.
 
 Ce résumé est un conseil signé/expirable. Il ne donne aucun ordre de couches. Les workers restent
 les auteurs de leur placement.
@@ -358,7 +380,8 @@ protobuf 7.x.
 2. introduire les classes cumulatives et le résumé de demande versionné ;
 3. calculer la frontière locale span/contexte/concurrence ;
 4. construire le simulateur et l'oracle CP-SAT ;
-5. remplacer le `CapacityDemandMap.uniform` par le déficit multi-classes ;
+5. remplacer le `CapacityDemandMap.uniform` par un déficit calculé sur l'histogramme adaptatif, les
+   capacités KV exactes présentes et les objectifs de service signés ;
 6. ajouter l'évaluation exacte des meilleurs candidats et le coût de churn ;
 7. ajouter le coût d'opportunité de contexte et l'affinité KV au route planner ;
 8. valider en shadow V3, puis sur Mac local + Mac mini + RTX ;
@@ -379,5 +402,6 @@ protobuf 7.x.
 - [llm-d — simulateur d'inférence maintenu](https://github.com/llm-d/llm-d-inference-sim)
 - [Qwen3-4B — contexte natif et YaRN qualifié](https://huggingface.co/Qwen/Qwen3-4B)
 - [DDSketch — quantiles distribués fusionnables](https://arxiv.org/abs/1908.10693)
+- [OpenTelemetry — modèle stable ExponentialHistogram et perfect subsetting](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exponentialhistogram)
 - [OR-Tools CP-SAT — solveur de contraintes](https://developers.google.com/optimization/cp/)
 - [OpenCode — overflow après sorties d'outils](https://github.com/anomalyco/opencode/issues/10634)

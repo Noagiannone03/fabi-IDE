@@ -20,6 +20,7 @@ vps_host="${FABI_LAB_VPS_SSH:-vps}"
 mac_ssh="${FABI_LAB_MAC_SSH:-gmbh@100.82.190.118}"
 win_ssh="${FABI_LAB_WINDOWS_SSH:-gmbhl@100.105.234.82}"
 win_model_cache="${FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE:-}"
+win_hf_home="${FABI_LAB_WINDOWS_HF_HOME:-}"
 
 usage() {
   cat >&2 <<'EOF'
@@ -33,6 +34,8 @@ Environment overrides:
   FABI_LAB_ENGINE_SHA    optional committed engine candidate under runtime-candidates
   FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE
                          optional absolute cache root for a Windows storage qualification
+  FABI_LAB_WINDOWS_HF_HOME
+                         optional absolute HF cache root for a Windows network-download qualification
 EOF
 }
 
@@ -177,7 +180,9 @@ run_windows() {
   local win_action="$1"
   local encoded
   local win_model_cache_b64
+  local win_hf_home_b64
   win_model_cache_b64="$(printf '%s' "$win_model_cache" | base64 | tr -d '\r\n')"
+  win_hf_home_b64="$(printf '%s' "$win_hf_home" | base64 | tr -d '\r\n')"
   encoded="$(
     iconv -f UTF-8 -t UTF-16LE <<PS | base64 | tr -d '\r\n'
 \$ErrorActionPreference = "Stop"
@@ -187,6 +192,9 @@ run_windows() {
 \$EngineSha = "${FABI_LAB_ENGINE_SHA:-}"
 \$ModelArtifactCache = [Text.Encoding]::UTF8.GetString(
   [Convert]::FromBase64String("$win_model_cache_b64")
+)
+\$RequestedHfHome = [Text.Encoding]::UTF8.GetString(
+  [Convert]::FromBase64String("$win_hf_home_b64")
 )
 \$Runtime = Join-Path \$env:LOCALAPPDATA "fabi\\runtime"
 \$RegistryRoot = Join-Path \$env:LOCALAPPDATA "fabi\\trust\\model-registry-root-7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce.json"
@@ -259,7 +267,12 @@ function Start-FabiWorker {
     \$quotedLocalAppData = \$env:LOCALAPPDATA.Replace("'", "''")
     \$quotedAppData = \$env:APPDATA.Replace("'", "''")
     \$quotedAccountToken = (Join-Path \$UserHome ".config\\fabi\\account-token").Replace("'", "''")
-    \$quotedHfHome = (Join-Path \$UserHome ".cache\\huggingface").Replace("'", "''")
+    \$HfHome = if (\$RequestedHfHome) {
+      \$RequestedHfHome
+    } else {
+      Join-Path \$UserHome ".cache\\huggingface"
+    }
+    \$quotedHfHome = \$HfHome.Replace("'", "''")
     \$quotedModelArtifactCache = \$ModelArtifactCache.Replace("'", "''")
     \$BootstrapLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-task-bootstrap.log"
     Remove-Item -LiteralPath \$BootstrapLog -Force -ErrorAction SilentlyContinue
