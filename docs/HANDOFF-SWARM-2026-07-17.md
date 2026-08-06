@@ -7615,8 +7615,10 @@ minimum utile échoue toujours fermée. La lease BUILDING est remplacée avec sa
 géométrie recalculée, puis le même backend doit encore la vérifier avant READY.
 Les 316 tests protocole/placement ciblés et la suite complète `887 passed, 7
 skipped` passent, ainsi que Ruff et `git diff --check`. Le workflow Native
-network `31103630639` est encore en cours : ce commit n'est donc pas encore un
-runtime qualifié et n'a pas été installé dans le labo.
+network `31103630639` est entièrement vert sur Ubuntu, macOS 15 et Windows :
+wheel ABI3 reconstruit/importé, DHT native et contrats V3 passent sur chaque
+OS. Ce commit n'est toutefois pas encore emballé dans un runtime immuable et
+n'a pas été installé dans le labo.
 
 Le design `FABI-CONTEXT-AWARE-PLACEMENT-V3.md` distingue maintenant trois
 plans : bornes réellement qualifiées du modèle, histogramme de demande et
