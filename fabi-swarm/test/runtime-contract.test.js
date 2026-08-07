@@ -383,6 +383,25 @@ test('activates only managed runtime paths and rolls back atomically', async () 
         return staging;
     };
     try {
+        const releaseShape = makeStaging('release-shape');
+        writeFileSync(join(releaseShape, 'LICENSE'), 'license');
+        writeFileSync(join(releaseShape, 'NOTICE'), 'notice');
+        writeFileSync(
+            join(releaseShape, '.fabi-managed-paths'),
+            'bin\nruntime\nMANIFEST\nLICENSE\nNOTICE\n.fabi-managed-paths\n'
+        );
+        assert.deepEqual(managedRuntimePathsIn(releaseShape), [
+            'bin', 'runtime', 'MANIFEST', 'LICENSE', 'NOTICE', '.fabi-managed-paths'
+        ]);
+
+        const stateOverwrite = makeStaging('state-overwrite');
+        mkdirSync(join(stateOverwrite, 'network'));
+        writeFileSync(
+            join(stateOverwrite, '.fabi-managed-paths'),
+            'bin\nruntime\nMANIFEST\nnetwork\n.fabi-managed-paths\n'
+        );
+        assert.throws(() => managedRuntimePathsIn(stateOverwrite), /invalide/);
+
         const first = makeStaging('first');
         assert.deepEqual(managedRuntimePathsIn(first), [
             'bin', 'runtime', 'MANIFEST', '.fabi-managed-paths'

@@ -272,7 +272,15 @@ export function requestAgentBinaryIn(root: string): string | undefined {
     return requestAgentCommandIn(root)?.binary;
 }
 
-const MANAGED_RUNTIME_PATHS = ['bin', 'runtime', 'MANIFEST', '.fabi-managed-paths'];
+const REQUIRED_MANAGED_RUNTIME_PATHS = [
+    'bin', 'runtime', 'MANIFEST', '.fabi-managed-paths'
+] as const;
+const ALLOWED_MANAGED_RUNTIME_PATHS = new Set([
+    ...REQUIRED_MANAGED_RUNTIME_PATHS,
+    // Documentation légale livrée par le runtime, sans état ni exécutable.
+    'LICENSE',
+    'NOTICE'
+]);
 
 /** Valide le contrat de mise à jour : aucun état utilisateur ne peut devenir géré. */
 export function managedRuntimePathsIn(stagingRoot: string): string[] {
@@ -284,18 +292,18 @@ export function managedRuntimePathsIn(stagingRoot: string): string[] {
         .split(/\r?\n/)
         .map(line => line.trim())
         .filter(Boolean);
-    if (
-        paths.length !== MANAGED_RUNTIME_PATHS.length
-        || new Set(paths).size !== paths.length
-        || MANAGED_RUNTIME_PATHS.some(required => !paths.includes(required))
-    ) {
+    if (new Set(paths).size !== paths.length) {
+        throw new Error('chemins runtime gérés invalides : doublon');
+    }
+    if (REQUIRED_MANAGED_RUNTIME_PATHS.some(required => !paths.includes(required))) {
         throw new Error(
-            `chemins runtime gérés invalides : attendu ${MANAGED_RUNTIME_PATHS.join(', ')}`
+            `chemins runtime gérés invalides : requis ${REQUIRED_MANAGED_RUNTIME_PATHS.join(', ')}`
         );
     }
     for (const relative of paths) {
         if (
-            isAbsolute(relative)
+            !ALLOWED_MANAGED_RUNTIME_PATHS.has(relative)
+            || isAbsolute(relative)
             || relative === '.'
             || relative === '..'
             || relative.includes('/')
