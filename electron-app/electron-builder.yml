@@ -1,0 +1,87 @@
+# Packaging de l'app Fabi (Electron) — adapté de la référence theia-blueprint.
+# Produit un .app/.dmg (macOS), .exe NSIS (Windows), AppImage/.deb (Linux), avec
+# le nom « Fabi » et les icônes par OS. Lancer après `yarn bundle` (theia build).
+
+appId: fr.undefinedstudio.fabi
+productName: Fabi
+copyright: Copyright © 2026 undefined studio
+electronVersion: 39.8.7
+asar: true
+# Modules natifs de Theia : doivent rester décompressés hors de l'asar.
+asarUnpack:
+  - "**/lib/backend/native/**"
+  - "**/lib/backend/shell-integrations/**"
+  - "**/lib/prebuilds/**"
+nodeGypRebuild: false
+npmRebuild: false
+
+directories:
+  buildResources: resources
+
+# Ce qui entre dans l'app packagée (le bundle Theia + nos resources).
+files:
+  - src-gen
+  - lib
+  - resources
+  - "!**/node_modules/**"
+
+# Les plugins VS Code (thèmes d'icônes) téléchargés par `theia download:plugins`.
+# Présents dans electron-app/plugins → copiés dans Contents/Resources/app/plugins.
+extraResources:
+  - from: plugins
+    to: app/plugins
+    filter:
+      - "**/*"
+  - from: ../fabi-spaces/resources/rail
+    to: fabi-spaces/resources/rail
+    filter:
+      - "**/*"
+
+mac:
+  icon: resources/fabi.icns
+  category: public.app-category.developer-tools
+  darkModeSupport: true
+  target:
+    - dmg
+    - zip
+
+win:
+  icon: resources/icon.ico
+  target:
+    - nsis
+
+linux:
+  icon: resources/icons
+  category: Development
+  vendor: undefined studio
+  target:
+    - AppImage
+    - deb
+
+nsis:
+  menuCategory: true
+  oneClick: false
+  perMachine: false
+  installerHeaderIcon: resources/icon.ico
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: false
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+deb:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+# electron-updater génère latest.yml/latest-mac.yml/latest-linux.yml et vérifie
+# SHA-512 + signature native avant installation. Le serveur reste un simple
+# origin HTTPS : aucune logique d'update n'est réimplémentée côté VPS.
+publish:
+  provider: generic
+  url: https://server.undefinedstudio.fr/fabi-updates/stable
+  channel: stable
+  useMultipleRangeRequest: false
+electronUpdaterCompatibility: ">=2.16"

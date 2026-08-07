@@ -5,6 +5,9 @@ lib
 *-app/*
 !*-app/package.json
 !electron-app/product.json
+!electron-app/electron-builder.yml
+!electron-app/resources/
+!electron-app/resources/**
 
 # captures de design (locales)
 tools/shots/
