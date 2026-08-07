@@ -274,12 +274,17 @@ test('explains a present but unqualified runtime instead of reporting it absent'
     try {
         process.env.FABI_INSTALL = root;
         const bin = join(root, 'bin');
-        const venv = join(root, 'runtime', 'parallax-venv', 'bin');
+        const windows = process.platform === 'win32';
+        const venv = join(root, 'runtime', 'parallax-venv', windows ? 'Scripts' : 'bin');
         mkdirSync(bin, { recursive: true });
         mkdirSync(venv, { recursive: true });
-        writeFileSync(join(bin, 'fabi'), '');
-        writeFileSync(join(venv, 'parallax'), '');
-        writeFileSync(join(venv, 'fabi-request-agent'), '');
+        writeFileSync(join(bin, windows ? 'fabi.exe' : 'fabi'), '');
+        if (windows) {
+            writeFileSync(join(venv, 'python.exe'), '');
+        } else {
+            writeFileSync(join(venv, 'parallax'), '');
+            writeFileSync(join(venv, 'fabi-request-agent'), '');
+        }
         writeFileSync(join(root, 'MANIFEST'), manifest({ parallax: '0'.repeat(40) }));
         assert.match(installedRuntimeProblem(), /mise à jour du moteur requise/);
         assert.match(installedRuntimeProblem(), /parallax_revision/);

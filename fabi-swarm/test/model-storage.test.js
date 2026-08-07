@@ -32,8 +32,8 @@ test('authorizes only a dedicated Fabi subdirectory and reports exact volume pol
 
     assert.equal(existsSync(target), true);
     assert.deepEqual(storage.environment(), {
-        primaryPath: realpathSync(primary),
-        extraPaths: [realpathSync(target)]
+        primaryPath: realpathSync.native(primary),
+        extraPaths: [realpathSync.native(target)]
     });
     assert.equal(snapshot.locations.length, 2);
     assert.equal(snapshot.locations[0].kind, 'primary');
