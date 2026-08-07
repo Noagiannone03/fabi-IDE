@@ -7811,3 +7811,63 @@ un worker DirectML réel. Ensuite viennent le packaging conditionnel de
 iGPU, puis OpenVINO/QNN/WinML selon leurs plugins maintenus. L'audit de
 confidentialité des prompts, tokens et activations P2P reste également à faire;
 aucune promesse de confidentialité nouvelle n'est encore implémentée.
+
+## Placement autonome ONNX réel et correction CI du 7 août 2026
+
+La barrière de géométrie portable décrite ci-dessus est levée dans le commit
+moteur `3d70a69c423af38315115427873e7bc9ff4b9bcf` (`feat(portable): drive
+autonomous ONNX placement`), poussé sur `codex/swarm-protocol-v3`. La politique
+de placement accepte désormais une géométrie statique dépendante de
+l'exécuteur. Sans géométrie explicite, le chemin SafeTensors MLX/CUDA reste
+strictement inchangé. Pour ONNX, chaque candidat utilise la somme dédupliquée
+des graphes et external data signés nécessaires à son span; un candidat qui
+coupe une frontière de stage signée est simplement non matérialisable. Le KV
+reste calculé par couche et par token comme auparavant.
+
+Cette valeur ONNX est volontairement appelée géométrie **statique** et non
+mémoire résidente exacte. La documentation officielle ONNX Runtime indique que
+DirectML peut prétraiter les poids et que l'EP possède ses propres allocations;
+elle interdit aussi les memory patterns et l'exécution parallèle d'une même
+session. Le contrat complet reste donc : octets statiques signés pour choisir
+le span, budget DXGI live et réserve runtime pour l'admission, puis mesure et
+refus effectifs après chargement. On ne transforme pas arbitrairement la taille
+du fichier en fausse mesure VRAM.
+
+Au cold join, le serveur résout maintenant le bundle TUF, sélectionne le plan
+compatible avec le device exact annoncé par la sonde (`directml:N`), transmet
+sa granularité au `WorkerOffer`, lie BUILDING au hash compact de la collection
+de plans et place `execution_plan_id` plus `execution_device` dans l'état
+partagé avant tout reload. `launch.py` recopie désormais ces deux valeurs vers
+le processus exécuteur; auparavant seul le device survivait au reload, ce qui
+aurait empêché un vrai placement autonome de charger le plan choisi. Une lease
+READY portable conserve également la granularité du plan et publie les hashes
+des fichiers réellement vérifiés. Les transitions futures utilisent le hash
+du plan portable au lieu de revenir silencieusement au hash SafeTensors.
+
+Les tests ajoutés prouvent le remplacement réel de géométrie, l'exclusion des
+frontières ONNX impossibles, l'identité BUILDING portable, la granularité du
+cold offer, la propagation du plan au launcher et l'absence de modification du
+chemin historique. Les 155 tests ciblés passent sur `mac-mini-projet-ia`. La
+suite complète donne `943 passed, 8 skipped, 7 warnings in 27.76s`. Ruff,
+`py_compile`, `git diff --check`, `cargo fmt` et les tests du crate DXGI passent;
+le Mac mini reste arrêté après ces validations et le runtime `rc48` qualifié du
+PC/VPS n'a pas été remplacé.
+
+Le workflow Native network précédent `31137456291` a bien échoué sur les trois
+OS, mais l'échec n'était ni DirectML ni Rust : la matrice installait le projet
+avec `--no-deps`, lançait le nouveau test de capacité important, puis omettait
+`pyzmq` de sa liste manuelle. Les trois collectes tombaient donc sur
+`ModuleNotFoundError: zmq`. Le workflow installe maintenant `pyzmq>=25.0`,
+exécute aussi `test_launch.py` et `test_p2p_node_info.py` qui étaient jusque-là
+des déclencheurs non inclus dans la commande, et n'émet plus l'avertissement
+Rust non-Windows du wrapper DXGI. Le run correctif `31138571261` est en cours;
+ne pas le déclarer vert avant sa fin.
+
+La prochaine étape portable reste de publier un vrai dépôt d'artefacts ONNX et
+ses métadonnées TUF, d'installer conditionnellement le paquet officiel
+`onnxruntime-directml` sans coexistence de wheels ORT incompatibles, puis de
+lancer un `OnnxExecutor` complet sur le PC depuis un cold join V3. La RTX
+prouve DirectML mais pas l'iGPU : au moins un vrai Intel ou AMD intégré doit
+encore être qualifié avant d'annoncer le support général des laptops Windows.
+Ensuite seulement viennent WinML/OpenVINO/QNN, l'audit de confidentialité P2P,
+les deux NAT indépendants et les tests de churn/kill restants.
