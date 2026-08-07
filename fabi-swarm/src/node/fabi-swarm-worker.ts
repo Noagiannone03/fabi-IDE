@@ -49,7 +49,10 @@ export function spawnWorker(
     let restartTimer: ReturnType<typeof setTimeout> | undefined;
 
     const startChild = (): void => {
-        const args = [...command.argsPrefix, ...buildJoinArgs(peer)];
+        const args = [
+            ...command.argsPrefix,
+            ...buildJoinArgs(peer, command.runtimeProfile ?? null)
+        ];
         const env = buildWorkerEnv(profile, bootstrap, swarmId, modelStorage);
         const log = openWorkerLog(swarmId);
         // Nettoyer avant le spawn supprime toute course où le nouveau CLI (ou

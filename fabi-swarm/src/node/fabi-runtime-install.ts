@@ -43,6 +43,15 @@ export interface RuntimeManifest {
     values: Readonly<Record<string, string>>;
 }
 
+export type RuntimeExecutionDevice = 'cpu' | 'cuda' | 'metal' | 'rocm' | 'vulkan';
+
+/** Execution contract authenticated by the qualified runtime MANIFEST. */
+export interface ManagedRuntimeProfile {
+    accelerator: string | null;
+    engine: 'skippy' | null;
+    executionDevice: RuntimeExecutionDevice | null;
+}
+
 export interface RuntimeContract {
     version: string;
     opencodeRevision: string;
@@ -50,6 +59,7 @@ export interface RuntimeContract {
     nativeNetworkVersion: string;
     target?: string;
     accel?: Accel;
+    executionEngine?: 'skippy';
 }
 
 export interface PlatformInfo {
@@ -96,6 +106,8 @@ export function createDownloadProgressReporter(
 export interface RuntimeCommand {
     binary: string;
     argsPrefix: string[];
+    /** Present for packaged runtimes; absent only for an explicit dev checkout. */
+    runtimeProfile?: ManagedRuntimeProfile;
 }
 
 export interface LocatedRuntimeCommand extends RuntimeCommand {
@@ -118,7 +130,8 @@ export function configuredRuntimeContract(version = configuredRuntimeVersion()):
         opencodeRevision: process.env.FABI_RUNTIME_OPENCODE_COMMIT?.trim() || QUALIFIED_OPENCODE_COMMIT,
         parallaxRevision: process.env.FABI_RUNTIME_PARALLAX_COMMIT?.trim() || QUALIFIED_PARALLAX_COMMIT,
         nativeNetworkVersion:
-            process.env.FABI_RUNTIME_NATIVE_NETWORK_VERSION?.trim() || QUALIFIED_NATIVE_NETWORK_VERSION
+            process.env.FABI_RUNTIME_NATIVE_NETWORK_VERSION?.trim() || QUALIFIED_NATIVE_NETWORK_VERSION,
+        executionEngine: 'skippy'
     };
 }
 
@@ -158,10 +171,47 @@ export function validateRuntimeManifest(raw: string, expected: RuntimeContract):
     check('native_network_version', manifest.values.native_network_version, expected.nativeNetworkVersion);
     check('target', manifest.values.target, expected.target);
     check('accel', manifest.values.accel, expected.accel);
+    check('execution_engine', manifest.values.execution_engine, expected.executionEngine);
+    if (expected.executionEngine === 'skippy' && !parseManagedRuntimeProfile(raw).executionDevice) {
+        mismatches.push(
+            `execution_device=${manifest.values.execution_device ?? '<absent>'} `
+            + '(attendu cpu|cuda|metal|rocm|vulkan)'
+        );
+    }
     if (mismatches.length > 0) {
         throw new Error(`runtime non qualifié : ${mismatches.join(', ')}`);
     }
     return manifest;
+}
+
+/**
+ * Read the backend selected by the release builder. The archive manifest wins
+ * over hardware probing: it describes the native libraries actually shipped.
+ */
+export function parseManagedRuntimeProfile(raw: string): ManagedRuntimeProfile {
+    const manifest = parseRuntimeManifest(raw);
+    const accelerator = manifest.values.accel?.trim().toLowerCase() || null;
+    const engine = manifest.values.execution_engine?.trim().toLowerCase() === 'skippy'
+        ? 'skippy'
+        : null;
+    const rawDevice = manifest.values.execution_device?.trim().toLowerCase();
+    const executionDevice: RuntimeExecutionDevice | null =
+        rawDevice === 'cpu'
+        || rawDevice === 'cuda'
+        || rawDevice === 'metal'
+        || rawDevice === 'rocm'
+        || rawDevice === 'vulkan'
+            ? rawDevice
+            : null;
+    return { accelerator, engine, executionDevice };
+}
+
+function managedRuntimeProfileIn(root: string): ManagedRuntimeProfile | undefined {
+    try {
+        return parseManagedRuntimeProfile(readFileSync(join(root, 'MANIFEST'), 'utf8'));
+    } catch {
+        return undefined;
+    }
 }
 
 export function runtimeManifestIsQualified(root: string): boolean {
@@ -236,12 +286,21 @@ export function parallaxCommandIn(
     root: string,
     runtimePlatform: NodeJS.Platform = osPlatform()
 ): RuntimeCommand | undefined {
+    const runtimeProfile = managedRuntimeProfileIn(root);
     if (runtimePlatform === 'win32') {
         const python = runtimePythonIn(root, runtimePlatform);
-        return python ? { binary: python, argsPrefix: ['-m', 'parallax.cli'] } : undefined;
+        return python ? {
+            binary: python,
+            argsPrefix: ['-m', 'parallax.cli'],
+            ...(runtimeProfile ? { runtimeProfile } : {})
+        } : undefined;
     }
     const entrypoint = join(root, 'runtime', 'parallax-venv', 'bin', 'parallax');
-    return existsSync(entrypoint) ? { binary: entrypoint, argsPrefix: [] } : undefined;
+    return existsSync(entrypoint) ? {
+        binary: entrypoint,
+        argsPrefix: [],
+        ...(runtimeProfile ? { runtimeProfile } : {})
+    } : undefined;
 }
 
 /** Commande du frontend OpenAI local, relocalisable sous Windows. */

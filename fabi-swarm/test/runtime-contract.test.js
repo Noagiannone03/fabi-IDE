@@ -22,6 +22,7 @@ const {
     managedRuntimePathsIn,
     installedRuntimeProblem,
     parallaxCommandIn,
+    parseManagedRuntimeProfile,
     parseRuntimeManifest,
     pruneManagedRuntimeBackups,
     relocateBundledRuntime,
@@ -31,6 +32,8 @@ const {
     validateRuntimeManifest
 } = require('../lib/node/fabi-runtime-install');
 const {
+    buildJoinArgs,
+    gpuBackendArgs,
     isParallaxWorkerCommand,
     resolveConfiguredWorkerLimits,
     resolveMemoryReserveEnv,
@@ -52,6 +55,8 @@ function manifest(overrides = {}) {
         `target=${values.target}`,
         'arch=aarch64-apple-darwin',
         `accel=${values.accel}`,
+        'execution_engine=skippy',
+        'execution_device=metal',
         'python=3.12.9',
         `opencode_revision=${values.opencode}`,
         `parallax_revision=${values.parallax}`,
@@ -67,7 +72,8 @@ const contract = {
     accel: 'mlx',
     opencodeRevision: QUALIFIED_OPENCODE_COMMIT,
     parallaxRevision: QUALIFIED_PARALLAX_COMMIT,
-    nativeNetworkVersion: QUALIFIED_NATIVE_NETWORK_VERSION
+    nativeNetworkVersion: QUALIFIED_NATIVE_NETWORK_VERSION,
+    executionEngine: 'skippy'
 };
 
 test('accepts only the exact qualified release manifest', () => {
@@ -75,6 +81,39 @@ test('accepts only the exact qualified release manifest', () => {
     assert.equal(parsed.version, QUALIFIED_RUNTIME_VERSION);
     assert.equal(parsed.values.parallax_revision, QUALIFIED_PARALLAX_COMMIT);
     assert.equal(parsed.values.native_network_version, QUALIFIED_NATIVE_NETWORK_VERSION);
+});
+
+test('reads the authenticated Skippy execution profile from the release manifest', () => {
+    assert.deepEqual(parseManagedRuntimeProfile(manifest()), {
+        accelerator: 'mlx',
+        engine: 'skippy',
+        executionDevice: 'metal'
+    });
+});
+
+test('passes the packaged Skippy backend and device on every worker platform', () => {
+    const mac = { accelerator: 'mlx', engine: 'skippy', executionDevice: 'metal' };
+    const windows = { accelerator: 'directml', engine: 'skippy', executionDevice: 'vulkan' };
+    assert.deepEqual(gpuBackendArgs('darwin', 'apple-silicon', mac), [
+        '--gpu-backend', 'skippy', '--execution-device', 'metal'
+    ]);
+    assert.deepEqual(gpuBackendArgs('win32', 'generic', windows), [
+        '--gpu-backend', 'skippy', '--execution-device', 'vulkan'
+    ]);
+    assert.deepEqual(
+        buildJoinArgs('scheduler-id', mac).slice(-4),
+        ['--gpu-backend', 'skippy', '--execution-device', 'metal']
+    );
+});
+
+test('fails closed when a Skippy archive omits its execution device', () => {
+    assert.throws(
+        () => validateRuntimeManifest(
+            manifest().replace('execution_device=metal\n', ''),
+            contract
+        ),
+        /execution_device/
+    );
 });
 
 test('selects the release-scoped standalone decompressor for every OS', () => {

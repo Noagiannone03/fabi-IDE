@@ -11,6 +11,7 @@ import { getAccountToken } from './fabi-account-token';
 import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
 import { WorkerConnectionProfile } from '../common/fabi-swarm-protocol';
 import { ModelStorageEnvironment } from './fabi-model-storage';
+import type { ManagedRuntimeProfile } from './fabi-runtime-install';
 
 export type Accelerator = 'apple-silicon' | 'cuda' | 'generic';
 
@@ -179,7 +180,31 @@ export function buildWorkerEnv(
 }
 
 /** Argv complet de `parallax join` (mêmes flags que le CLI). */
-export function buildJoinArgs(schedulerPeer: string): string[] {
+export function gpuBackendArgs(
+    platform: NodeJS.Platform = process.platform,
+    accelerator: Accelerator = getHardware().accelerator,
+    packagedRuntime: ManagedRuntimeProfile | null = null
+): string[] {
+    if (packagedRuntime?.engine === 'skippy') {
+        if (!packagedRuntime.executionDevice) {
+            throw new Error('Le runtime Fabi Skippy ne déclare aucun périphérique d’exécution qualifié.');
+        }
+        return ['--gpu-backend', 'skippy', '--execution-device', packagedRuntime.executionDevice];
+    }
+    if (platform !== 'win32') {
+        return [];
+    }
+    const packagedAccelerator = packagedRuntime?.accelerator;
+    const effectiveAccelerator = packagedAccelerator === 'cuda' || packagedAccelerator === 'directml'
+        ? packagedAccelerator
+        : accelerator;
+    return ['--gpu-backend', effectiveAccelerator === 'directml' ? 'onnxruntime' : 'vllm'];
+}
+
+export function buildJoinArgs(
+    schedulerPeer: string,
+    packagedRuntime: ManagedRuntimeProfile | null = null
+): string[] {
     const limits = resolveConfiguredWorkerLimits(getHardware());
     const args = [
         'join',
@@ -194,10 +219,10 @@ export function buildJoinArgs(schedulerPeer: string): string[] {
     if (!prefixCacheEnabled()) {
         args.push('--disable-prefix-cache');
     }
-    // Windows : backend vLLM explicite (le défaut sglang est Linux-only).
-    if (process.platform === 'win32') {
-        args.push('--gpu-backend', 'vllm');
-    }
+    // The authenticated runtime manifest describes what was actually bundled.
+    // This is the same contract used by fabi-cli; probing cannot select a
+    // backend whose native libraries are absent from the release archive.
+    args.push(...gpuBackendArgs(process.platform, getHardware().accelerator, packagedRuntime));
     return args;
 }
 
