@@ -8169,3 +8169,145 @@ génération native GGUF directe : il faut construire le wheel sur les trois OS,
 puis charger le GGUF public
 `unsloth/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf` sur le Mac mini et la RTX.
 Ne pas publier, signer ou remplacer `rc48` avant cette qualification live.
+
+## Candidat produit Skippy, registre TUF génération 7 et préqualification native du 7 août 2026
+
+L'entrée précédente sur la CI en attente est désormais historique. Le moteur
+portable retenu par le runtime est
+`7296313eade6cde5ac80c878770f604910256143` : `285226f` corrige le lint strict
+Rust 1.91 et `7296313` sélectionne le vrai device Mesh Apple `MTL0` au lieu du
+nom inexistant `Metal0`. Le workflow Native network `31166371286` est
+entièrement vert sur Ubuntu, macOS 15 et Windows : Clippy toutes features,
+31 tests Rust, pont Skippy vérifié, wheel ABI3 importée et suite protocole V3.
+
+Le GGUF public de qualification est
+`unsloth/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf`, commit immuable
+`50968a4468ef4233ed78cd7c3de230dd1d61a56b`, taille `396 705 472` octets et
+SHA-256 `ac2d97712095a558e31573f62f466a3f9d93990898b0ec79d7c974c1780d524a`.
+Le runtime officiel Mesh `v0.74.0` l'a ouvert en `RuntimeSlice` sur le Mac mini
+Metal et la RTX CUDA. Les deux hôtes ont mesuré 28 couches, largeur 1024,
+contexte 40 960 et KV 114 688 octets/token. Une génération locale native
+complète a produit sur les deux machines les mêmes tokens
+`[12095,13,576,6722,315,9625,374,1083]`, soit
+` Paris. The capital of France is also`. Cette preuve valide les deux backends
+et le modèle direct, mais pas encore une route P2P produit.
+
+Le CLI `fabi-cli/dev` est poussé au commit
+`f6e8b01063e1b455b708d8bae0c1dc7a0e84688f` et épingle ce moteur; ses 73
+tests swarm et le typecheck monorepo passent. Le runtime `fabi/main`
+`75bb0d22575278d21f2aecd1da68335f988f4b25` lie exactement ce CLI, ce moteur,
+Mesh `e60b2fe…`, la release `0.74.0` et l'ABI `0.1.32`. Le workflow manuel de
+préqualification des sept archives `31167696063` est en cours. Aucun tag
+`rc49` ne doit être créé avant son résultat vert.
+
+Le bundle Skippy précédemment généré avec une ancienne forme de plan a été
+refusé correctement à la relecture car son `execution_plan_hash` ne
+correspondait plus. Il a été reconstruit avec le code final depuis le bundle
+source Qwen et le package public Mesh
+`meshllm/Qwen3-0.6B-Q4_K_M-layers@1c7958fa…`. Le plan
+`skippy-q4-k-m-v2` couvre 28 couches, 40 960 tokens et 574 739 274 octets
+d'exécution; son nouvel identifiant de swarm est
+`6bc03462fedf9c7742129796b02c240ebdd92a825c7f5f54ec4351d71ff2e370`.
+Le registre TUF public génération 7 / timestamp 33 contient maintenant ce
+modèle et conserve sans changement le Qwen3-4B rc48
+`f983b250aff867f026586306e342d683de15546a71c7b167dfcf042ff455e05f`.
+Les deux cibles ont été vérifiées depuis HTTPS par le client TUF produit.
+
+Le commit de déploiement moteur `0bc296f` ajoute un coordinateur Qwen3-0.6B
+isolé : HTTP 3026, transport 18161, DHT 19193, volume, identité et fencing
+propres. La route Caddy
+`/fabi-scheduler/qwen3-0-6b-v3` est validée puis rechargée; le coordinateur
+n'est pas encore démarré pendant la construction de l'image exacte
+`7296313`. Le cluster rc48, ses workers et son Request Agent restent actifs.
+
+Ordre strict restant : attendre les archives manuelles vertes, publier le vrai
+prerelease `rc49`, installer ses actifs publics par les installateurs normaux
+sur `mac-mini-projet-ia` et `pc-windows-projet-ia`, démarrer le coordinateur
+0.6B, laisser les workers Fabi rejoindre et choisir leurs spans par la DHT,
+puis prouver une génération OpenAI/OpenCode SSE à travers la route réellement
+choisie. Seulement cette preuve permet de promouvoir rc49 dans l'IDE. Les
+kills, seconde route, NAT indépendants et device pairing restent postérieurs.
+
+### Publication rc49 et coordinateur produit isolé
+
+Le workflow manuel runtime `31167696063` est désormais entièrement vert : les
+deux transactions d'installation et les six archives Linux, macOS et Windows
+passent, y compris Windows CUDA et Windows DirectML/Skippy Vulkan. Le tag
+annoté `v2.7.0-rc49` résout exactement vers
+`75bb0d22575278d21f2aecd1da68335f988f4b25`, qui verrouille le CLI
+`f6e8b01063e1b455b708d8bae0c1dc7a0e84688f` et le moteur
+`7296313eade6cde5ac80c878770f604910256143`. Le workflow de release publique
+déclenché par ce tag est `31169693434`; il est encore en cours à cette entrée,
+donc ses actifs ne sont pas encore déclarés publiés.
+
+L'image scheduler exacte `local/parallax-scheduler:swarm-v3-7296313` a été
+construite sur le VPS. Seules seize anciennes images de build sans conteneur
+ont été retirées; le disque est revenu de 99 % à 79 % d'occupation, avec 20 Gio
+libres. Le commit de déploiement `9a0839d` raccorde le nouveau catalogue 19193
+aux deux bootstraps déjà publiés, au lieu de créer un îlot DHT. Le commit
+documentaire `44f3b05` précise le provisioning des identités scheduler.
+
+Le premier démarrage a échoué fermé : le relay a refusé la nouvelle identité,
+car la credential statique d'infrastructure n'autorise pas arbitrairement un
+nouvel EndpointId. La clé n'a pas été réutilisée ni le contrôle contourné. Le
+nouvel ID public
+`627ec9c575d634525f2fabf451d9120316c47061df4b13be1049715c434cceb2` a été
+ajouté à `FABI_RELAY_INFRA_ENDPOINTS`, avec sauvegarde préalable de la
+configuration. Après redémarrage de l'autorité et du seul candidat, le relay,
+le catalogue V3 et l'admission de routes sont prêts sans boucle de restart.
+Le registre public expose deux swarms et fournit au 0.6B l'URL scheduler, le
+relay, l'enrollment, le bootstrap DHT et les URL/racine TUF. Il reste en
+`waiting`, `peers=0`, tant que les applications clientes rc49 ne sont pas
+installées, ce qui est l'état attendu.
+
+Le repo IDE `main` contient maintenant le workflow manuel de packaging Windows
+`ce03f9c`, conforme au build natif recommandé par electron-builder. Les pins
+rc49 restent volontairement sur la branche de qualification
+`codex/rc49-product-e2e`, commit `0f3362c`; ses 76 tests `fabi-swarm` passent.
+Le DMG/ZIP arm64 local est construit et contient les trois pins exactes; il
+n'est pas signé et reste donc un actif de laboratoire. Le workflow Windows
+`31169560174` construit l'installeur NSIS sur un runner Windows. Ne fusionner
+les pins dans `main` qu'après installation normale sur le Mac mini et le PC,
+join autonome par le registre, route READY et génération OpenAI/OpenCode SSE.
+
+### Deux défauts produit corrigés sur le parcours join rc49 (reprise du 7 août)
+
+La session précédente s'est arrêtée sur une limite d'usage juste après avoir
+identifié le second défaut; cette entrée reprend exactement là. Le premier
+défaut produit reproduit par le parcours UI réel (sélection Qwen3-0.6B dans le
+catalogue, sans variable de labo) était le lancement du worker sans backend :
+l'IDE ne passait `--gpu-backend` que sur Windows (vLLM), donc le Mac Metal
+joignait avec le défaut moteur `sglang` et échouait son preflight de capacité.
+La correction lit `execution_engine` et `execution_device` dans le MANIFEST
+authentifié du runtime installé — le même contrat que fabi-cli — et les passe
+explicitement à `parallax join`; un runtime Skippy sans device qualifié est
+refusé fermé. Elle est commitée en `edabff5` sur `codex/rc49-product-e2e`
+avec ses contrats (80/80 tests fabi-swarm sous Node 22) et était déjà
+embarquée dans le candidat Mac installé sur le Mac mini.
+
+Le second défaut est central au moteur : le worker relancé avec
+`--gpu-backend skippy --execution-device metal` bouclait sur
+`no bundled Skippy metal runtime matches Mesh 0.74.0 / ABI 0.1.32` car
+`discover_skippy_native_runtime` ne dérivait que trois racines Python
+(`python-base/bin`, `python-base`, `parallax-src`) alors que l'archive
+installe le bundle audité en `<runtime>/native-runtimes`. La validation au
+build ne le voyait pas parce que `release-build.sh` fournit le chemin en
+variable d'environnement explicite. La correction ancre la découverte sur le
+layout produit : racine dérivée de l'interpréteur résolu (le `bin/` POSIX
+ajoute un niveau) et du frère de `parallax-src`, en conservant le contrat
+fail-closed d'unicité. Commit moteur
+`1442059dace8ce4009596b276017da2dad0403a2` sur `codex/swarm-protocol-v3`,
+test unitaire du layout installé inclus; 9/9 discovery et 47/47 sur les
+suites capacity/launch/executor/protocole en local, workflow Native network
+`31181756625` vert sur Ubuntu, macOS 15 et Windows.
+
+Le pin `PARALLAX_REF` du runtime est bumpé vers ce moteur en `939d6f3` sur
+`fabi/main`. Prochaine étape stricte : dispatch manuel du workflow Release de
+préqualification des sept archives, puis tag `v2.7.0-rc50`, bump des pins IDE
+(`QUALIFIED_RUNTIME_VERSION`, `QUALIFIED_PARALLAX_COMMIT`), rebuild du
+candidat Mac sous Node 22 et de l'installeur Windows depuis `edabff5`+pins,
+réinstallation sur le Mac mini avec rollback, puis le parcours décisif :
+join Mac+RTX par le registre, route READY, génération OpenAI/OpenCode SSE
+complète. Ensuite, vérifier la fermeture de Fabi ⇒ arrêt gracieux du worker
+(déjà validé au repos : cinq processus avant Quitter, zéro après) pendant le
+téléchargement et pendant une génération active.
