@@ -21,7 +21,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve as resolvePath } from 'path';
 import { detectPlatform, findParallax, installedRuntimeProblem, installRuntime } from '../node/fabi-runtime-install';
-import { shouldGateRuntime } from '../common/fabi-runtime-launcher-policy';
+import { LauncherSurfaceHandoff, shouldGateRuntime } from '../common/fabi-runtime-launcher-policy';
 import { FABI_FOX_DATA_URI } from './fabi-launcher-logo';
 import { FabiMandatoryAppUpdater } from './fabi-mandatory-app-updater';
 
@@ -29,6 +29,7 @@ import { FabiMandatoryAppUpdater } from './fabi-mandatory-app-updater';
 export class FabiElectronMainApplication extends ElectronMainApplication {
 
     protected launcherHandled = false;
+    protected readonly launcherSurfaceHandoff = new LauncherSurfaceHandoff();
 
     /**
      * Backport du correctif déjà présent dans Theia amont : quand le frontend
@@ -105,7 +106,14 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
             // Surface initiale APRÈS le launcher. Point d'extension : une sous-classe
             // (ex. fabi-spaces) peut ici ouvrir une fenêtre-hôte multi-Spaces plutôt
             // que la fenêtre IDE standard.
-            await this.openInitialSurface(urlToOpen);
+            try {
+                await this.openInitialSurface(urlToOpen);
+            } finally {
+                // Le launcher reste une BrowserWindow cachée jusqu'à ce que la
+                // surface suivante existe. Cela empêche Theia de recevoir un
+                // `window-all-closed` transitoire juste après l'installation.
+                this.launcherSurfaceHandoff.release();
+            }
         });
     }
 
@@ -227,7 +235,7 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
             let settled = false;
             let installing = false;
             let allowClose = false;
-            const onSkip = () => finish();
+            const onSkip = () => finish(false);
             const onRetry = () => { void attemptInstall(); };
             const cleanup = () => {
                 electron.ipcMain.removeListener('fabi-launcher:skip', onSkip);
@@ -235,15 +243,25 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
                 try { win.setProgressBar(-1); } catch { /* ignore */ }
                 try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ }
             };
-            const finish = () => {
-                if (settled) {
-                    return;
-                }
-                settled = true;
+            const closeLauncher = () => {
                 allowClose = true;
                 cleanup();
                 if (!win.isDestroyed()) {
                     win.close();
+                }
+            };
+            const finish = (handoffToSurface: boolean) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                if (handoffToSurface && !win.isDestroyed()) {
+                    // Une fenêtre cachée compte toujours comme fenêtre vivante.
+                    // Elle sera fermée dès que `openInitialSurface` aura fini.
+                    win.hide();
+                    this.launcherSurfaceHandoff.hold(closeLauncher);
+                } else {
+                    closeLauncher();
                 }
                 resolve();
             };
@@ -287,7 +305,7 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
                     if (!win.isDestroyed()) {
                         win.webContents.send('fabi-launcher:done', {});
                     }
-                    setTimeout(finish, 1000);
+                    setTimeout(() => finish(true), 1000);
                 } catch (err) {
                     const message = err instanceof Error ? err.message : String(err);
                     if (!win.isDestroyed()) {

@@ -2,7 +2,26 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { shouldGateRuntime } = require('../lib/common/fabi-runtime-launcher-policy');
+const {
+    LauncherSurfaceHandoff,
+    shouldGateRuntime
+} = require('../lib/common/fabi-runtime-launcher-policy');
+
+test('keeps the launcher alive until the next surface explicitly takes over', () => {
+    const events = [];
+    const handoff = new LauncherSurfaceHandoff();
+    handoff.hold(() => events.push('launcher-closed'));
+
+    assert.equal(handoff.active, true);
+    assert.deepEqual(events, []);
+    assert.throws(() => handoff.hold(() => undefined), /already active/);
+
+    events.push('surface-ready');
+    assert.equal(handoff.release(), true);
+    assert.deepEqual(events, ['surface-ready', 'launcher-closed']);
+    assert.equal(handoff.active, false);
+    assert.equal(handoff.release(), false);
+});
 
 test('a packaged app cannot bypass an incompatible runtime with a dev flag', () => {
     assert.equal(shouldGateRuntime({
