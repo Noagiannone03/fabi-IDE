@@ -165,18 +165,20 @@ déficit doivent donc être cumulatifs afin de ne pas compter deux fois la même
 
 ## 6. Demande multidimensionnelle sans seuils matériels prédéfinis
 
-Le tableau uniforme actuel par couche devient un résumé versionné par :
+Le tableau uniforme par couche a été retiré du chemin READY. La demande active
+est désormais un résumé V2 versionné par :
 
 ```text
 ModelSwarmId × région réseau × classe de contexte
 ```
 
-La distribution des tailles de requête est transportée par un histogramme exponentiel borné et
-fusionnable, suivant le modèle stable `ExponentialHistogram` d'OpenTelemetry (ou une bibliothèque
-DDSketch maintenue si son format de sérialisation est retenu). Cela évite des frontières produit
-inventées : la résolution s'adapte à la plage observée, plusieurs résumés régionaux se fusionnent,
-et une réduction de résolution conserve un sous-ensemble exact des frontières dans le cas
-OpenTelemetry.
+La distribution des tailles de requête est transportée par un DDSketch borné
+et fusionnable de la bibliothèque maintenue Datadog `ddsketch==3.0.1`, dans son
+format Protobuf officiel. Le blob et ses bornes explicites sont signés avec le
+conseil DHT; sa base64, sa taille, son Protobuf, son erreur relative et son
+compte sont validés avant usage. Cela évite des frontières produit inventées :
+la résolution s'adapte à la plage observée et plusieurs résumés peuvent être
+fusionnés sans transporter de prompt ni d'identité.
 
 Le planificateur dérive à chaque snapshot un petit ensemble de points de décision à partir :
 
@@ -185,8 +187,12 @@ Le planificateur dérive à chaque snapshot un petit ensemble de points de déci
 - des limites natives ou étendues réellement qualifiées du modèle ;
 - des objectifs de service explicitement garantis.
 
-Un point transitoire comme `21 758` ou `30 752` peut donc influencer le score sans devenir une
-constante de code, un nouveau manifeste ou un quota physique. Le résumé conserve au minimum :
+Les quantiles DDSketch sont corrigés vers le haut avec la garantie d'erreur
+relative. Le maximum exact ainsi que les plus grandes demandes refusées ou en
+vol sont toujours conservés : un besoin `21 758` ne peut donc jamais produire
+une cible inférieure à `21 758`. Un point transitoire comme `21 758` ou
+`30 752` influence le score sans devenir une constante de code, un nouveau
+manifeste ou un quota physique. Le résumé conserve au minimum :
 
 - taux d'arrivée admis et légitime ;
 - demandes en file et refus `no_context_route` ;
@@ -363,9 +369,13 @@ pas dans la boucle de décision de chaque worker.
 - KV inutilisé, refus pour contexte et préemptions ;
 - fairness et crédit utile par worker.
 
-Le premier déploiement est un **shadow score dans V3** : la nouvelle politique calcule et journalise
-sa décision à côté de la décision V3 active sans charger un second runtime et sans réintroduire V2.
-Le placement réel ne bascule qu'après comparaison déterministe et simulation de churn.
+Le shadow local a servi à construire les invariants et le simulateur. Depuis le
+commit moteur `1494e2f9e33401b379b4257830e9f3c92c816e28`, la politique est le
+chemin de placement V3 actif : un conseil V2 valide choisit atomiquement le
+span et son plafond de contexte. Un worker READY conserve sa dernière cible si
+le conseil est absent, expiré ou invalide. Seul un réseau froid sans route peut
+utiliser une amorce uniforme minimale à une réplique afin de résoudre le
+problème de démarrage; cette amorce n'est jamais une politique stationnaire.
 
 Le simulateur de charge ne sera pas réécrit à la main. Le projet officiel
 `llm-d-inference-sim` fournit déjà files, saturation, TTFT proportionnel aux tokens, ITL, cache KV,
@@ -380,13 +390,14 @@ protobuf 7.x.
 2. introduire les classes cumulatives et le résumé de demande versionné ;
 3. calculer la frontière locale span/contexte/concurrence ;
 4. construire le simulateur et l'oracle CP-SAT ;
-5. remplacer le `CapacityDemandMap.uniform` par un déficit calculé sur l'histogramme adaptatif, les
-   capacités KV exactes présentes et les objectifs de service signés ;
+5. remplacer le `CapacityDemandMap.uniform` stationnaire par un déficit calculé sur l'histogramme
+   adaptatif, les capacités KV exactes présentes et les objectifs de service signés — **fait** ;
 6. ajouter l'évaluation exacte des meilleurs candidats et le coût de churn ;
 7. ajouter le coût d'opportunité de contexte et l'affinité KV au route planner ;
-8. valider en shadow V3, puis sur Mac local + Mac mini + RTX ;
+8. valider la politique active sur Mac local + Mac mini + RTX ;
 9. étendre aux traces RunPod, NAT, churn et milliers de workers simulés ;
-10. seulement ensuite autoriser les réallocations autonomes guidées par la demande.
+10. étendre ensuite la qualification des réallocations déjà actives aux grands scénarios NAT,
+    churn et multi-modèles avant de déclarer la politique prête pour la production générale.
 
 ## 14. Sources primaires
 

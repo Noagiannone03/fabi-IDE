@@ -7651,6 +7651,79 @@ lancée : attendre d'abord le vert complet du workflow release `31101887906`,
 installer ses artefacts exacts, puis observer interruption, reprise, octets
 réseau, nettoyage du temporaire et refus d'espace insuffisant.
 
+## Bascule du placement contextuel V3 actif du 6 août 2026
+
+Le workflow release runtime `v2.7.0-rc47` `31101887906` est finalement
+entièrement vert : transactions d'installation, six cibles, Windows CUDA,
+Linux CUDA, deux Darwin, attestations et installateurs. Il reste toutefois
+antérieur à la présente bascule et épingle le moteur `d683fbd…`; ne pas le
+présenter comme le runtime du placement adaptatif.
+
+Le moteur `swarm-engine/codex/swarm-protocol-v3` contient maintenant le commit
+fonctionnel `1494e2f9e33401b379b4257830e9f3c92c816e28` (`feat(v3): activate
+adaptive context placement`) et le head qualifié
+`0d03213e7aa8e220d92bcba3d056deb644161ac9`. Le placement uniforme à deux répliques a été supprimé du
+chemin READY. Une lease READY ne bouge désormais que sur la base d'un résumé de
+demande V2 valide, signé, expirant et publié dans la DHT par l'identité du
+scheduler connecté. Si ce résumé manque, expire ou échoue à la validation, le
+worker conserve exactement son dernier couple span/contexte vérifié. La seule
+utilisation restante de `CapacityDemandMap.uniform` dans le runtime est une
+amorce froide à une réplique, nécessaire quand aucune route ni aucune demande
+légitime n'existe encore; elle ne s'exécute jamais comme politique stationnaire.
+
+La demande V2 ne traite plus `4k/8k/16k/32k` comme des capacités de machines.
+Le coordinateur conserve les longueurs exactes admises, refusées et en vol,
+puis construit un DDSketch `3.0.1` officiel, borné et fusionnable. Son Protobuf
+est inclus dans le conseil DHT signé et validé (base64, taille, décodage,
+précision et compte). Les points de décision viennent des quantiles, avec
+conservation du maximum exact et des plus grandes demandes refusées/en vol. Le
+test déterministe prouve ainsi qu'un besoin `21 758` produit une cible exacte
+`21 758`, même si cette valeur n'appartient pas aux objectifs d'affichage du
+manifeste. Le format V1 à classes fixes est refusé.
+
+Le worker énumère maintenant sa frontière mémoire sur ces points dynamiques et
+choisit conjointement `(span, max_context_tokens)`. La cible est atomique dans
+le drain, la lease BUILDING, le reload de l'executor, la validation READY, le
+fencing de génération et le rollback. Une transition BUILDING publie la
+nouvelle tranche, son contexte et sa géométrie KV, au lieu de republier par
+erreur l'ancienne lease. Réservations actives, dernière couverture READY,
+dernière route exécutable, cooldown et hystérésis continuent de protéger le
+swarm contre les reallocations oscillantes.
+
+Le provisioning manuel de `FABI_SWARM_V3_DEMAND_REGION` et des autorités n'est
+plus requis dans le chemin produit : la région par défaut est `global` et le
+worker épingle automatiquement l'identité cryptographique du scheduler auquel
+il se connecte. Une autorité fournie explicitement qui contredit ce pin fait
+échouer le démarrage fermé. Le scheduler actif exige désormais un catalogue
+DHT avant d'ouvrir le data plane et démarre toujours l'annonceur de demande.
+
+Validations locales exactes : `893 passed, 7 skipped` sur la suite complète
+avec `FABI_MODEL_CACHE_MIN_FREE_BYTES=0`, Ruff vert sur les 18 fichiers touchés,
+`git diff --check` vert et wheel `parallax-0.1.2-py3-none-any.whl` construite.
+Le lint global possède toujours 85 dettes historiques dans les benchmarks et
+modèles MLX non touchés; elles n'ont pas été mélangées à ce changement. Le
+premier run `31107422985` a détecté que l'environnement CI minimal n'installait
+pas encore `ddsketch`; le correctif de recette `c9268bb…` ajoute cette
+dépendance explicite. Le run Native network final `31107804654` du head
+`0d03213…` est entièrement vert sur Ubuntu, macOS 15 et Windows : wheel ABI3
+reconstruit et importé, bindings/DHT natifs et contrats V3 passent sur les trois
+OS.
+
+Le CLI `fabi-cli/dev` `c7c18eca56f7337573f2dacdd2651f5b7a3fcea7`
+épingle ce head; ses 63 tests swarm et son typecheck monorepo passent. Le runtime
+`fabi/main` `7f1d0bb37824276b0a62f7c303c5a5f4caf83089` verrouille exactement ces
+deux sources. La transaction d'upgrade POSIX et la cohérence locale/distante du
+lock passent. Le tag annoté `v2.7.0-rc48` est publié et son workflow release
+`31108536272` construit les six artefacts au moment de cette entrée. Ne pas
+promouvoir les pins IDE ni installer le laboratoire avant son vert complet.
+
+Ordre restant : attendre les transactions et les six artefacts de `rc48`, puis
+promouvoir les pins IDE. Installer ensuite ce tag exact
+sur le VPS, le Mac mini et la RTX; vérifier publication V2, choix de spans plus
+étroits pour une demande longue, drain sans réservation résiduelle et maintien
+de la route précédente en l'absence de conseil. Rejouer enfin le gros contexte
+OpenCode, Xet interrompu, manque de stockage, changement de modèle, seconde
+route et kills prefill/decode avant les deux NAT et le device pairing.
 ## Qualification live du placement adaptatif `rc48` du 7 août 2026
 
 La release `v2.7.0-rc48` est entièrement publiée. Son workflow
@@ -7871,3 +7944,228 @@ prouve DirectML mais pas l'iGPU : au moins un vrai Intel ou AMD intégré doit
 encore être qualifié avant d'annoncer le support général des laptops Windows.
 Ensuite seulement viennent WinML/OpenVINO/QNN, l'audit de confidentialité P2P,
 les deux NAT indépendants et les tests de churn/kill restants.
+
+## Runtime portable final, confidentialité P2P et qualification DirectML du 7 août 2026
+
+L'entrée précédente sur le packaging est désormais historique. Le moteur
+`swarm-engine/codex/swarm-protocol-v3` qualifié est
+`6f9210df9b7bee959afff02d941b409f56cbf184`. Les commits
+`6e680ee` puis `6f9210d` remplacent les logs de requêtes chat par une allowlist
+de télémétrie non sensible et retirent les identifiants de tokens du journal du
+cache radix. Le workflow Native network `31143211391` est entièrement vert sur
+Ubuntu, macOS 15 et Windows. La portée exacte de ce changement est la
+minimisation des logs; elle ne rend pas les workers communautaires aveugles au
+contenu qu'ils exécutent.
+
+Le modèle de menace complet est dans `docs/P2P-PRIVACY-THREAT-MODEL.md`. Iroh
+chiffre les liens QUIC/TLS 1.3, y compris lorsqu'un relay transporte les
+paquets, mais le frontend reçoit encore la requête chat et les stages reçoivent
+tokens ou activations nécessaires à l'inférence. Les activations ne sont pas
+assimilées à des données anonymes. Une confidentialité contre les workers
+suppose une évolution de protocole distincte : tokenizer/embedding/head et
+sampling locaux, messages versionnés au moindre privilège, migration/replay de
+cache et qualification de l'impact. Ne pas promettre cette propriété avant ces
+preuves.
+
+Le CLI `fabi-cli/dev` au commit
+`e90c2c38a11577bb63957514dd6c067d69172b02` épingle ce moteur. Le clone exact
+du Mac mini passe ses 71 tests `src/swarm` et le typecheck avec Bun 1.3.13. Le
+commit suivant `9bb1b70f45ff44d4b990ab0ca0cd0b2bdac12bd7` archive la conversation Codex
+pour reprise inter-machine sans modifier le runtime. Le runtime `fabi/main`
+qualifié est `739403b2652f9fcd4ddd2088f7f68a55a617fa07`, avec
+`OPENCODE_REF=e90c2c38…` et `PARALLAX_REF=6f9210d…`.
+
+Le workflow runtime manuel final `31143891465` est vert pour les transactions
+d'installation ainsi que les sept cibles : Linux CUDA/CPU, Windows CUDA,
+Windows DirectML, Darwin arm64 MLX/x64 CPU et Linux arm64 CPU. L'artefact
+DirectML est l'artefact GitHub `8981248551`, digest
+`sha256:2d0362699cfbcb597c9a9cc19f40277c36135c8e00acac77beb91946e7a2dda7`.
+Ses deux sidecars de hash ont été vérifiés avant installation.
+
+Cette qualification a trouvé une vraie erreur d'installation : PowerShell
+`Move-Item` ne déplace pas un répertoire entre deux volumes. Le commit runtime
+`44c1670` crée maintenant le staging transactionnel à côté de la cible, donc
+sur le même volume, et le test Windows utilise un lecteur `subst` distinct pour
+prouver ce cas. L'installation réelle sur `D:` a ensuite réussi. Les anciens
+staging exacts ont été inspectés puis nettoyés; les six processus `rc48` actifs
+n'ont pas été arrêtés ou remplacés.
+
+Le candidat isolé est installé sous
+`D:\\fabi-qualification\\runtime-candidate-739403b-directml\\install`. Son
+manifeste annonce `accel=directml`, Python 3.12.7,
+`onnxruntime-directml 1.24.4`, le moteur et le CLI ci-dessus, et aucun second
+wheel ONNX Runtime. Les providers réellement chargés sont
+`DmlExecutionProvider` puis `CPUExecutionProvider`.
+
+L'export final Qwen3-0.6B vient de `Qwen/Qwen3-0.6B` au commit immuable
+`c1899de289a04d12100db370d81485cdf75e47ca`, via ONNX Runtime GenAI 0.15.0 au
+commit `dfdc2548cec851893c10aad5d3056a20116ad749`. L'inventaire reconstruit
+final est
+`2c5463f59c8daf6ee0af7903296c167a112a04f3f03e45e88829d9624914143b` :
+61 artefacts, 30 stages, 28 couches et 433 821 701 octets. La parité depuis la
+source reconstruite donne une erreur maximale logits de `0,0302734375` au
+prefill, `0,01904296875` au decode, KV `0,125`, avec top-1 identique.
+
+Le runtime packagé final, et non le venv builder, a vérifié les 61 digests puis
+exécuté les 30 stages sur la RTX. Chaque décodeur place 25 nœuds sur DML et
+seulement les deux nœuds de masque signés sur CPU; l'entrée garde uniquement
+l'embedding CPU autorisé et la sortie place deux nœuds sur DML. Initialisation
+`2,7794 s`, prefill `[1,2,3]` `0,506366 s`, decode `[4]` `0,148548 s`, KV
+résident `458 752` octets, zéro session après release. Cela prouve DirectML sur
+la RTX 4080 SUPER. La compatibilité de packaging est multi-vendeur grâce au
+provider officiel, mais aucun vrai iGPU Intel/AMD n'a encore été exécuté : ne
+pas annoncer sa qualification matérielle.
+
+La publication reste volontairement incomplète à cette entrée. La construction
+du bundle source signé lit les plages SafeTensors via l'API publique
+`hf-xet 1.5.2`; elle tourne sur le PC sans écrire une seconde copie complète du
+checkpoint. Le dépôt Hugging Face public des 61 artefacts ONNX, sa révision
+immuable, l'attachement du plan `onnx-dml-int4-v1`, la publication TUF puis le
+cold join DirectML ne sont pas encore validés. L'autorité TUF staging locale a
+été retrouvée et sa root SHA-256
+`7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce`
+correspond exactement à la root pinée et au registre public génération 6 /
+timestamp 32. Il manque encore une identité Hugging Face publique explicite et
+une authentification d'écriture; ne pas inventer le namespace ni déplacer les
+artefacts vers un stockage non prévu pour contourner ce point.
+
+## Intégration du moteur communautaire Skippy/Mesh-LLM du 7 août 2026
+
+Le chemin ONNX/DirectML ci-dessus a fourni des preuves utiles sur DXGI, la
+géométrie signée et les backends portables, mais il n'est plus le moteur cible
+des workers communautaires. Son coût produit principal était une conversion et
+un graphe ONNX propres à chaque architecture/version de modèle. Le moteur
+portable V3 est désormais Skippy, réutilisé depuis la release stable Apache-2.0
+`Mesh-LLM/mesh-llm v0.74.0`, commit immuable
+`e60b2fe43aa05271569fbeff2a457133aef456a1`, ABI native `0.1.32`. Fabi ne
+forke pas les kernels llama.cpp : il conserve ses contrats TUF, sa DHT de
+placement autonome inspirée de Petals, ses budgets de contexte adaptatifs, ses
+leases/epochs/fencing, Iroh, la contribution et OpenCode, et remplace seulement
+le calcul local d'une tranche par le runtime Skippy maintenu.
+
+Le moteur `swarm-engine/codex/swarm-protocol-v3` est poussé au commit
+`58560058a91669ab9b035ccf748b62daebfa169d`. Il ajoute un plan signé
+`skippy`, les rôles d'artefacts couche/embedding/sortie, la sélection exacte du
+backend Metal/CUDA/ROCm/Vulkan/CPU et la matérialisation du seul span GGUF
+retenu. L'importeur a été exécuté en dry-run contre le paquet public
+`meshllm/Qwen3-0.6B-Q4_K_M-layers` au commit immuable
+`1c7958fa9e1f2f86c12bc255fe5476a3e4d93ca7` : 28 couches, largeur
+d'activation 1024, 32 artefacts d'exécution et 574 739 274 octets. Il ne faut
+pas confondre ce paquet de couches réutilisable avec un graphe ONNX à compiler
+par machine.
+
+La frontière native est isolée dans `native/fabi-skippy-runtime`; le crate
+réseau garde `unsafe_code=forbid`. Le pont charge la bibliothèque dynamique
+uniquement après validation de la release, de l'ABI, du backend, du runtime ID,
+des chemins canoniques et d'un manifeste Fabi couvrant exactement le manifeste
+Mesh et toutes les bibliothèques avec SHA-256. Les activations inter-worker ont
+un message protobuf typé, sans pickle, et la limite protocolaire maintenue par
+Mesh de 512 Mio. L'exécuteur ouvre une tranche contiguë, crée des sessions KV
+par génération, exécute prefill/decode, échantillonne sur la dernière tranche,
+libère les sessions et expose export/import d'état complet pour le futur
+`replan_cold`. La sonde de capacité charge le vrai runtime, lit la mémoire
+libre/totale du device natif et n'invente aucun TFLOPS ni VRAM.
+
+La validation locale de ce commit donne 170 tests Python ciblés verts, deux
+tests Rust d'intégrité verts, Ruff vert sur tous les fichiers touchés, `cargo
+fmt` vert et Clippy `-D warnings` vert. Les tests incluent falsification de
+bibliothèque, chemins parent/absolu, protocole d'activation, runner natif simulé,
+exécuteur prefill/decode, contrats TUF, capacité et arguments serveur. Cela
+n'est pas une génération Skippy live. Le workflow Native network
+`31161873658` construit et importe actuellement le wheel sur Ubuntu, macOS 15
+et Windows; ne pas le déclarer vert avant sa conclusion.
+
+Le CLI `fabi-cli/dev` est poussé au commit
+`5cad0e0b768bc974e21e589b0a93367a55fe548e`. Il lit le contrat du manifeste
+produit et lance explicitement `--gpu-backend skippy --execution-device ...` :
+Metal sur Apple Silicon, CUDA sur NVIDIA, Vulkan dans l'asset Windows portable
+historiquement nommé `directml`, et CPU sur les lanes CPU. Le manifeste installé
+prime sur le probing opportuniste. Les 37 tests worker/installer et le typecheck
+du monorepo passent. Le fallback de réparation épingle le moteur `5856005…`.
+
+Le runtime `fabi/main` est poussé au commit
+`bcce1db12ace247979a80fb45229940c24f1b3da` (packaging fonctionnel
+`9f8f971…`, puis attribution livrée `bcce1db…`). Son lock lie exactement
+le CLI `5cad0e0…`, le moteur `5856005…`, Mesh `e60b2fe…`, la release `0.74.0`
+et l'ABI `0.1.32`. La matrice télécharge les artefacts natifs officiels déjà
+construits au lieu de recompiler Mesh : Metal macOS arm64, CPU Linux arm/x64,
+CUDA 12 Linux/Windows, et Vulkan Windows pour Intel/AMD. Chaque SHA-256 de
+release est piné dans `scripts/skippy-native-runtime-lock.json`; l'extraction
+rejette traversées, liens et entrées spéciales, puis produit le manifeste
+d'intégrité consommé au démarrage. L'archive produit entière reste ensuite
+protégée par la chaîne Fabi TUF/attestation. Les trois tests du bundler, la
+syntaxe shell, `git diff --check` et le preflight de cohérence des cinq révisions
+passent. macOS Intel a été retiré de la matrice Skippy car la release stable ne
+publie pas ce runtime; ne pas afficher une compatibilité non qualifiée. Le
+`NOTICE` livré attribue explicitement Mesh-LLM/Skippy sous Apache-2.0 et chaque
+archive contient désormais ses fichiers `NOTICE` et `LICENSE`.
+
+État honnête restant : attendre la CI native, corriger à la source toute panne
+multi-OS, puis lancer le workflow runtime manuel et vérifier les archives sans
+publier de tag. Il faut ensuite attacher/signifier le plan Skippy Qwen dans le
+catalogue TUF de laboratoire, installer le candidat exact sur
+`mac-mini-projet-ia` et `projet-ia`, et prouver une génération multi-tranche
+réelle via le VPS. Seulement après viennent contexte OpenCode long, streaming,
+outils/permissions/abort, changement de modèle, seconde route, kills
+prefill/decode avec export/import ou replay froid, deux NAT indépendants et
+device pairing. Les workers `rc48` actuels n'ont pas été remplacés ni arrêtés
+par ce chantier.
+
+## Correction GGUF direct : Skippy n'impose pas un package par modèle (7 août 2026)
+
+La formulation de l'entrée précédente sur le « plan Skippy Qwen » était trop
+restrictive et ne doit pas devenir le design produit. L'audit du code exact
+Mesh-LLM `v0.74.0` confirme deux sources officielles distinctes :
+
+- un GGUF ordinaire est transformé en identité synthétique par
+  `synthetic_direct_gguf_package`, puis ouvert en `RuntimeLoadMode::RuntimeSlice`;
+- un dépôt `layer-package` permet en plus de télécharger seulement les fichiers
+  de la tranche attribuée.
+
+Le second chemin est une optimisation de distribution et de stockage, pas une
+condition d'exécution. Avec un GGUF direct, chaque participant doit posséder le
+GGUF complet sur disque, mais Skippy filtre à l'ouverture les tenseurs de son
+span et ne charge en mémoire que la tranche retenue. Avec un layer package, le
+participant ne télécharge aussi que cette tranche. La documentation officielle
+Mesh dit explicitement qu'un dépôt non découpé est téléchargé intégralement,
+puis chargé en runtime-slice; le dépôt découpé rend la préparation spécifique à
+un intervalle. Références primaires : `docs/SKIPPY_SPLITS.md`,
+`docs/skippy/layer-inventory-pr-description.md` et
+`crates/mesh-llm-host-runtime/src/runtime/local_package.rs` du commit piné.
+
+Le produit attendu est donc : l'utilisateur choisit une référence de modèle,
+Fabi résout une distribution GGUF compatible à un commit immuable, le catalogue
+génère automatiquement les petites métadonnées signées, et Skippy exécute le
+GGUF sans conversion spécifique à Qwen. S'il existe déjà un layer package
+immuable, Fabi peut le préférer pour économiser disque et réseau. Sinon le GGUF
+direct fonctionne immédiatement; un package sparse pourra être construit une
+seule fois en arrière-plan et réutilisé, sans intervention de l'utilisateur.
+Le fichier candidat Qwen précédemment généré reste uniquement un fixture de
+qualification rapide. Il n'est ni un prérequis produit ni un modèle de travail
+manuel à répéter.
+
+Le commit moteur `d2ebbde2cbf1812aeda04010036f5032e576f954` généralise
+`SkippyExecutionPlan` avec les formats signés `gguf-direct` et
+`gguf-layer-package`. Le direct accepte un ou plusieurs fichiers pour les GGUF
+split, exige la feature officielle `runtime_slice`, télécharge et vérifie les
+sources exactes, puis transmet explicitement `runtime_slice` au pont Rust. Le
+package conserve `layer_package`. Le pont réutilise `skippy-runtime::ModelInfo`
+et `TensorRole` du commit Mesh piné pour additionner les vrais octets de tenseurs
+par couche; le placement ne divise pas arbitrairement la taille du fichier. Au
+READY, le worker compare couche par couche cette géométrie au plan signé, ainsi
+que largeur d'activation, contexte et KV. Les routes ne peuvent pas mélanger
+deux révisions ou deux formats grâce au hash d'identité de plan déjà ajouté.
+
+Validation locale à cet instant : 280 tests protocole/Skippy passent avec un
+skip, dont un GGUF direct sans manifeste de package et un runner qui reçoit
+`runtime_slice`; 53 tests registre/opérateur/exécution passent; le crate réseau
+passe 31 tests Rust avec la feature Python et Clippy `-D warnings`; le crate
+pont passe ses quatre tests Rust. L'opérateur `attach-skippy-direct` charge le
+runtime qualifié, inspecte le GGUF et produit atomiquement le plan signé; cette
+commande est destinée à l'automatisation du catalogue, pas à l'utilisateur.
+Le workflow Native network `31164805316` est en attente au moment de cette
+écriture; ne pas le déclarer vert avant sa conclusion. Ce n'est pas encore une
+génération native GGUF directe : il faut construire le wheel sur les trois OS,
+puis charger le GGUF public
+`unsloth/Qwen3-0.6B-GGUF/Qwen3-0.6B-Q4_K_M.gguf` sur le Mac mini et la RTX.
+Ne pas publier, signer ou remplacer `rc48` avant cette qualification live.
