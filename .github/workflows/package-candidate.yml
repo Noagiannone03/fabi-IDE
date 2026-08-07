@@ -1,0 +1,67 @@
+name: Package desktop candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-x64:
+    name: Package Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout candidate revision
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable pinned Yarn Classic
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install immutable dependencies
+        shell: bash
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Test the Fabi product contract
+        shell: bash
+        run: yarn --cwd fabi-swarm test
+
+      - name: Build the NSIS installer
+        shell: bash
+        run: yarn --cwd electron-app package
+
+      - name: Record candidate checksums
+        shell: pwsh
+        run: |
+          $artifacts = Get-ChildItem electron-app/dist -File |
+            Where-Object { $_.Name -match '\.(exe|blockmap|yml)$' }
+          if (-not ($artifacts | Where-Object Extension -eq '.exe')) {
+            throw 'electron-builder did not produce a Windows installer'
+          }
+          $artifacts | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLowerInvariant(), (Split-Path $_.Path -Leaf) } |
+            Set-Content -Encoding ascii electron-app/dist/SHA256SUMS
+
+      - name: Upload the qualification candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: fabi-windows-x64-candidate
+          path: |
+            electron-app/dist/*.exe
+            electron-app/dist/*.blockmap
+            electron-app/dist/*.yml
+            electron-app/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 3
