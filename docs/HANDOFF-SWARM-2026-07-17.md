@@ -8311,3 +8311,42 @@ join Mac+RTX par le registre, route READY, génération OpenAI/OpenCode SSE
 complète. Ensuite, vérifier la fermeture de Fabi ⇒ arrêt gracieux du worker
 (déjà validé au repos : cinq processus avant Quitter, zéro après) pendant le
 téléchargement et pendant une génération active.
+
+### rc50 publié, régression TUF réparée et premier exécuteur produit servi
+
+Le moteur corrigé a été qualifié de bout en bout : préqualification
+`31183375512` verte après avoir complété la chaîne de cohérence (le préflight
+a refusé, à raison, un lock à moitié bumpé tant que le fallback compilé du CLI
+n'épinglait pas le même moteur — CLI `642e184`, lock `0dd29b1`), tag annoté
+`v2.7.0-rc50`, release publique `31185667325` verte avec les six archives.
+Pins IDE en `3162f48`, candidat Mac construit sous Node 22 (SHA
+`482c7992…`), installeur Windows NSIS via `31185739855`. Le candidat est
+installé sur le Mac mini (rollback `pre-skippy-profile-20260807162654`) et
+sur le Mac de développement. La migration automatique rc49→rc50 a réussi et
+le worker rejoint désormais avec la découverte native corrigée.
+
+Incident produit distinct découvert par le Mac de développement : la
+publication « génération 7 » du registre TUF avait remplacé le dépôt servi
+par un staging dont le compteur timestamp (33) régressait sous les mêmes
+clés, alors que le timer 6 h avait porté l'ancien dépôt à 39
+(`…-pre-skippy-7296313-20260807`). Tout client ayant validé ≥34 refusait
+fail-closed (`BadVersionNumberError`), ce qui arrêtait worker et Request
+Agent. Réparation par l'outillage audité uniquement : sept
+`refresh-timestamp` (33→40 > 39), vérifié à 40 depuis le HTTPS public. Les
+chaînes snapshot/targets (7 > 6) étaient restées monotones. Attention : le
+timer `fabi-tuf-timestamp-refresh` référence l'image supprimée
+`swarm-v3-792f7c6`; il faut le pointer sur `swarm-v3-7296313` (le CLI y est
+présent) sinon le timestamp expirera le 8 août à 14:41 UTC. La correction
+structurelle (garde de succession avant remplacement du dépôt servi) reste à
+coder dans `registry_operator.py`.
+
+Après réparation, les deux Mac ont rejoint le swarm 0.6B et le scheduler a
+placé le modèle en mono-nœud répliqué : l'exécuteur du Mac mini a chargé
+`layers [0, 28)` sur Metal et sert (`ready True`). Le Mac de développement
+reste `ready False` : son exécuteur échoue sur
+`missing tensor 'token_embd.weight'` au chargement de la tranche directe
+GGUF — premier défaut du chemin sliced multi-répliques à instruire (cache
+d'artefacts incomplet ou assemblage de tranche omettant l'embedding).
+Prochaines étapes strictes : génération OpenAI/OpenCode SSE via la route du
+Mac mini, instruction du défaut `token_embd`, fermeture pendant activité,
+puis PC RTX et fusion des pins.
