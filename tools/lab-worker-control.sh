@@ -86,12 +86,12 @@ else
   log="$HOME/.local/share/fabi/mac-worker-e2e.nohup.log"
 fi
 
-runtime_pids() {
-  # `awk -v runtime=...` itself contains the runtime path in its argv.  Match
-  # only executable command lines rooted in the runtime directory so the
-  # lifecycle probe never observes (or terminates) its own inspector.
+worker_pids() {
+  # A runtime also hosts Request Agents and update helpers. This lab command
+  # owns only the model worker tree; never use the runtime prefix alone as a
+  # lifecycle boundary or `stop` would terminate unrelated Fabi services.
   ps -axo pid=,command= | awk -v runtime="$runtime/" '
-    index($0, runtime) && $0 !~ /awk -v runtime/ { print $1 }
+    index($0, runtime) && ($0 ~ / -m parallax\.cli join / || $0 ~ /\/parallax\/launch\.py / || $0 ~ /\/vllm-rs frontend /) { print $1 }
   '
 }
 
@@ -99,11 +99,11 @@ stop_worker() {
   if command -v screen >/dev/null 2>&1; then
     screen -S "$screen_name" -X quit >/dev/null 2>&1 || true
   fi
-  pids="$(runtime_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  pids="$(worker_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
   if [ -n "$pids" ]; then
     kill -TERM $pids 2>/dev/null || true
     sleep 3
-    pids="$(runtime_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    pids="$(worker_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
     if [ -n "$pids" ]; then
       kill -KILL $pids 2>/dev/null || true
     fi
@@ -119,8 +119,8 @@ start_worker() {
     echo "already_running mac screen=$screen_name"
     return 0
   fi
-  if [ -n "$(runtime_pids | head -1)" ]; then
-    echo "already_running mac runtime_processes_present"
+  if [ -n "$(worker_pids | head -1)" ]; then
+    echo "already_running mac worker_processes_present"
     return 0
   fi
   if [ -n "$engine_sha" ]; then
@@ -168,7 +168,7 @@ status_worker() {
   screen -ls 2>/dev/null | grep -F "$screen_name" || true
   echo "processes:"
   ps -axo pid=,rss=,command= | awk -v runtime="$runtime/" '
-    index($0, runtime) && $0 !~ /awk -v runtime/ { print }
+    index($0, runtime) && ($0 ~ / -m parallax\.cli join / || $0 ~ /\/parallax\/launch\.py / || $0 ~ /\/vllm-rs frontend /) { print }
   ' || true
   echo "ports:"
   lsof -nP -iTCP:19080 -iUDP:19080 2>/dev/null || true
@@ -230,9 +230,18 @@ if (\$NetworkMode -eq "iroh") {
   \$ErrLog = Join-Path \$env:LOCALAPPDATA "fabi\\worker-windows-task.err.log"
 }
 
-function Get-FabiRuntimeProcess {
+function Get-FabiWorkerProcess {
   Get-CimInstance Win32_Process | Where-Object {
-    \$_.CommandLine -and \$_.CommandLine.Contains(\$Runtime)
+    if (-not (\$_.CommandLine -and \$_.CommandLine.Contains(\$Runtime))) {
+      return \$false
+    }
+    \$line = \$_.CommandLine
+    return (
+      \$line.Contains(" -m parallax.cli join ") -or
+      \$line.Contains("\\parallax\\launch.py ") -or
+      \$line.Contains("/parallax/launch.py ") -or
+      \$line.Contains("vllm-rs frontend")
+    )
   }
 }
 
@@ -244,7 +253,7 @@ function Stop-FabiWorker {
   @("FabiWorkerE2E", "FabiWorkerPublicNat", "FabiWorkerIroh") | ForEach-Object {
     Stop-ScheduledTask -TaskName \$_ -ErrorAction SilentlyContinue
   }
-  Get-FabiRuntimeProcess | ForEach-Object {
+  Get-FabiWorkerProcess | ForEach-Object {
     Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue
   }
 }
@@ -342,7 +351,7 @@ function Show-FabiStatus {
     Select-Object LastRunTime,LastTaskResult,NumberOfMissedRuns |
     Format-List | Out-String | Write-Output
   Write-Output "processes:"
-  Get-FabiRuntimeProcess |
+  Get-FabiWorkerProcess |
     Select-Object ProcessId,Name,CommandLine | Format-List | Out-String | Write-Output
   Write-Output "ports:"
   Get-NetTCPConnection -LocalPort 19080 -ErrorAction SilentlyContinue |

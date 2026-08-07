@@ -7726,3 +7726,88 @@ par `for await`. Les 76 tests `fabi-swarm` passent ensuite. Ces changements
 doivent encore être commités et poussés. La qualification n'a pas encore couvert une
 seconde route complète, les kills prefill/decode avec `replan_cold`, deux NAT
 indépendants, le grand E2E Electron/OpenCode ni le device pairing.
+
+## Exécution portable ONNX/DirectML et budget DXGI du 7 août 2026
+
+Le chantier d'extension au-delà de MLX Apple et CUDA NVIDIA est engagé sur
+`swarm-engine/codex/swarm-protocol-v3`, à partir de `0d03213…`. Le choix n'est
+pas d'émuler CUDA ni d'annoncer un CPU générique comme accélérateur. Une table
+de capacités sépare maintenant le runtime de tenseurs, le backend d'exécution
+et le device concret. CUDA, Intel XPU, MLX, DirectML, OpenVINO, QNN, WinML et
+CPU sont détectés séparément; seuls les couples effectivement qualifiés peuvent
+annoncer READY. Le faux fallback historique « 16 Gio / 50 TFLOPS » disparaît :
+un matériel sans sonde qualifiée publie zéro capacité et échoue fermé.
+
+Un contrat signé `onnxruntime` décrit désormais les stages d'entrée, les
+blocs décodeur, la sortie, leur provider, les artefacts et leur hash. Le builder
+`fabi-build-onnx-stages` découpe l'export officiel ONNX Runtime GenAI en stages
+sélectifs. Le downloader ne matérialise que les fichiers du span retenu depuis
+une révision Hugging Face immuable, puis vérifie chaque SHA-256. Le runner garde
+activations et KV sur DirectML avec I/O binding entre stages; seules les
+frontières réseau passent par NumPy. Il profile l'assignation réelle des nœuds
+ORT et n'accepte les replis CPU que s'ils sont nommément signés dans le plan.
+L'exécuteur ONNX réutilise le scheduler, le transport et la boucle P2P Parallax,
+gère plusieurs sessions séquentielles et refuse explicitement les fonctions
+non qualifiées : LoRA, refit, grammaire JSON, chunked prefill et TP/DP locaux.
+
+La source modèle de qualification est `Qwen/Qwen3-0.6B` au commit immuable
+`c1899de289a04d12100db370d81485cdf75e47ca`. L'exporteur officiel est ONNX
+Runtime GenAI `v0.15.0`, commit
+`dfdc2548cec851893c10aad5d3056a20116ad749`. Le plan CPU a l'inventaire
+`1d81fe8243c92f52ddcb93af9f07601117d98ff7d5d08544926ab3eb76d3a584` et
+une parité préfill/decode exacte. Le plan DML a l'inventaire
+`8dbe89b0f866fd269a16293cbe23afdbae5933119b4c602cbd6e9ecd0d3cd381`.
+Sur la RTX Windows avec `onnxruntime-directml 1.24.4`, les 28 décodeurs placent
+le transformer, GQA, RoPE, normalisations et MLP sur DML. Deux petits nœuds de
+forme du masque restent volontairement CPU, ainsi que l'embedding d'entrée;
+ce comportement a été observé par profil ORT et est autorisé nœud par nœud.
+La tolérance officielle DML est respectée : erreur logits préfill `0,0322265625`,
+decode `0,0205078125`, KV `0,125`, top-1 identique dans les deux cas.
+
+Le runner complet de 30 stages a été exécuté sur le vrai PC : initialisation et
+profil de tous les stages en `3,524 s`, préfill de trois tokens en `0,5009 s`,
+decode en `0,06814 s`, token suivant `11` identique au CPU et KV de `458 752`
+octets pour quatre tokens sur 28 couches. Un bloc isolé avec I/O binding décode
+en `0,0022 s`. Cela prouve le chemin DirectML sur la RTX actuelle; cela ne
+prouve pas encore les performances ni même l'admission d'un Intel/AMD iGPU.
+
+La mémoire DirectML n'est pas déduite de la RAM physique. Un nouveau petit
+crate `native/fabi-dxgi` encapsule l'API Microsoft
+`IDXGIAdapter3::QueryVideoMemoryInfo` via `windows-rs 0.62.2`. L'unique frontière
+COM unsafe reste dans ce crate; `fabi-network` conserve `unsafe_code=forbid` et
+expose au Python le budget, l'usage et les réservations des segments local et
+non-local. L'identité ORT (`device_id`) est reliée au numéro exact d'adaptateur
+DXGI puis recoupée par vendor id, device id et description. Une carte discrète
+n'utilise jamais le segment non-local pageable comme capacité de modèle. Un
+iGPU UMA est en plus plafonné par la mémoire hôte disponible. Une réserve de
+workspace DirectML de 512 Mio, explicitement configurable, reste à l'intérieur
+du budget live Windows; elle ne remplace pas cette mesure.
+
+Le test Rust live sur le PC rapporte pour la RTX 4080 SUPER : mémoire dédiée
+`16 826 499 072`, budget local `15 977 603 072`, usage du processus de sonde
+zéro, budget non-local `16 339 763 200`. `cargo check --locked` et Clippy
+`-D warnings` passent pour les deux crates sur Windows; les deux tests du
+wrapper DXGI passent. La construction locale du `.pyd` ne peut pas être prise
+comme qualification car le toolchain SSH de cette machine est MinGW et son
+linker échoue sur les exports d'`iroh-relay`. Le workflow GitHub utilise MSVC et
+doit encore reconstruire/importer le wheel sur Windows, macOS et Linux après le
+checkpoint poussé.
+
+La suite Python complète, exécutée sur le clone local temporaire du Mac mini,
+donne `938 passed, 8 skipped` en `27,43 s`. Elle a découvert et corrigé une
+régression antérieure de `validate_args`, qui supposait à tort la présence de
+`gpu_backend` dans tous les namespaces. Les 39 tests ciblés backend, mémoire,
+runtime capacity et hardware passent aussi. Le worker Mac mini reste arrêté
+volontairement depuis les exports ONNX pour libérer sa RAM; le worker RTX et le
+Request Agent qualifiés `rc48` n'ont pas été remplacés par ce code expérimental.
+
+La prochaine barrière est architecturale et ne doit pas être contournée : le
+placement autonome raisonne encore sur la géométrie SafeTensors du modèle MLX/
+CUDA, alors qu'un worker portable doit réserver les octets exacts de son plan
+ONNX signé. Il faut rendre la géométrie poids/résidence dépendante du backend et
+du plan, publier les vrais artefacts et métadonnées TUF, puis seulement lancer
+un worker DirectML réel. Ensuite viennent le packaging conditionnel de
+`onnxruntime-directml`, la qualification CI MSVC, l'E2E PC, un vrai Intel/AMD
+iGPU, puis OpenVINO/QNN/WinML selon leurs plugins maintenus. L'audit de
+confidentialité des prompts, tokens et activations P2P reste également à faire;
+aucune promesse de confidentialité nouvelle n'est encore implémentée.
