@@ -15,10 +15,10 @@ jobs:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
     steps:
       - name: Checkout candidate revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: yarn
@@ -55,7 +55,7 @@ jobs:
             Set-Content -Encoding ascii electron-app/dist/SHA256SUMS
 
       - name: Upload the qualification candidate
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fabi-windows-x64-candidate
           path: |

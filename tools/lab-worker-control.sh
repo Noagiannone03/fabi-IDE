@@ -20,6 +20,7 @@ vps_host="${FABI_LAB_VPS_SSH:-vps}"
 vps_control_path="${FABI_LAB_VPS_CONTROL_PATH:-}"
 mac_ssh="${FABI_LAB_MAC_SSH:-gmbh@100.76.201.20}"
 win_ssh="${FABI_LAB_WINDOWS_SSH:-gmbhl@100.105.234.82}"
+lab_scheduler_endpoint="${FABI_LAB_SCHEDULER_ENDPOINT:-627ec9c575d634525f2fabf451d9120316c47061df4b13be1049715c434cceb2}"
 win_model_cache="${FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE:-}"
 win_hf_home="${FABI_LAB_WINDOWS_HF_HOME:-}"
 
@@ -33,6 +34,8 @@ Environment overrides:
                          optional existing OpenSSH ControlMaster socket
   FABI_LAB_MAC_SSH       default: gmbh@100.76.201.20 (mac-mini-projet-ia)
   FABI_LAB_WINDOWS_SSH   default: gmbhl@100.105.234.82
+  FABI_LAB_SCHEDULER_ENDPOINT
+                         default: qualified Qwen3-0.6B Iroh EndpointId
   FABI_LAB_NETWORK_MODE  default: iroh
   FABI_LAB_ENGINE_SHA    optional committed engine candidate under runtime-candidates
   FABI_LAB_WINDOWS_MODEL_ARTIFACT_CACHE
@@ -67,11 +70,12 @@ ssh_vps() {
 
 run_mac() {
   local mac_action="$1"
-  ssh_vps "ssh $mac_ssh 'bash -s'" -- "$mac_action" "$network_mode" "${FABI_LAB_ENGINE_SHA:-}" <<'SH'
+  ssh_vps "ssh $mac_ssh 'bash -s'" -- "$mac_action" "$network_mode" "${FABI_LAB_ENGINE_SHA:-}" "$lab_scheduler_endpoint" <<'SH'
 set -euo pipefail
 action="$1"
 network_mode="$2"
 engine_sha="${3:-}"
+scheduler_endpoint="${4:-}"
 runtime="$HOME/.local/share/fabi/runtime"
 registry_root="$HOME/.local/share/fabi/trust/model-registry-root-7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce.json"
 screen_name="fabi-worker-$network_mode"
@@ -145,6 +149,7 @@ start_worker() {
     # responsible process. In this lab a detached ssh/nohup child loses that
     # context, while screen keeps a durable user session for the worker.
     FABI_PARALLAX_SOURCE="$source_dir" \
+    FABI_SCHEDULER_ENDPOINT="$scheduler_endpoint" \
     FABI_MODEL_REGISTRY_ROOT="$registry_root" \
     FABI_SWARM_V3_COORDINATION_MODE="client" \
       nohup screen -DmS "$screen_name" \
@@ -153,6 +158,7 @@ start_worker() {
     echo "started mac screen=$screen_name"
   else
     FABI_PARALLAX_SOURCE="$source_dir" \
+    FABI_SCHEDULER_ENDPOINT="$scheduler_endpoint" \
     FABI_MODEL_REGISTRY_ROOT="$registry_root" \
       nohup "$launcher" > "$log" 2>&1 &
     echo "started mac pid=$!"
@@ -201,6 +207,7 @@ run_windows() {
 \$Action = "$win_action"
 \$NetworkMode = "$network_mode"
 \$EngineSha = "${FABI_LAB_ENGINE_SHA:-}"
+\$SchedulerEndpoint = "$lab_scheduler_endpoint"
 \$ModelArtifactCache = [Text.Encoding]::UTF8.GetString(
   [Convert]::FromBase64String("$win_model_cache_b64")
 )
@@ -306,13 +313,14 @@ function Start-FabiWorker {
       '\$env:FABI_ACCOUNT_TOKEN_FILE = ''{3}''; \$env:HF_HOME = ''{4}''; ' +
       '\$env:FABI_PARALLAX_SOURCE = ''{5}''; ' +
       '\$env:FABI_MODEL_REGISTRY_ROOT = ''{6}''; ' +
+      '\$env:FABI_SCHEDULER_ENDPOINT = ''{10}''; ' +
       \$(if (\$quotedModelArtifactCache) {
         '\$env:FABI_MODEL_ARTIFACT_CACHE = ''{7}''; '
       } else { '' }) +
       '\$env:FABI_SWARM_V3_COORDINATION_MODE = ''client''; ' +
       'try {{ & ''{8}''; exit \$LASTEXITCODE }} catch {{ ' +
       '(\$_ | Format-List * -Force | Out-String) | Set-Content -LiteralPath ''{9}'' -Encoding UTF8; exit 1 }}'
-    ) -f \$quotedHome, \$quotedLocalAppData, \$quotedAppData, \$quotedAccountToken, \$quotedHfHome, \$quotedSource, \$quotedRoot, \$quotedModelArtifactCache, \$quotedLauncher, \$quotedBootstrapLog
+    ) -f \$quotedHome, \$quotedLocalAppData, \$quotedAppData, \$quotedAccountToken, \$quotedHfHome, \$quotedSource, \$quotedRoot, \$quotedModelArtifactCache, \$quotedLauncher, \$quotedBootstrapLog, \$SchedulerEndpoint
     \$encodedTaskCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes(\$taskCommand))
     \$TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument (
       "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand " + \$encodedTaskCommand
@@ -339,6 +347,21 @@ function Show-FabiStatus {
   Write-Output ("host=" + \$env:COMPUTERNAME)
   Write-Output ("runtime=" + \$Runtime)
   Write-Output ("network_mode=" + \$NetworkMode)
+  Write-Output "runtime_manifest:"
+  \$ManifestPath = Join-Path \$env:LOCALAPPDATA "fabi\\MANIFEST"
+  if (Test-Path -LiteralPath \$ManifestPath -PathType Leaf) {
+    Get-Content -LiteralPath \$ManifestPath
+  } else {
+    Write-Output ("missing " + \$ManifestPath)
+  }
+  Write-Output "launcher_contract:"
+  if (Test-Path -LiteralPath \$Launcher -PathType Leaf) {
+    Get-Content -LiteralPath \$Launcher |
+      Select-String -Pattern '(--gpu-backend|--execution-device|parallax\.cli join)' |
+      ForEach-Object { \$_.Line.Trim() }
+  } else {
+    Write-Output ("missing " + \$Launcher)
+  }
   if (\$EngineSha) {
     Write-Output ("engine_sha=" + \$EngineSha)
   } else {
@@ -360,6 +383,13 @@ function Show-FabiStatus {
   nvidia-smi --query-gpu=name,memory.used,memory.free,utilization.gpu --format=csv,noheader,nounits 2>\$null
   Write-Output "last_stdout:"
   if (Test-Path \$OutLog) { Get-Content \$OutLog -Tail 40 }
+  Write-Output "recent_v3_events:"
+  if (Test-Path \$OutLog) {
+    Get-Content \$OutLog -Tail 400 |
+      Select-String -Pattern '(Autonomous v3|catalog|DHT|placement|signed Skippy|cold join|storage)' |
+      Select-Object -Last 80 |
+      ForEach-Object { \$_.Line }
+  }
   Write-Output "last_stderr:"
   if (Test-Path \$ErrLog) { Get-Content \$ErrLog -Tail 40 }
   Write-Output "bootstrap_log:"
