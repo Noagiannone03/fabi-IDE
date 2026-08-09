@@ -8674,3 +8674,75 @@ si le chemin contractuel manque, sans relâcher l'assertion. L'installation
 Yarn frozen, les cinq workspaces Lerna et les 80 tests produit passent
 localement. Il reste à pousser ce commit, obtenir un workflow vert, puis tester
 le même EXE sur la RTX avant le cutover public.
+
+### Identité desktop qualifiée, cutover root2 et défaut REQ/REP Skippy (10 août 2026, suite)
+
+Le commit IDE `8981c8cfb0338cb70be9eef34ce9e4b253449a9e` corrige l'identité
+du paquet Windows (`fabi`, version desktop `0.1.1`). Son workflow
+`31340330596` est entièrement vert, y compris l'installation NSIS `/S` réelle
+sans bureau, les chemins `Fabi.exe`/`app.asar`, les checksums et l'upload. Le
+même EXE a été installé sur le RTX dans le chemin per-user contractuel; son
+ProductVersion vaut `0.1.1.0`, aucun nouveau WER/Application Error n'est apparu
+et l'ASAR installé porte exactement rc54, CLI `f8dfcd7`, moteur `07b7385` et
+root `c0fe1ff1`. Il n'y a pas de session graphique Windows active : ce test
+qualifie l'installeur et le paquet réel, pas encore l'E2E UI Windows.
+
+Le paquet Mac exact a été reconstruit depuis un clone local complet propre de
+`8981c8c`, puis installé sous `~/Applications/Fabi.app`. Son DMG a pour SHA-256
+`d0d77e9cd88d793b38dcff193edc60337a0a4871f5464982640ad8c04ed84f98`
+et son ZIP `9873f8d09218cfcc58bb6e6c86934f8b209c99594e833f08e2a3d19c0e967b5b`.
+Le certificat Apple Development disponible est expiré : ce candidat est
+ad-hoc/non signé et ne qualifie pas la distribution macOS finale.
+
+Le cutover public root2/rc54 est effectué avec sauvegarde restaurable sous
+`/home/debian/fabi-rc54-cutover-20260810/rollback-root2-public`. Le dépôt servi
+a la root `c0fe1ff1…`, le timestamp root2 est passé à la version 3 et son timer
+est actif. Le coordinateur 0.6B utilise l'image exacte
+`local/parallax-scheduler:swarm-v3-07b7385`, l'identité Iroh
+`627ec9c575d634525f2fabf451d9120316c47061df4b13be1049715c434cceb2`
+et un état neuf `registry-authority-c0fe1ff1`. L'ancien coordinateur 4B, encore
+sur un moteur non qualifié, est arrêté mais conservé. Le registre public
+n'annonce donc volontairement que `qwen3-0-6b-v3`.
+
+Le premier démarrage normal de Fabi 0.1.1 sur le Mac a prouvé que l'IDE lance
+automatiquement le runtime rc54 et le worker Skippy/Metal sans variable de
+labo. Il a aussi révélé une configuration publique périmée : le profil ne
+contenait que le bootstrap DHT `19191`, arrêté. Le transport Iroh vers le
+coordinateur fonctionnait, mais toute publication catalogue échouait avec
+`quorum failed; needed 1 peers`. Le profil public et son exemple versionné
+annoncent désormais les deux serveurs joignables `19192` (routeur catalogue)
+et `19193` (catalogue du coordinateur). Après une fermeture/reouverture normale,
+le worker a lu ces valeurs automatiquement, joint le coordinateur via le relay,
+publié son manifeste et choisi de façon autonome la tranche `[0,28)` à 32k.
+La fermeture normale de l'app arrête bien tout le groupe worker sans orphelin.
+
+Le chargement natif a ensuite atteint 32 768 cellules KV pour 28 couches sur
+Metal, puis l'exécuteur a quitté avec la cause exacte
+`ValueError: Unsupported socket type: 4`. Le type 4 est ZeroMQ `REP` : le canal
+de contrôle des checkpoints utilise REQ/REP, mais notre ancien helper porté de
+SGLang ne configurait que PUSH/PULL/DEALER. SGLang main
+`4a5d7d3c67e61e21e67ede5a5ac74d8d4df47175` configure officiellement
+DEALER/REQ/REP/PAIR dans les deux directions. Le moteur
+`aeb3b33e6ae6ce8e56f0a8db1a271b41a84bc890` reprend ce contrat, ajoute un vrai
+test inproc REQ/REP et PAIR, l'inscrit dans la CI tri-OS, rend l'absence de
+PyTorch silencieuse dans un runtime Skippy volontairement sans Torch, et évite
+le déréférencement de `_shared_state=None` pendant l'arrêt. Les 87 tests ciblés
+passent; la suite locale large donne 539 réussites, 4 ignores et un seul échec
+parce que le wheel Rust natif n'est pas installé dans ce venv. La matrice
+native `31341841536` est entièrement verte sur Ubuntu, macOS et Windows.
+
+Le CLI `dev` `1c0e5693e748e83c938475b101d2ffc873ca23e0` épingle `aeb3b33`;
+son test ciblé et le hook de typecheck passent sous Bun 1.3.13. Le runtime
+`main` `49c67773e1c673ab8100396031959a435f1429cb` verrouille ce CLI, ce moteur,
+Mesh `e60b2fe…` et ABI Skippy `0.1.32`; son test de profil et le preflight de
+lock passent. Le workflow de lock/transactions runtime `31341971797` est
+entièrement vert. Aucun rc55 n'est encore tagué ou publié.
+
+Ordre immédiat : taguer et publier rc55; mettre à jour les pins IDE;
+reconstruire/installer les paquets exacts; relancer
+Mac + RTX par les chemins produit; prouver une génération OpenCode/SSE; puis
+tuer un worker pendant prefill et decode et mesurer reprise chaude/froide et
+absence de doublons. Le speculative decoding décentralisé vient ensuite : il
+doit être optionnel par swarm/couple draft-cible, signé dans le catalogue,
+choisi selon latence réseau, mémoire et taux d'acceptation mesuré, et retomber
+sans interruption sur le décodage normal s'il n'apporte pas de gain.
