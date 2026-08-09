@@ -8350,3 +8350,67 @@ d'artefacts incomplet ou assemblage de tranche omettant l'embedding).
 Prochaines étapes strictes : génération OpenAI/OpenCode SSE via la route du
 Mac mini, instruction du défaut `token_embd`, fermeture pendant activité,
 puis PC RTX et fusion des pins.
+
+### rc53 produit qualifié et reprise chaude Skippy en construction (9 août 2026)
+
+La qualification a progressé au-delà de l'entrée rc50 ci-dessus. Le runtime
+public courant est `v2.7.0-rc53`, commit `b5316ef7ccdf30ea2fb12dfa500e934b9bad26d9`,
+CLI `910a7c7d7509dcd01f88d9068cd0c5aaf80c1655` et moteur de base
+`a71b12ca37aa3f5fa6574521805df7166a559fac`. Le workflow runtime
+`31322614551` est vert sur Windows, macOS et Linux. L'IDE candidat
+`codex/rc49-product-e2e` est à `1f0ab0d89eea76d94456a2143d8e7c5d07f7d43e`;
+le packaging Windows `31322682596` est vert. Le Mac mini exécute un clone local
+complet installé dans `/Users/gmbh/Applications/Fabi.app`. Windows a été
+installé par l'installateur rc53 normal et annonce exactement Skippy, CUDA,
+Mesh 0.74.0 et ABI 0.1.32.
+
+Le cluster produit Qwen3-0.6B est READY avec le Mac mini MTL0 et le RTX CUDA0,
+chacun annonçant la géométrie KV réellement initialisée (32768 tokens). Une
+génération Request Agent sur les deux workers a terminé par SSE `[DONE]` en
+26,2 s, puis les deux réservations sont revenues à 32768 tokens disponibles.
+L'abort long a été suivi d'une génération exacte `AFTER_ABORT_OK` sans restart
+du worker : le compute Skippy est bien libéré coopérativement. L'UI Windows
+n'a pas été qualifiée physiquement faute de session interactive; ne pas la
+déclarer validée. Le runtime/worker Windows, lui, est qualifié.
+
+Le failover fiable existe déjà en replay froid token-exact : journal durable,
+commit avant publication SSE, epoch/fencing, nouveau plan DHT et suppression
+des doublons. Petals ne déplace pas non plus magiquement le KV après la mort
+d'un serveur; il reconstruit depuis l'historique. Pour réduire ce coût sans
+réserver une seconde pipeline complète, Fabi ajoute maintenant un checkpoint
+proactif de l'état Skippy, avec fallback obligatoire vers ce replay froid.
+
+Commits moteur sur `codex/swarm-protocol-v3` :
+
+- `755aa85a25ba80c6977fbaf011e7c5a4cd568c5d` expose les pages KV exactes de
+  Mesh dans le bridge Rust/PyO3 et ajoute l'identité complète du snapshot;
+- `459962ce` exige dans le plan signé une certification explicite par famille
+  (`dense_attention_kv` ou `kv_recurrent`). Une famille inconnue reste
+  `disabled`; le recurrent exige aussi son état recurrent certifié;
+- `cad0f1e5` ajoute le transfert incrémental : page native conservée sans copie
+  Python complète, blocs maximum 4 Mio, SHA-256, lecture/écriture séquentielle,
+  admission par mémoire disponible et réserve OS, IPC MessagePack sans pickle,
+  RPC Iroh authentifiés et réservés au coordinateur signé de la route;
+- `93ce39f4` corrige la lint PyO3 de cette chaîne. La commande CI exacte
+  `cargo clippy --all-targets --all-features -- -D warnings` passe sur le Mac
+  mini, ainsi que `cargo fmt --all -- --check` et la compilation de l'extension.
+
+Le chemin refuse fermé les mauvaises tranches, tailles différentes de la
+géométrie KV signée, accès croisés entre requêtes, random access, digest faux
+et pression mémoire. Le destinataire construit une seule page native, puis ne
+l'importe qu'après réception et vérification complètes. 150 tests ciblés
+(launch, supervision, P2P, placement, fencing, IPC, export/import et Skippy)
+passent. La matrice GitHub du dernier commit est `31327195645`, encore en cours
+à cette entrée. Les runs `31326143597`, `31326406611` et le run intermédiaire
+`31327107663` étaient rouges uniquement sur Clippy; ils ne constituent pas une
+qualification et ne doivent pas être présentés comme verts.
+
+Ce qui reste avant un kill live : connecter le journal du Request Agent à une
+frontière de tokens commis, chiffrer et plafonner son stockage de snapshots,
+choisir une nouvelle route sans réserve permanente, importer le snapshot sur
+les spans strictement compatibles, rejouer au minimum le dernier token pour
+recalculer les logits, puis tomber automatiquement sur `replan_cold` au moindre
+miss/incompatibilité. Publier ensuite un candidat, installer Mac mini + RTX et
+effectuer les kills réels prefill/decode (RunPod si nécessaire). Seulement
+après cette qualification commencer le décodage spéculatif décentralisé décrit
+par Gradient/Shard; il n'est pas encore implémenté.
