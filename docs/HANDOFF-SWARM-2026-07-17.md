@@ -8527,3 +8527,48 @@ basculer le coordinateur vers `18b52f…`, laisser les workers rejoindre sans
 variable de labo, valider une génération ordinaire puis les kills prefill/decode
 avec mesures chaud/froid. Ne pas publier le bundle candidat avant que le runtime
 capable de le lire soit disponible.
+
+### Runtime rc54 en préqualification, image scheduler et autorité TUF (9 août 2026, suite)
+
+La matrice moteur finale `31329322239` de `07b7385` est entièrement verte sur
+Ubuntu, macOS 15 et Windows. Le CLI `fabi-cli/dev` est poussé en `f8dfcd7` et
+épingle ce moteur; ses 73 tests swarm passent et son hook de typecheck Bun
+1.3.13 passe sans contournement. Le runtime `fabi/main` est poussé en
+`ee96bd5`: il verrouille ce CLI et `07b7385`; le lock, le bundler Skippy et la
+syntaxe des installateurs passent localement. La préqualification runtime
+manuelle `31329733243` est encore en cours : les locks et transactions
+d'installation Ubuntu/Windows sont verts, mais les archives multi-plateformes
+ne doivent pas être déclarées vertes avant la conclusion globale.
+
+L'image exacte `local/parallax-scheduler:swarm-v3-07b7385` est construite sur
+le VPS avec `deploy/scheduler/Dockerfile`; sa révision OCI est le SHA complet
+`07b73850…`, sa taille finale est `444 335 001` octets et le disque conserve
+26 Gio libres. Un premier lancement avait visé par erreur le Dockerfile GPU
+historique `docker/Dockerfile` et commencé à tirer l'image SGLang volumineuse.
+Il a été arrêté avant tout déploiement; `docker builder prune -af` a supprimé
+uniquement 32,54 Gio de cache inutilisé, sans toucher conteneurs, volumes ni
+service actif. Le bon build a ensuite recompilé le wheel Iroh/Skippy natif.
+Dans cette image, la relecture isolée confirme à la fois l'ancien bundle
+`6bc03462…` en état désactivé et le candidat `18b52f37…` en
+`dense_attention_kv`. Aucun conteneur candidat permanent n'a été démarré.
+
+La recherche de la cérémonie génération 7 a retrouvé l'ancien chemin opérateur
+du Mac : `~/.local/share/fabi/swarm-v3-staging-20260723`, avec clés TUF chiffrées
+et passphrase owner-only. Ce répertoire n'existe plus et aucune copie des clés
+root/targets/snapshot n'est présente sur le VPS ou le Mac mini; le VPS ne porte
+volontairement que la clé timestamp en ligne. Le dépôt public n'est donc pas
+modifiable honnêtement sous l'ancienne root. Ne jamais fabriquer une fausse
+continuité ni copier la clé timestamp pour un autre rôle. Puisque le réseau est
+encore en préproduction, la voie sûre est une nouvelle cérémonie de root dans
+un répertoire opérateur hors de l'installation runtime, la publication d'un
+registre complet frais, le bump de la racine SHA-256 compilée dans l'IDE, puis
+un basculement coordonné des clients et du registre. L'ancien registre reste
+servi et les workers rc53 restent intacts tant que cette migration n'est pas
+prête.
+
+Ordre immédiat : attendre `31329733243`; créer et vérifier hors ligne la nouvelle
+autorité et le registre complet avec les bundles 4B + 0.6B certifié; pinner sa
+root dans l'IDE; publier/taguer le runtime candidat; installer les candidats
+Mac mini + RTX arrêtés; basculer atomiquement registre/profil scheduler;
+démarrer les deux clients sans variables de labo; valider génération ordinaire,
+puis kills prefill/decode chaud et fallback froid avec les métriques prévues.
