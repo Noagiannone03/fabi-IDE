@@ -8572,3 +8572,20 @@ root dans l'IDE; publier/taguer le runtime candidat; installer les candidats
 Mac mini + RTX arrêtés; basculer atomiquement registre/profil scheduler;
 démarrer les deux clients sans variables de labo; valider génération ordinaire,
 puis kills prefill/decode chaud et fallback froid avec les métriques prévues.
+
+Le registre root2 candidat est maintenant créé hors du runtime sous
+`~/Library/Application Support/Fabi Operator/model-registry-root2-20260809`,
+répertoire `0700`, clés et passphrase `0600`. Il ne contient que les deux
+modèles servis : Qwen3-4B inchangé `f983b250…` et Qwen3-0.6B certifié
+`18b52f37…`, plus le keyset public de route existant. Aucun fichier AppleDouble
+`._*` n'est publié. Les deux modèles passent `verify-remote` contre un serveur
+HTTP local avec la nouvelle root; le bundle 4B publié est byte-identique à la
+cible publique génération 7. La nouvelle racine publique a pour SHA-256
+`c0fe1ff1c8a45b286056f05d83e38039b8dd3e743e4d3e739177108b7d44285b`.
+
+La branche IDE candidate épingle désormais cette empreinte dans
+`FABI_QUALIFIED_MODEL_ROOT_SHA256`; les 80 tests `fabi-swarm` passent sous Node
+22. Cette branche ne doit pas encore être installée sur un client actif : le
+profil public annonce toujours l'ancienne root jusqu'au basculement coordonné.
+La préqualification runtime a désormais terminé avec succès Linux CPU/arm64,
+Linux CUDA et macOS MLX; seuls les deux builds Windows sont encore en cours.
