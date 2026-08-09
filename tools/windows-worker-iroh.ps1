@@ -30,7 +30,7 @@ $accountTokenFile = if ($env:FABI_ACCOUNT_TOKEN_FILE) {
 $registryRoot = if ($env:FABI_MODEL_REGISTRY_ROOT) {
   $env:FABI_MODEL_REGISTRY_ROOT
 } else {
-  Join-Path $state "trust\model-registry-root-7ef69b40b4ba41fc8da5742f54303b388fe3192585a8f45b452079861ac3f0ce.json"
+  Join-Path $state "trust\model-registry-root-c0fe1ff1c8a45b286056f05d83e38039b8dd3e743e4d3e739177108b7d44285b.json"
 }
 $catalogBootstraps = if ($env:FABI_CATALOG_DHT_BOOTSTRAPS) {
   $env:FABI_CATALOG_DHT_BOOTSTRAPS
