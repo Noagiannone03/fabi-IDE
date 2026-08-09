@@ -8473,3 +8473,57 @@ dupliqués (zéro), TTFT de reprise, octets transférés, pression mémoire/disq
 libération à la fermeture. Utiliser RunPod pour obtenir une seconde route si le
 labo à deux workers ne permet pas le remplacement. Le décodage spéculatif
 décentralisé Gradient/Shard reste postérieur à cette qualification live.
+
+### Certification TUF de la reprise chaude et compatibilité des plans historiques (9 août 2026, suite)
+
+La matrice Native network `31328703580` de `b5199b7` est finalement verte sur
+Ubuntu, macOS 15 et Windows. Le chemin automatique de checkpoint n'est donc
+plus seulement validé localement; son wheel et sa suite protocole passent sur
+les trois OS. Cela ne constitue toujours pas un kill live.
+
+Le commit moteur `2aee7e9` ajoute une certification déterministe de l'état
+Skippy exact. L'empreinte couvre l'identité et la révision immuables du modèle,
+les poids/tokenizer, les contrats architecture/RoPE/prefill/KV, puis le plan
+Skippy complet hors l'empreinte elle-même : artefacts, quantification,
+providers, géométrie, types KV, runtime, ABI et features natives. Le bundle TUF
+signé porte ainsi l'assertion explicite de l'opérateur; une altération du
+certificat, du modèle ou du plan est refusée à chaque lecture du bundle. Les
+commandes d'attachement acceptent `--exact-state-kind dense_attention_kv`, mais
+restent fail-closed sur `disabled` par défaut.
+
+Le commit `591df4c` ajoute l'opération atomique
+`certify-skippy-exact-state`. Elle part d'un bundle existant, certifie un plan
+Skippy unique, recalcule le hash agrégé et crée un nouveau fichier sans modifier
+ni reconstruire les poids. Elle refuse l'écrasement de l'entrée, un plan absent,
+un backend non-Skippy et une seconde certification. Cette opération est destinée
+à l'autorité de catalogue, jamais à l'utilisateur final.
+
+Le premier dry-run contre la vraie cible Qwen rc53 a découvert avant publication
+une incompatibilité importante : les champs neutres ajoutés au schéma
+(`exact_state_kind=disabled`, certificat absent) étaient sérialisés par un
+lecteur récent et changeaient alors le hash du plan historique. Un runtime neuf
+aurait refusé le catalogue rc53 avant même la migration. `07b7385` introduit une
+sérialisation canonique rétrocompatible : pour un ancien plan désactivé, ces
+deux champs neutres sont équivalents à leur absence; un plan explicitement
+certifié les conserve et obtient volontairement une nouvelle identité. Le vrai
+bundle public se relit donc toujours sous le swarm
+`6bc03462fedf9c7742129796b02c240ebdd92a825c7f5f54ec4351d71ff2e370`.
+
+Le dry-run hors production produit un candidat Qwen avec
+`exact_state_kind=dense_attention_kv`, feature `exact_kv_page`, certificat
+`d32c7569bfe24aa96088053bc46fad8832416abc6ffb8c0c268a7fdbd7d2a0c0` et nouveau
+swarm `18b52f3789641d5da1352d42d072ec361dd29da356841a887c4a41ad4e7d6081`.
+Le registre public, le coordinateur rc53 et ses workers n'ont pas été modifiés.
+Validation locale finale : 270 tests `test_swarm_protocol_*` passent, quatre
+tests matériels sont ignorés et un test dépendant du wheel natif n'a pas été
+exécuté localement; lint critique et `git diff --check` passent. La matrice du
+commit final `07b7385` est encore en attente à cette entrée : ne pas la déclarer
+verte.
+
+Ordre restant : attendre cette matrice, pinner `07b7385` dans le CLI, construire
+et préqualifier un nouveau runtime, installer le candidat par les installateurs
+normaux, publier le nouveau bundle via l'opérateur TUF avec succession monotone,
+basculer le coordinateur vers `18b52f…`, laisser les workers rejoindre sans
+variable de labo, valider une génération ordinaire puis les kills prefill/decode
+avec mesures chaud/froid. Ne pas publier le bundle candidat avant que le runtime
+capable de le lire soit disponible.
