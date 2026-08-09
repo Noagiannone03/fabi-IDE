@@ -8736,9 +8736,40 @@ son test ciblé et le hook de typecheck passent sous Bun 1.3.13. Le runtime
 `main` `49c67773e1c673ab8100396031959a435f1429cb` verrouille ce CLI, ce moteur,
 Mesh `e60b2fe…` et ABI Skippy `0.1.32`; son test de profil et le preflight de
 lock passent. Le workflow de lock/transactions runtime `31341971797` est
-entièrement vert. Aucun rc55 n'est encore tagué ou publié.
+entièrement vert. Le tag annoté `v2.7.0-rc55` résout exactement vers
+`49c67773e1c673ab8100396031959a435f1429cb`; son workflow public
+`31342246217` est encore en cours à cette entrée, donc les archives rc55 ne
+sont pas encore déclarées publiées.
 
-Ordre immédiat : taguer et publier rc55; mettre à jour les pins IDE;
+L'image coordinateur exacte
+`local/parallax-scheduler:swarm-v3-aeb3b33` est construite à côté du service
+public, sans cutover. Son image ID est `sha256:368fe009d420…`, sa taille
+`445 035 673` octets et son label OCI porte le SHA complet `aeb3b33…`. Un
+smoke isolé dans l'image importe le transport natif, vérifie le protocole 1 et
+effectue un vrai échange ZeroMQ REQ/REP `checkpoint`/`committed`. Le
+coordinateur public reste volontairement sur `07b7385` jusqu'à publication et
+installation du runtime exact.
+
+La recherche speculative decoding a aussi établi un point d'architecture
+important. Le papier Gradient `arXiv:2511.11733` décrit la vérification d'une
+fenêtre de tokens en une synchronisation, mais ses expériences publiées sont
+sur 4 à 8 A800 reliées en InfiniBand 100 Gbit/s et la montée en nombre de nœuds
+est simulée : ses facteurs jusqu'à 2,6x ne peuvent pas être transposés tels
+quels au WAN communautaire. Le Mesh/Skippy `0.74.0` déjà épinglé par Fabi
+contient en revanche les primitives maintenues dont nous avons besoin :
+`StageSession::verify_tokens_frame_sampled`, `VerifySpan`, retour direct des
+`PredictedTokens`, draft MTP natif, proposer N-gram sans second modèle,
+rewind positionnel exact et fenêtre adaptative. Le bridge Fabi n'expose encore
+que prefill/decode unitaire. La voie retenue après qualification de rc55 et du
+failover est donc d'exposer ces ABI existantes, d'ajouter un message V3 de
+fenêtre vérifiée et un contrôleur coût/bénéfice WAN. Pour les modèles sans tête
+MTP, le N-gram doit être le premier mode universel, particulièrement adapté au
+code et sans poids draft supplémentaires; un draft signé compatible reste une
+option par couple de modèles. Le décodage exact reste la référence et toute
+spéculation doit se désactiver automatiquement si son gain net mesuré devient
+négatif.
+
+Ordre immédiat : terminer la publication rc55; mettre à jour les pins IDE;
 reconstruire/installer les paquets exacts; relancer
 Mac + RTX par les chemins produit; prouver une génération OpenCode/SSE; puis
 tuer un worker pendant prefill et decode et mesurer reprise chaude/froide et
