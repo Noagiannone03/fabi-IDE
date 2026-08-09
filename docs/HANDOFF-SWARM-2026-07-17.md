@@ -8414,3 +8414,62 @@ miss/incompatibilité. Publier ensuite un candidat, installer Mac mini + RTX et
 effectuer les kills réels prefill/decode (RunPod si nécessaire). Seulement
 après cette qualification commencer le décodage spéculatif décentralisé décrit
 par Gradient/Shard; il n'est pas encore implémenté.
+
+### Orchestration automatique des checkpoints chauds (9 août 2026, suite)
+
+La matrice Native network `31327195645` du correctif Clippy `93ce39f4` est
+finalement verte sur Ubuntu, macOS 15 et Windows. Le commit moteur
+`7279d93c584b6eb3c8f669cda3ec36dd827ee468` ajoute ensuite le contrat filaire
+canonique de compatibilité KV et refuse avant allocation toute différence de
+modèle, révision, tokenizer, dtype, contrats prefill/attention, package, runtime,
+ABI, span ou layout natif. Sa matrice `31327643844` est également entièrement
+verte sur les trois OS.
+
+Le commit moteur `b5199b7` branche maintenant cette primitive au vrai Request
+Agent. Le déclenchement est enregistré après commit des tokens et avant leur
+publication SSE, mais la capture continue en arrière-plan sans retarder cette
+publication; le journal reste la source de vérité. Un thread daemon séparé
+capture une page pour chaque stage de la route sans bloquer le streaming ni le
+renouvellement des leases. Le stockage local est éphémère et chiffré en flux
+AES-256-GCM, écrit par transaction temporaire + `fsync` + renommage atomique,
+borné par quota et réserve disque. La clé n'est pas persistée et les fichiers
+Fabi de checkpoint sont supprimés au redémarrage/à la fermeture. Une
+indisponibilité mémoire, disque, réseau ou crypto désactive uniquement
+l'optimisation pour l'epoch courant; le replay froid exact continue.
+
+La cadence n'utilise pas un timer arbitraire : le premier préfixe sûr est pris
+après le premier token commis, puis une nouvelle copie complète n'est admise
+qu'après accumulation d'au moins autant de nouveau KV que la copie précédente;
+le nombre de tokens produits pendant le transfert peut encore augmenter cet
+écart. Cette progression géométrique borne l'amplification d'écriture et évite
+de ralentir chaque token d'une conversation longue.
+
+Sur panne, `replan_cold` choisit toujours une nouvelle route DHT sans réserver
+de pipeline dormant. Si et seulement si tous les spans de cette nouvelle route
+correspondent exactement au checkpoint, le Request Agent importe chaque page
+par blocs authentifiés. L'identité stable utilisée par les sessions Skippy est
+désormais le `authority_request_id` signé, pas l'identifiant interne recréé par
+vLLM; elle survit donc au changement de route. Le KV représente le préfixe
+commis moins un token : chaque executor vérifie localement le checksum du
+préfixe complet puis ne repasse que ce dernier token pour recalculer les logits.
+Si une tranche, un tag GCM, un SHA, un offset ou un fence échoue, les imports
+partiels sont abortés puis explicitement supprimés sur tous les workers avant
+le replay froid complet.
+
+Validation locale finale de `b5199b7` : 237 tests récupération, Request Agent,
+SSE, executor, P2P, IPC, supervision, launch et protocole passent, 1 test
+matériel est ignoré; lint Python critique et `git diff --check` passent. La
+matrice GitHub déclenchée par ce commit est encore en cours à cette entrée : ne
+pas la déclarer verte. Le plan Qwen public rc53 doit encore être régénéré et
+signé avec `exact_state_kind=dense_attention_kv`; les bundles actuellement
+déployés ne doivent pas être supposés capables de reprise chaude avant cette
+publication.
+
+Ordre restant : attendre la matrice de `b5199b7`, certifier/re-signer le plan
+Qwen, construire un nouveau runtime candidat, l'installer normalement sur Mac
+mini + RTX, vérifier une génération ordinaire, puis tuer réellement un worker
+pendant prefill et decode. Il faut mesurer succès chaud, fallback froid, tokens
+dupliqués (zéro), TTFT de reprise, octets transférés, pression mémoire/disque et
+libération à la fermeture. Utiliser RunPod pour obtenir une seconde route si le
+labo à deux workers ne permet pas le remplacement. Le décodage spéculatif
+décentralisé Gradient/Shard reste postérieur à cette qualification live.
