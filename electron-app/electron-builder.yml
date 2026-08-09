@@ -60,12 +60,17 @@ linux:
 
 nsis:
   menuCategory: true
-  oneClick: false
+  # Le chemin assiste historique appelle des plugins UI NSIS meme avec /S et
+  # n'est pas fiable dans une session Windows sans bureau. Fabi est une app
+  # per-user sans elevation : le one-click maintenu par electron-builder est
+  # aussi le chemin attendu par electron-updater pour une mise a jour muette.
+  oneClick: true
   perMachine: false
+  allowElevation: false
+  packElevateHelper: false
   installerHeaderIcon: resources/icon.ico
   installerIcon: resources/icon.ico
   uninstallerIcon: resources/icon.ico
-  allowToChangeInstallationDirectory: true
   runAfterFinish: false
   artifactName: ${productName}-Setup-${version}-${arch}.${ext}
 

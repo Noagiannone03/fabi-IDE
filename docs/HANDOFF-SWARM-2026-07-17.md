@@ -8606,3 +8606,51 @@ Les 80 tests `fabi-swarm` restent verts. Le registre root2 public a également
 servi. L'image scheduler exacte a vérifié depuis ce répertoire les deux modèles
 par le vrai client TUF. Aucun service, profil public ou worker actif n'a encore
 été basculé.
+
+### Publication rc54 et défaut NSIS intercepté avant le cutover (10 août 2026)
+
+La release runtime `v2.7.0-rc54` est désormais publique et le workflow
+`31331004582` est entièrement vert : cohérence des locks, transactions
+d'installation et six archives Linux/macOS/Windows, dont CUDA et DirectML. Le
+workflow IDE Windows `31331056176` est également vert et le paquet Mac arm64 a
+été construit depuis un clone local complet, commit exact `aa13d025...`, sans
+fichier iCloud `dataless`. Le DMG et le ZIP Mac ont pour SHA-256 respectifs
+`5a161cf9a2932aed3226e4fca9b8fbdf26002d10ba51354b889481c9dcae2706` et
+`e3d8923e7aa28a7319e04ad4ce2b1b119edba6486815d7a50060728d5ab20aad`.
+L'installeur Windows a pour SHA-256
+`c2fef4fb876c6309a1a113db37402e5079868934a10dfa43b2d5e8ef03ff39fb`.
+Les deux `app.asar` extraits portent exactement rc54, CLI `f8dfcd7...`, moteur
+`07b7385...` et root TUF `c0fe1ff1...`.
+
+La clé timestamp root2, et elle seule parmi les rôles TUF, a été prépositionnée
+owner-only sur le VPS. Un vrai `refresh-timestamp` dans l'image
+`swarm-v3-07b7385` a fait passer le candidat de la version 1 à 2. Le client TUF
+de cette même image vérifie ensuite à nouveau Qwen3-0.6B sous le swarm
+`18b52f37...` et Qwen3-4B sous `f983b250...`. Le registre public et le
+scheduler rc53 n'ont toujours pas été remplacés.
+
+La fermeture normale de Fabi sur le Mac mini a supprimé les onze processus app,
+worker et frontend gérés; le worker RTX a également été arrêté et sa VRAM est
+revenue à environ 58 Mio. Le candidat IDE Mac est installé, non lancé, dans
+`~/Applications/Fabi.app`, avec le précédent app bundle conservé sous
+`Fabi.app.pre-rc54-20260809T221315Z`.
+
+Le cutover a été volontairement suspendu avant toute mutation publique : le
+premier lancement silencieux du NSIS Windows depuis une session sans bureau a
+crashé dans son plugin `System.dll` avec `0xc0000005`. Le runner de packaging ne
+testait que la construction; il n'exécutait jamais l'installeur. Le digest et
+l'extraction du payload sont corrects, donc ce n'est pas un téléchargement
+tronqué. La configuration utilisait encore electron-builder 24.13.3 et le
+parcours assisté `oneClick: false`, alors que Fabi est une installation per-user
+sans élévation et que son updater exige un chemin silencieux fiable.
+
+La correction candidate met electron-builder à la branche stable maintenue
+26.15.7, utilise son parcours one-click per-user officiel, désactive l'élévation
+et l'elevate helper, puis ajoute au workflow Windows un vrai smoke `/S` dans la
+session CI sans bureau avec vérification de `Fabi.exe` et `app.asar` installés.
+Le fichier `SHA256SUMS` est également écrit explicitement avec des fins de ligne
+LF afin d'être vérifiable sous Unix. Les 80 tests produit restent verts. Il faut
+maintenant pousser ce candidat, attendre son workflow, installer le nouvel EXE
+sur le RTX, puis seulement reprendre la transaction root2/scheduler. Ne pas
+contourner ce défaut par une extraction manuelle du payload : ce ne serait pas
+le parcours utilisateur à qualifier.

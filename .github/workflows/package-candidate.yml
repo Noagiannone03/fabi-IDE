@@ -42,6 +42,28 @@ jobs:
         shell: bash
         run: yarn --cwd electron-app package
 
+      - name: Smoke install the NSIS package without a desktop
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem electron-app/dist -File |
+            Where-Object Extension -eq '.exe' |
+            Select-Object -First 1
+          if (-not $installer) {
+            throw 'electron-builder did not produce a Windows installer'
+          }
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+            throw "silent NSIS installation failed with exit code $($process.ExitCode)"
+          }
+          $installedApp = Join-Path $env:LOCALAPPDATA 'Programs\Fabi\Fabi.exe'
+          $installedAsar = Join-Path $env:LOCALAPPDATA 'Programs\Fabi\resources\app.asar'
+          if (-not (Test-Path -LiteralPath $installedApp -PathType Leaf)) {
+            throw "silent NSIS installation did not create $installedApp"
+          }
+          if (-not (Test-Path -LiteralPath $installedAsar -PathType Leaf)) {
+            throw "silent NSIS installation did not create $installedAsar"
+          }
+
       - name: Record candidate checksums
         shell: pwsh
         run: |
@@ -50,9 +72,14 @@ jobs:
           if (-not ($artifacts | Where-Object Extension -eq '.exe')) {
             throw 'electron-builder did not produce a Windows installer'
           }
-          $artifacts | Get-FileHash -Algorithm SHA256 |
-            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLowerInvariant(), (Split-Path $_.Path -Leaf) } |
-            Set-Content -Encoding ascii electron-app/dist/SHA256SUMS
+          $checksumLines = $artifacts | Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "{0}  {1}" -f $_.Hash.ToLowerInvariant(), (Split-Path $_.Path -Leaf) }
+          $checksumPath = Join-Path (Resolve-Path electron-app/dist) 'SHA256SUMS'
+          [IO.File]::WriteAllText(
+            $checksumPath,
+            ($checksumLines -join "`n") + "`n",
+            [Text.Encoding]::ASCII
+          )
 
       - name: Upload the qualification candidate
         uses: actions/upload-artifact@v7
