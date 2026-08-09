@@ -58,6 +58,9 @@ jobs:
           $installedApp = Join-Path $env:LOCALAPPDATA 'Programs\Fabi\Fabi.exe'
           $installedAsar = Join-Path $env:LOCALAPPDATA 'Programs\Fabi\resources\app.asar'
           if (-not (Test-Path -LiteralPath $installedApp -PathType Leaf)) {
+            Write-Host 'Executables found below the per-user Programs directory:'
+            Get-ChildItem (Join-Path $env:LOCALAPPDATA 'Programs') -Filter '*.exe' -File -Recurse -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
             throw "silent NSIS installation did not create $installedApp"
           }
           if (-not (Test-Path -LiteralPath $installedAsar -PathType Leaf)) {

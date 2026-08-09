@@ -8654,3 +8654,23 @@ maintenant pousser ce candidat, attendre son workflow, installer le nouvel EXE
 sur le RTX, puis seulement reprendre la transaction root2/scheduler. Ne pas
 contourner ce défaut par une extraction manuelle du payload : ce ne serait pas
 le parcours utilisateur à qualifier.
+
+Le candidat exact `72eae714...` a ensuite produit un NSIS one-click valide et
+son smoke `/S` a rendu le code de sortie zéro, sans reproduire le crash
+`0xc0000005`. Le workflow `31339100620` a toutefois échoué sur l'assertion du
+chemin installé : electron-builder 26 utilise intentionnellement le `name` npm
+sanitisé comme `APP_FILENAME` pour un one-click per-user. Le workspace portait
+encore le nom technique `electron-app`, donc l'installeur écrivait sous
+`%LOCALAPPDATA%\Programs\electron-app` au lieu du contrat produit
+`%LOCALAPPDATA%\Programs\Fabi`. Ce n'est ni un échec du moteur ni une nouvelle
+panne NSIS; le smoke a correctement intercepté une mauvaise identité de paquet.
+
+La correction suivante renomme uniquement l'identité npm du workspace en
+`fabi` — son répertoire source reste `electron-app` — et ajuste les exclusions
+Lerna correspondantes. La version desktop passe aussi de `0.1.0` à `0.1.1` :
+conserver la même version rendrait les builds futurs indiscernables pour
+electron-updater. Le diagnostic CI énumère désormais les exécutables per-user
+si le chemin contractuel manque, sans relâcher l'assertion. L'installation
+Yarn frozen, les cinq workspaces Lerna et les 80 tests produit passent
+localement. Il reste à pousser ce commit, obtenir un workflow vert, puis tester
+le même EXE sur la RTX avant le cutover public.
