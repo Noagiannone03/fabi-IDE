@@ -8589,3 +8589,20 @@ La branche IDE candidate épingle désormais cette empreinte dans
 profil public annonce toujours l'ancienne root jusqu'au basculement coordonné.
 La préqualification runtime a désormais terminé avec succès Linux CPU/arm64,
 Linux CUDA et macOS MLX; seuls les deux builds Windows sont encore en cours.
+
+Cette dernière attente est désormais historique : Windows CUDA et Windows
+DirectML sont verts et le workflow de préqualification `31329733243` est
+entièrement réussi. Le tag annoté `v2.7.0-rc54` résout exactement vers
+`ee96bd5da5b2ad6a9ae5270c3993462b50c27ef0`. Le workflow de release publique
+`31331004582` est en cours; ne pas prétendre que les assets rc54 sont
+disponibles avant sa conclusion verte.
+
+Les pins de la branche IDE candidate sont préparés pour rc54 : runtime
+`v2.7.0-rc54`, CLI `f8dfcd7d25c95fcc5f589583651511d1a487fa2b`, moteur
+`07b73850b191819b7e809652572731e9d7006ed9` et root TUF `c0fe1ff1…`.
+Les 80 tests `fabi-swarm` restent verts. Le registre root2 public a également
+été prépositionné dans
+`/home/debian/fabi-swarm-registry-v3-root2-candidate-20260809`, hors du chemin
+servi. L'image scheduler exacte a vérifié depuis ce répertoire les deux modèles
+par le vrai client TUF. Aucun service, profil public ou worker actif n'a encore
+été basculé.
