@@ -840,6 +840,21 @@ Gate : route identique à snapshot identique, réservations sûres sous planners
 - Reçus de contribution et réciprocité progressive.
 - Audits, réputation et pairing multi-machine.
 
+### Phase H — accélération spéculative adaptative
+
+- Exposer la vérification multi-token maintenue par Mesh/Skippy dans le bridge
+  Fabi et dans un message V3 fenced.
+- Qualifier d'abord le proposer suffixe request-local, sans poids draft.
+- Mesurer le gain par token committé sur la route réelle et revenir
+  automatiquement au modèle cible seul lorsque le gain devient négatif.
+- Ne publier aucun token avant son commit durable et invalider tout travail
+  spéculatif après abort, replan ou changement d'epoch.
+- N'activer MTP ou un draft séparé qu'avec un package/couple signé et une
+  capacité mémoire indépendante.
+
+Le contrat détaillé, les exclusions lossless et la matrice de promotion sont
+définis dans `FABI-ADAPTIVE-SPECULATIVE-DECODING.md`.
+
 ## 22. Tests de définition de « produit prêt »
 
 ### Propriétés déterministes

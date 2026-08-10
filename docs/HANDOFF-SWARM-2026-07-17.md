@@ -8913,3 +8913,93 @@ exhaustion/stop tokens, et matrices à 0/20/100 ms incluant du code inédit à f
 recouvrement. Les chiffres Gradient sur A800/InfiniBand restent une référence de
 recherche, pas une promesse WAN. Le critère de promotion sera un meilleur débit
 E2E et une qualité identique sur les topologies Fabi réelles.
+
+### Qualification rc56/desktop 0.1.3 et cause racine de la visibilité WAN (10 août 2026, suite)
+
+La release runtime `v2.7.0-rc56` est finalement entièrement publique. Le tag
+résout vers `830724fe349779b5cda7df5e27923e96a1b2c7b9` et les six archives
+Linux/macOS/Windows, dont CUDA et DirectML, ainsi que leurs sommes et
+installateurs sont publiées. Le paquet desktop `0.1.3` du commit IDE
+`2dfa822751666efa5a519fbc4aa9173474568c97` épingle rc56, le CLI
+`e4447e17e6b9a5b72bfdcfcc7c1231837d78dddf` et le moteur
+`194ed40257f901ac79b159f8d16dde780d71c573`. Son workflow Windows
+`31347636580` est vert; le vrai installeur a été posé sur la RTX au chemin
+per-user contractuel et porte ProductVersion `0.1.3.0`. Le candidat Mac a été
+reconstruit depuis un clone complet hors iCloud et installé sur le Mac mini.
+La signature macOS reste ad-hoc à cause du certificat Apple Development expiré
+et aucune validation graphique Windows n'est revendiquée depuis SSH.
+
+Le lancement produit rc56 a ensuite isolé la cause du statut Request Agent à
+zéro route. Le Mac et la RTX chargeaient bien chacun `[0,28)` à 32k et le
+coordinateur voyait les deux publications, mais un lecteur WAN neuf terminait
+son balayage des 256 shards sans offre, lease ni lien. Une mesure isolée a pris
+14,874 s pour initialiser le runtime puis 40,714 s pour le snapshot. Dans le
+même temps, la vue du coordinateur oscillait entre un et deux workers avec des
+expirations restantes d'environ 8 à 37 secondes. Le problème n'était donc ni
+Skippy, ni les poids, ni la mesure mémoire : les annonces signées expiraient au
+bout de 45 secondes alors que publication et lecture Kademlia pouvaient
+consommer l'essentiel de cette fenêtre.
+
+Le moteur `3798c1e663654d036d50bdd6539ec28fe2f7353e` corrige le contrat de
+découverte, pas le détecteur de panne. Offre, lease, transition et intention
+BUILDING utilisent désormais un soft-state de quatre minutes, sous le plafond
+natif signé de cinq minutes. Ce choix rejoint le contrat Petals observé dans
+le commit `22afba627a7eb4fcfe9418c49472c6a51334b8ac`, dont l'expiration vaut
+normalement deux périodes de publication de 120 secondes, et le principe
+documenté par rust-libp2p selon lequel le TTL doit être sensiblement supérieur
+à la période de republication. Les statuts enregistrent aussi la durée de
+publication et la marge d'expiration restante, et signalent explicitement une
+marge insuffisante. Le balayage déterministe garde les 256 shards mais passe de
+16 à 64 lectures concurrentes; ce n'est pas présenté comme le design final de
+passage à l'échelle, seulement comme la suppression du pire multiplicateur de
+latence sur le protocole existant. Les erreurs DHT du Request Agent ne sont
+plus silencieusement transformées en contexte zéro.
+
+Les 43 tests directement affectés passent, puis la suite protocole donne 290
+réussites et 3 ignores. Le seul contrôle local non exécutable exigeait le wheel
+Rust absent de ce venv; la CI native `31349228161` du SHA exact est verte sur
+Ubuntu, macOS et Windows, y compris rustfmt, Clippy, wheels et tests DHT à trois
+nœuds. Le CLI `dev`
+`7bbff6f186ec035ed3e926f3475c87d6dab54fed` épingle ce moteur; ses 73 tests
+swarm et son typecheck monorepo passent sous Bun 1.3.13. Le runtime
+`fa5ee07b50f09d84adac4a989710f1bf922c46fa`, tagué
+`v2.7.0-rc57`, verrouille ce CLI, ce moteur, Mesh `e60b2fe…` et l'ABI Skippy
+`0.1.32`; le preflight, les trois tests bundle et la transaction POSIX passent.
+Son workflow public `31349753761` est encore en cours à cette entrée : ne pas
+installer ni promouvoir rc57 avant les six builds et les assets publics.
+
+Le candidat IDE local passe en desktop `0.1.4` et prépare les pins rc57 exacts;
+ses 80 tests `fabi-swarm` et la compilation des trois extensions passent sous
+Node 22. Il n'est pas encore commité. Sur le VPS, l'ancien coordinateur
+`194ed402…` reste public pendant la construction hors ligne de l'image candidate
+`3798c1e…`. L'ordre suivant est obligatoire : terminer la release rc57,
+valider l'image candidate, installer les archives publiques sur Mac mini et RTX,
+basculer le coordinateur avec rollback, publier les paquets IDE 0.1.4 depuis des
+clones propres, puis mesurer à nouveau démarrage, snapshot, marge d'expiration,
+génération SSE et fermeture normale sans aucune variable de labo.
+
+Cette attente est terminée : le workflow public `31349753761` est entièrement
+vert au SHA `fa5ee07b50f09d84adac4a989710f1bf922c46fa`. La release rc57
+publie les six archives Linux/macOS/Windows, CUDA et DirectML, leurs sommes,
+les décompresseurs autonomes et les trois installateurs. Les installateurs
+publics ont été exécutés sur le Mac mini et la RTX après fermeture normale de
+l'app Mac et arrêt de la seule tâche worker Windows. Les deux manifestes
+installés portent exactement rc57, CLI `7bbff6f186ec035ed3e926f3475c87d6dab54fed`,
+moteur `3798c1e663654d036d50bdd6539ec28fe2f7353e`, protocole natif 1,
+Mesh 0.74.0 et ABI Skippy 0.1.32. Les imports natifs et la constante de lease
+240 000 ms passent sur les deux systèmes. Les rollbacks rc56 sont conservés
+sous `/Users/gmbh/.local/share/fabi.backup-1786330642-6312` et
+`C:\Users\gmbhl\AppData\Local\fabi.backup-20260810045807244`.
+
+L'image VPS `local/parallax-scheduler:swarm-v3-3798c1e` a pour ID
+`sha256:465a91ad9924e50750bd5e90a51a8ca997cdea9eb1be121ebc4e38e9c2738013`,
+taille 445 047 796 octets et label OCI exact. Son contenu a vérifié protocole
+natif 1, TTL 240 000 ms, fan-out 64, appels Request Agent déportés et échange
+REQ/REP réel. Le cutover Compose transactionnel est effectué; sa sauvegarde est
+`/home/debian/fabi-rc57-cutover-20260810.w0GosH`. Le service actif importe la
+révision exacte, expose Qwen3-0.6B et conserve l'EndpointId
+`627ec9c575d634525f2fabf451d9120316c47061df4b13be1049715c434cceb2`.
+Son état `waiting`, zéro nœud, est attendu à cet instant car les clients restent
+arrêtés jusqu'à l'installation du desktop 0.1.4. Au moindre échec de reprise,
+le Compose peut être relancé avec l'ancienne image `iroh-qualified` et les mêmes
+volumes persistants.
