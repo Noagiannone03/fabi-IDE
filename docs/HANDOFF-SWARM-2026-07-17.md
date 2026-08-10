@@ -9180,3 +9180,60 @@ changement de modèle), kills prefill/decode et `replan_cold`, seconde route,
 deux NAT indépendants, device pairing, canal de mise à jour desktop signé,
 puis speculative decoding adaptatif avec comparaison entrelacée contre cette
 baseline. Le speculative n'est toujours pas activé par défaut à cette entrée.
+
+## Prefill OpenCode long et demande adaptative réellement alimentée (10 août 2026, suite)
+
+Le vrai tour Electron/OpenCode d'environ 13 544 tokens ne bloquait ni dans
+l'interface ni dans Iroh. La route était autorisée et son permis renouvelé,
+mais le scheduler générique refusait indéfiniment un prefill dont le coût
+13 544 dépassait `--max-num-tokens-per-batch 8192`; Skippy n'était donc jamais
+appelé. Mesh/Skippy `0.74.0` possède déjà son prefill natif borné et le bridge
+Fabi l'expose par fragments de 512 tokens, sans échantillonner les fragments
+intermédiaires. Le moteur `b249a484b46b621aa26b4e918533b2921612ef2c`
+annonce désormais cette granularité au scheduler uniquement pour une réplique
+Skippy complète; les exécuteurs sans contrat chunké échouent explicitement au
+lieu de conserver une requête impossible. Une régression reproduit exactement
+13 544 tokens sous un budget 8 192. La matrice moteur `31396586993` est verte
+sur Ubuntu, macOS et Windows.
+
+L'audit du placement a ensuite trouvé pourquoi le cerveau multi-contexte ne
+réagissait pas aux requêtes produit. `ActiveRouteRuntime.reserve()` alimentait
+bien `ContextDemandAnnouncer`, mais le Request Agent réserve localement et le
+VPS ne voyait que l'émission du permis. Les générations de l'IDE ne créaient
+donc aucune admission dans l'histogramme DHT; le statut live
+`context_demand.models=[]` était exact. Le moteur
+`00c1036ed14d870cc2cc6463c7476e400a45ba76` relie maintenant l'émission du
+permis à l'admission, le keepalive à son échéance d'inflight et la libération à
+la fin. L'expiration du permis est l'unique frontière de liveness : aucune
+durée arbitraire n'interrompt une génération longue. Un keepalive reçu après
+redémarrage du coordinateur reconstruit la fenêtre volatile depuis le permis
+durable; les identités de requête restent privées au processus et seuls les
+agrégats signés sont publiés.
+
+La comparaison avec la source officielle Petals confirme l'intérêt de son
+premier écran par déficit de débit par couche; Exo apporte les contraintes de
+mémoire, backend, topologie et présence des téléchargements. Le score Fabi
+combine désormais cet écran peu coûteux avec un max-flow NetworkX borné sur
+les meilleurs candidats. Le moteur
+`587a38fd9d9065f1cd514f6301ba469109bb7a70` mesure ainsi le gain réel de
+routes indépendantes et de sessions complètes, au lieu de préférer la tranche
+qui annonce le plus de KV local. Une régression couvre le cas où une tête à une
+session et une queue à dix sessions existent déjà : répliquer la queue ne
+change rien, tandis que répliquer la tête porte la pipeline à deux sessions.
+Les états `BUILDING`/`WARMING` restent pris en compte pour étaler les arrivées
+simultanées, et le calcul léger par classe est mis en cache avant la shortlist
+afin que le coût ne croisse pas avec chaque candidat × chaque peer.
+
+Validation locale de ces deux changements : Ruff vert, 1 040 tests moteur
+réussis et 8 ignorés. Le CLI `dev`
+`242383e378b9593a2372794282b4e4338ce3c572` épingle le moteur final; ses 73
+tests swarm et son typecheck passent. Le runtime `main`
+`fac7f426795a1a291cae1286cfaf5639b1a3bd07` verrouille les deux révisions;
+preflight du lock, trois tests du bundle Skippy, neutralisation des chemins et
+transaction d'upgrade passent. Les CI de ces derniers commits sont encore en
+cours à cette entrée : **ne pas** créer ni annoncer `v2.7.0-rc59` avant leurs
+résultats verts. Aucun test live ne qualifie encore le prefill OpenCode long ni
+le nouveau signal DHT. L'ordre suivant reste : CI verte, tag/release rc59,
+déploiement du scheduler exact, installation des workers, E2E Electron visible
+avec le tour long et preuve de premier token, puis churn/reprise/NAT. Le
+speculative decoding reste explicitement après cette qualification.
