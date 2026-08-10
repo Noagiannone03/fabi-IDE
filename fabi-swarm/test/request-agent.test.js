@@ -9,12 +9,14 @@ const test = require('node:test');
 const {
     buildRequestAgentEnv,
     parseRequestAgentReady,
+    requestAgentContractFingerprint,
     requestAgentRestartDelay,
     spawnRequestAgent
 } = require('../lib/node/fabi-request-agent');
 const {
     RequestAgentPhaseTracker
 } = require('../lib/node/fabi-request-agent-events');
+const { FabiSwarmServiceImpl } = require('../lib/node/fabi-swarm-service');
 
 const MODEL_SWARM_ID = '46e338001cbca3a457b8e513950d62cc10fc7866226529e7b27825a737797b57';
 const profile = {
@@ -32,11 +34,93 @@ const profile = {
     }
 };
 
+const requestAgentSwarm = (overrides = {}) => ({
+    id: 'qwen3-4b-v3',
+    name: 'Qwen3 4B',
+    schedulerUrl: 'https://scheduler.example.test',
+    schedulerPeer: '33'.repeat(32),
+    modelSwarmId: MODEL_SWARM_ID,
+    workerConnection: profile,
+    model: 'Qwen/Qwen3-4B',
+    status: 'online',
+    schedulerStatus: 'available',
+    peers: 2,
+    totalVramGb: 32,
+    lastSeen: new Date(0).toISOString(),
+    ...overrides
+});
+
 test('backs off explicit Request Agent process failures without unbounded delay', () => {
     assert.deepEqual(
         [1, 2, 3, 4, 5, 6, 20].map(requestAgentRestartDelay),
         [1_000, 2_000, 4_000, 8_000, 16_000, 30_000, 30_000]
     );
+});
+
+test('fingerprints only the stable Request Agent launch contract', () => {
+    const baseline = requestAgentContractFingerprint(requestAgentSwarm());
+    assert.ok(baseline);
+    assert.equal(
+        requestAgentContractFingerprint(requestAgentSwarm({
+            peers: 99,
+            schedulerStatus: 'waiting',
+            lastSeen: new Date(10_000).toISOString()
+        })),
+        baseline
+    );
+    assert.equal(
+        requestAgentContractFingerprint(requestAgentSwarm({ modelSwarmId: undefined })),
+        undefined
+    );
+    assert.notEqual(
+        requestAgentContractFingerprint(requestAgentSwarm({ modelSwarmId: '44'.repeat(32) })),
+        baseline
+    );
+    assert.notEqual(
+        requestAgentContractFingerprint(requestAgentSwarm({
+            workerConnection: { ...profile, relayUrl: 'https://new-relay.example.test' }
+        })),
+        baseline
+    );
+});
+
+test('reconciles a newly complete registry contract with the latest swarm snapshot', async () => {
+    class ServiceHarness extends FabiSwarmServiceImpl {
+        constructor() {
+            super();
+            this.restarts = [];
+            this.requestAgentGeneration = 7;
+            this.requestAgentState = { kind: 'error', swarmId: 'qwen3-4b-v3' };
+        }
+
+        reconcile(previous, updated) {
+            this.activeSwarm = updated;
+            this.reconcileRequestAgentContract(previous, updated);
+        }
+
+        async restartRequestAgent(swarmId, generation) {
+            this.restarts.push({
+                swarmId,
+                generation,
+                modelSwarmId: this.activeSwarm?.modelSwarmId
+            });
+        }
+    }
+
+    const service = new ServiceHarness();
+    const incomplete = requestAgentSwarm({ modelSwarmId: undefined, peers: 0 });
+    const complete = requestAgentSwarm({ peers: 1 });
+    service.reconcile(incomplete, complete);
+    await Promise.resolve();
+    assert.deepEqual(service.restarts, [{
+        swarmId: 'qwen3-4b-v3',
+        generation: 7,
+        modelSwarmId: MODEL_SWARM_ID
+    }]);
+
+    service.reconcile(complete, requestAgentSwarm({ peers: 2 }));
+    await Promise.resolve();
+    assert.equal(service.restarts.length, 1, 'peer counters must not restart the data plane');
 });
 
 test('settles process closure once after a spawn error and close', async () => {

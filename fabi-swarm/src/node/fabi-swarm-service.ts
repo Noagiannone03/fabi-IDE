@@ -17,7 +17,8 @@ import { FabiMetricsCollector } from './fabi-metrics';
 import { FabiMetrics } from '../common/fabi-swarm-protocol';
 import { PreparedWorkerBootstrap, prepareWorkerBootstrap } from './fabi-worker-bootstrap';
 import {
-    RequestAgentHandle, requestAgentRestartDelay, spawnRequestAgent
+    RequestAgentHandle, requestAgentContractFingerprint, requestAgentRestartDelay,
+    spawnRequestAgent
 } from './fabi-request-agent';
 import type { RuntimeCommand } from './fabi-runtime-install';
 import { shouldStartMachineWorker } from '../common/fabi-worker-host-policy';
@@ -266,11 +267,13 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             // → on rafraîchit la copie et on recalcule l'état de connexion. C'est
             // CE flux SSE qui remplace le polling du scheduler.
             if (this.activeSwarm) {
+                const previous = this.activeSwarm;
                 const updated = swarms.find(s => s.id === this.activeSwarm!.id);
                 if (updated) {
                     this.activeSwarm = updated;
                     this.client?.onActiveSwarmChanged(updated);
                     this.recomputeConnection();
+                    this.reconcileRequestAgentContract(previous, updated);
                 }
             }
             this.tryAutoReconnect(swarms);
@@ -567,29 +570,50 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 && this.activeSwarm?.id === swarm.id
                 && this.requestAgentState.kind === 'error'
             ) {
-                this.scheduleRequestAgentRestart(swarm, generation);
+                this.scheduleRequestAgentRestart(swarm.id, generation);
             }
         });
         // Évite une rejection non observée si aucun chat n'attend encore.
         void handle.ready.catch(() => undefined);
     }
 
-    protected scheduleRequestAgentRestart(swarm: SwarmEntry, generation: number): void {
+    protected scheduleRequestAgentRestart(swarmId: string, generation: number): void {
         if (this.requestAgentRestart || generation !== this.requestAgentGeneration) {
             return;
         }
         const delay = requestAgentRestartDelay(++this.requestAgentRestartAttempt);
         this.requestAgentRestart = setTimeout(() => {
             this.requestAgentRestart = undefined;
-            void this.restartRequestAgent(swarm, generation);
+            void this.restartRequestAgent(swarmId, generation);
         }, delay);
         this.requestAgentRestart.unref?.();
     }
 
-    protected async restartRequestAgent(swarm: SwarmEntry, generation: number): Promise<void> {
+    /**
+     * Reconcile a registry contract update without waiting for the failure
+     * backoff. This is event-driven: peer counters/status do not restart the
+     * sidecar, while missing -> valid identity and trust/network rotations do.
+     */
+    protected reconcileRequestAgentContract(previous: SwarmEntry, updated: SwarmEntry): void {
+        const previousContract = requestAgentContractFingerprint(previous);
+        const updatedContract = requestAgentContractFingerprint(updated);
+        if (
+            !updatedContract
+            || updatedContract === previousContract
+            || this.requestAgentState.swarmId !== updated.id
+        ) {
+            return;
+        }
+        const generation = this.requestAgentGeneration;
+        this.clearRequestAgentRestart(false);
+        void this.restartRequestAgent(updated.id, generation);
+    }
+
+    protected async restartRequestAgent(swarmId: string, generation: number): Promise<void> {
+        let swarm = this.activeSwarm;
         if (
             generation !== this.requestAgentGeneration
-            || this.activeSwarm?.id !== swarm.id
+            || swarm?.id !== swarmId
             || !swarm.workerConnection
         ) {
             return;
@@ -601,33 +625,43 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 this.requestAgentHandle = undefined;
             }
         }
-        if (generation !== this.requestAgentGeneration || this.activeSwarm?.id !== swarm.id) {
+        swarm = this.activeSwarm;
+        if (
+            generation !== this.requestAgentGeneration
+            || swarm?.id !== swarmId
+            || !swarm.workerConnection
+        ) {
             return;
         }
         const requestAgent = this.runtime.findRequestAgent();
         if (!requestAgent) {
             this.setRequestAgentState({
                 kind: 'error',
-                swarmId: swarm.id,
+                swarmId,
                 message: 'Runtime Fabi incomplet : Request Agent V3 absent.'
             });
             return;
         }
         try {
             const bootstrap = await prepareWorkerBootstrap(swarm.workerConnection);
-            if (generation !== this.requestAgentGeneration || this.activeSwarm?.id !== swarm.id) {
+            swarm = this.activeSwarm;
+            if (
+                generation !== this.requestAgentGeneration
+                || swarm?.id !== swarmId
+                || !swarm.workerConnection
+            ) {
                 return;
             }
             this.launchRequestAgent(requestAgent, swarm, bootstrap);
         } catch (error) {
             this.setRequestAgentState({
                 kind: 'error',
-                swarmId: swarm.id,
+                swarmId,
                 message: `Redémarrage Request Agent impossible: ${
                     error instanceof Error ? error.message : String(error)
                 }`
             });
-            this.scheduleRequestAgentRestart(swarm, generation);
+            this.scheduleRequestAgentRestart(swarmId, generation);
         }
     }
 

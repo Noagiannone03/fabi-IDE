@@ -9003,3 +9003,42 @@ Son état `waiting`, zéro nœud, est attendu à cet instant car les clients res
 arrêtés jusqu'à l'installation du desktop 0.1.4. Au moindre échec de reprise,
 le Compose peut être relancé avec l'ancienne image `iroh-qualified` et les mêmes
 volumes persistants.
+
+### Premier lancement produit rc57 et réconciliation du Request Agent (10 août 2026, suite)
+
+Le desktop 0.1.4 a été construit depuis le clone complet hors iCloud
+`/tmp/fabi-ide-rc57-mac.5D02ko`. Le DMG arm64 porte la somme
+`96791c2199e3ecfd399e1512c1929b0333de1015d3be9e93a3fb739926978c94` et
+l'ASAR contient bien les pins rc57/CLI/moteur qualifiés. Il a été installé sur
+le Mac mini dans `~/Applications/Fabi.app`; le rollback 0.1.3 est conservé sous
+`~/Applications/Fabi.app.pre-0.1.4-20260810T030606Z`. Le workflow Windows
+`31351397709` du SHA IDE `f2ca719affddcb194373cd59fa46eb5a217d6aaa`
+est vert. La signature Mac reste ad-hoc et aucune notarisation n'est revendiquée.
+
+Le lancement normal, sans variable de laboratoire, a démarré le worker Metal,
+rejoint l'EndpointId public et finalement chargé `[0,28)` à 32 768 tokens avec
+Skippy. Il a aussi révélé une course réelle du plan de contrôle IDE. Le premier
+snapshot du registre, reçu pendant que le coordinateur vérifiait encore son
+catalogue, ne contenait pas encore `modelSwarmId`; le lancement du Request Agent
+a donc été refusé correctement. Le registre a ensuite publié l'identité exacte
+`18b52f3789641d5da1352d42d072ec361dd29da356841a887c4a41ad4e7d6081`,
+mais le superviseur réessayait avec l'objet `SwarmEntry` capturé avant cette
+mise à jour. Le backoff fonctionnait, mais chaque essai réutilisait le même
+contrat périmé.
+
+Le candidat desktop 0.1.5 remplace ce passage d'objet par l'identifiant stable
+du swarm; chaque tentative relit désormais `activeSwarm`, donc le snapshot SSE
+le plus récent. Une empreinte explicite du contrat de lancement couvre
+l'identité modèle, l'autorité de requête, le transport, les bootstraps DHT et la
+racine TUF. Les simples variations de peers, de statut et de capacité ne
+redémarrent jamais le data plane. En revanche, une transition contrat incomplet
+vers contrat valide ou une vraie rotation réseau/trust déclenche immédiatement
+une réconciliation pilotée par l'événement SSE, sans attendre le backoff.
+
+La suite `fabi-swarm` contient maintenant un test d'orchestration qui reproduit
+exactement `snapshot incomplet -> SSE complet`, en plus des tests d'empreinte;
+82 tests sur 82 passent et la compilation TypeScript complète passe. Cette
+correction n'est pas encore qualifiée dans un binaire installé à cette entrée.
+L'ordre restant est : construire/publier 0.1.5, l'installer sur Mac et RTX,
+rejouer le démarrage normal et vérifier un Request Agent stable, puis effectuer
+la génération SSE et le E2E OpenCode avant les tests de panne/NAT.

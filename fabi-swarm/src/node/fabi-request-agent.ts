@@ -24,6 +24,40 @@ const TERMINATE_GRACE_MS = 5_000;
 const KILL_CLOSE_GRACE_MS = 2_000;
 const RESTART_MAX_MS = 30_000;
 
+/**
+ * Stable description of everything that binds a Request Agent to a swarm.
+ * Registry counters and readiness are deliberately excluded: they may change
+ * every few seconds and must never restart the local data plane. Conversely,
+ * a newly available identity or a changed trust/network profile must replace
+ * a sidecar that was started (or failed to start) with an older snapshot.
+ */
+export function requestAgentContractFingerprint(swarm: SwarmEntry | undefined): string | undefined {
+    const profile = swarm?.workerConnection;
+    if (
+        !swarm
+        || !/^[0-9a-f]{64}$/.test(swarm.modelSwarmId ?? '')
+        || !swarm.schedulerUrl
+        || !profile
+    ) {
+        return undefined;
+    }
+    return JSON.stringify([
+        swarm.id,
+        swarm.modelSwarmId,
+        swarm.schedulerUrl.replace(/\/+$/, ''),
+        profile.protocolVersion,
+        profile.catalogSchemaVersion,
+        profile.transport,
+        profile.relayUrl,
+        profile.enrollmentUrl,
+        profile.catalogDhtBootstraps,
+        profile.modelRegistry.rootUrl,
+        profile.modelRegistry.rootSha256,
+        profile.modelRegistry.metadataUrl,
+        profile.modelRegistry.targetsUrl
+    ]);
+}
+
 export function requestAgentRestartDelay(attempt: number): number {
     return Math.min(
         RESTART_MAX_MS,
