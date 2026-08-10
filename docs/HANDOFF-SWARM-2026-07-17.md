@@ -8777,3 +8777,139 @@ absence de doublons. Le speculative decoding décentralisé vient ensuite : il
 doit être optionnel par swarm/couple draft-cible, signé dans le catalogue,
 choisi selon latence réseau, mémoire et taux d'acceptation mesuré, et retomber
 sans interruption sur le décodage normal s'il n'apporte pas de gain.
+
+### Qualification rc55 et blocage de la boucle Request Agent (10 août 2026, suite)
+
+La release publique rc55 a finalement terminé verte avec ses six archives. Le
+paquet IDE `c6f356e425eb3de8bc71bc81d8a238192899d893` épingle rc55, le CLI
+`1c0e5693…`, le moteur `aeb3b33…` et la root TUF `c0fe1ff1…`; son workflow
+Windows `31343982395` a construit et installé en smoke le paquet 0.1.2. Le même
+installeur a été posé sur le RTX, mais aucune session desktop Windows n'était
+ouverte : le paquet et le runtime headless sont qualifiés, pas encore l'UI
+Windows réelle. Le paquet Mac 0.1.2 a été reconstruit depuis un clone local
+complet non-iCloud, installé puis lancé normalement. La signature reste ad-hoc
+car le certificat Apple Development disponible est expiré.
+
+Les deux workers produit ont chargé Qwen3-0.6B avec Skippy à 32 768 tokens. Une
+génération locale exacte sur Windows CUDA a répondu
+`WINDOWS-SKIPPY-RC55-OK`; le chemin local Mac Metal et son SSE avaient déjà
+passé. La fermeture normale de Fabi sur le Mac a supprimé l'app, le worker et
+le Request Agent sans orphelin en moins de deux secondes, tandis que la route
+RTX est restée disponible. Le redémarrage normal de l'app a relancé le worker
+et le frontend local sans variable de labo.
+
+Le premier appel distribué via le Request Agent Mac a toutefois révélé un
+défaut distinct de Skippy : `/health`, `/status` et la création de route
+restaient bloqués pendant les lectures Kademlia. Le binding PyO3 utilise bien
+`Python::detach`, donc il ne garde pas le GIL, mais ses méthodes Python sont
+synchrones et attendent `runtime.block_on`. Elles étaient appelées directement
+depuis les coroutines FastAPI. En outre, `catalog_get_model_members` balaie les
+256 shards déterministes par groupes de 16; une vue froide peut donc consommer
+plusieurs fenêtres de requête DHT. Le cache de capacité enregistrait l'heure
+d'avant cette lecture : une lecture lente revenait déjà périmée et la même
+requête en lançait immédiatement une seconde. Un health live rc55 a bien dépassé
+45 secondes pendant qu'une ancienne exploration immobilisait la boucle; ne pas
+confondre ce défaut avec une panne du worker ou du moteur d'inférence.
+
+Les commits moteur `9452eb5b11c4f3bfda19a27673e5271c2727b5eb` puis
+`194ed40257f901ac79b159f8d16dde780d71c573` corrigent la cause
+applicative en suivant le modèle documenté par FastAPI/asyncio et le principe de
+snapshot local de Petals. Les appels bloquants de disponibilité et réservation
+sont déportés par `asyncio.to_thread`; health/status ne peuvent plus immobiliser
+la boucle. Les rafraîchissements concurrents sont coalescés en un seul vol. La
+date du cache est celle de la fin de lecture. La vue DHT TUF-authentifiée est
+réutilisée pendant 60 secondes — période client par défaut de Petals — entre le
+calcul exact de contexte et PREPARE/COMMIT, ce qui supprime le second balayage.
+À chaque usage, Fabi avance `captured_at_ms` et retire offre, lease et lien dont
+la signature a expiré : le cache ne prolonge jamais la vie d'un worker. Le
+PREPARE/COMMIT worker reste l'autorité finale. `replan_cold` force toujours une
+nouvelle vue DHT pour découvrir une réplique arrivée depuis la panne.
+Le second commit applique la même règle aux libérations de route et au contrôle
+de contexte recalculé après tokenisation : une réponse, un abort ou une erreur
+ne peut donc plus regeler l'event loop au moment de rendre les leases.
+
+Validation locale finale : 65 tests ciblés Request Agent, frontend, handler et DHT
+passent. La suite large donne 1 019 réussites et 11 ignores; deux échecs sont
+strictement liés au venv de test improvisé (dépendances optionnelles absentes :
+wheel natif Biscuit et import isolé sans psutil), pas au code modifié. Les
+contrôles de syntaxe critique et `git diff --check` passent. La matrice Native
+network `31346052404` du commit final est entièrement verte sur Ubuntu,
+macOS 15 et Windows, y compris wheel ABI3, import du wheel et contrats V3,
+trust, découverte et shadow.
+
+La lecture du Petals exact `22afba627a7eb4fcfe9418c49472c6a51334b8ac`
+confirme qu'il publie l'information sous chaque UID de couche et actualise le
+`RemoteSequenceInfo` dans un thread toutes les 60 secondes; les requêtes lisent
+ce snapshot local. Le cache ci-dessus corrige le gel et l'amplification
+immédiate sans migration filaire. Le balayage initial de 256 shards reste un
+coût d'amorçage à optimiser séparément (index de shards actifs ou catalogue par
+couche borné) avant une charge publique massive; aucune conclusion de passage
+à l'échelle ne doit être tirée du seul labo à deux workers.
+
+Le CLI `dev` `e4447e17e6b9a5b72bfdcfcc7c1231837d78dddf` épingle désormais
+exactement le moteur final `194ed402…`; ses 73 tests swarm, son typecheck et le
+hook monorepo à quatre tâches passent. Le runtime `main`
+`830724fe349779b5cda7df5e27923e96a1b2c7b9` verrouille ce CLI, ce moteur,
+Mesh `e60b2fe…` et ABI Skippy `0.1.32`. Son preflight de lock, les trois tests
+du bundle Skippy et la transaction d'upgrade POSIX passent localement; sa CI
+transactionnelle `31346459221` est verte sur Linux et Windows. Le tag annoté
+`v2.7.0-rc56` pointe sur ce commit et son workflow public `31346495402` est en
+cours : ne pas installer ni promouvoir rc56 avant ses six artefacts verts.
+
+Le candidat IDE prépare rc56, le CLI et le moteur exacts, et passe la version
+desktop à `0.1.3`. Une course du journal superviseur a été interceptée pendant
+les tests : `handle.closed` pouvait être résolu avant le flush du message
+d'erreur de lancement. La fermeture attend désormais `finish`/`close`/`error`
+du `WriteStream`, ce qui fait du journal durable une partie du contrat de fin.
+Les 80 tests passent, le cas a été rejoué 50 fois, et les trois extensions
+Theia compilent sous Node 22. Ce candidat reste local tant que rc56 construit.
+
+Un packaging Mac tenté directement depuis le workspace Documents s'est arrêté
+à `collecting extension-packs`. Le sampling montrait quatre threads libuv
+bloqués en `read`; `ls -lO` a confirmé plusieurs manifests de plugins en
+`compressed,dataless` (`vscode.css`, `vscode.java`, `vscode.rust`,
+`vscode.sql`). Le processus de build seul a été interrompu, sans supprimer ni
+réhydrater les fichiers utilisateur. Ce n'est pas un défaut Theia : le paquet
+final doit impérativement être reconstruit après commit depuis un clone frais
+hors Documents/iCloud, comme pour rc55.
+
+L'image coordinateur candidate
+`local/parallax-scheduler:swarm-v3-194ed40` est également construite sur le VPS
+sans cutover. Son ID est `sha256:7cd580d53324…`, sa taille `445 041 027` octets
+et son label OCI porte le SHA complet `194ed402…`. Un conteneur éphémère a
+importé le wheel natif, vérifié le protocole 1 et réussi un échange REQ/REP
+`checkpoint`/`committed`. Le coordinateur public et le routeur catalogue sont
+restés actifs sur leurs images précédentes; le disque conserve 17 Gio libres.
+
+#### Contrat produit retenu pour le speculative decoding
+
+La nouvelle lecture du Mesh exact `e60b2fe…` confirme que Fabi ne doit pas
+réimplémenter un draft générique. Skippy possède déjà la vérification de fenêtre,
+le retour direct, MTP, un cache N-gram et surtout un proposer suffixe exact
+request-local conçu pour les éditions de code et les boucles d'outils. Ce dernier
+indexe seulement le prompt et les tokens déjà commis, utilise des clés de tokens
+exactes et laisse toujours le modèle cible décider du préfixe accepté. vLLM
+maintenu expose également N-gram sans poids additionnels et des speculators
+EAGLE/DFlash préentraînés; un draft neuronal n'est donc légitime dans Fabi que
+si le couple cible/draft est déclaré et signé dans le catalogue.
+
+Le mode produit sera négocié par route et par requête, jamais activé globalement.
+La baseline universelle est `target-only`. `ngram-suffix` est le premier candidat
+pour le code sans mémoire modèle supplémentaire; MTP puis MTP+suffixe sont
+éligibles uniquement si le package signé les expose; un draft séparé vient en
+dernier et doit disposer de capacité indépendante. Un contrôleur mesure RTT,
+bande passante, coût de vérification, tokens proposés/acceptés, travail périmé,
+mémoire disponible et débit réellement obtenu. Il augmente ou réduit la fenêtre
+avec hystérésis, et revient automatiquement à target-only si le gain net devient
+nul ou négatif. Aucun timer ne déclare la réussite ou la panne.
+
+Point de sécurité important : la documentation Mesh rapporte de forts gains sur
+un microbenchmark de copie de code, mais aussi une divergence de hash à la ligne
+d'édition nouvelle avant reconvergence. Ce résultat prouve le mécanisme, pas
+l'équivalence exacte. Fabi n'activera donc pas le suffixe par défaut avant :
+équivalence de trajectoire avec sampling cible, commit-before-publish, rollback
+positionnel exact, isolation concurrente, abort, replay après replan, context
+exhaustion/stop tokens, et matrices à 0/20/100 ms incluant du code inédit à faible
+recouvrement. Les chiffres Gradient sur A800/InfiniBand restent une référence de
+recherche, pas une promesse WAN. Le critère de promotion sera un meilleur débit
+E2E et une qualité identique sur les topologies Fabi réelles.

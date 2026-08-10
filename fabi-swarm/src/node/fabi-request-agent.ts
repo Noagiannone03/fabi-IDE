@@ -157,16 +157,25 @@ export function spawnRequestAgent(
         resolveClosed = resolve;
     });
     const settleClosed = () => {
-        if (!closedSettled) {
-            closedSettled = true;
-            resolveClosed();
+        if (closedSettled) {
+            return;
         }
+        closedSettled = true;
+        // `closed` is the supervisor's durable completion boundary. Waiting
+        // for the log stream here guarantees that callers never observe a
+        // completed failure while its diagnostic is still buffered by Node.
+        void closeLog(log).then(resolveClosed);
     };
     const settleError = (message: string) => {
         if (errorReported) {
             return;
         }
         errorReported = true;
+        // Environment validation and spawn can fail before child stdio exists.
+        // Persist the supervisor-side cause as well; otherwise the product log
+        // contains only its startup banner and makes update transitions
+        // impossible to diagnose.
+        writeLog(log, 'launcher', `error: ${message}`);
         const error = new Error(message);
         if (!settled) {
             settled = true;
@@ -216,7 +225,6 @@ export function spawnRequestAgent(
                 const message = `readiness invalide: ${
                     error instanceof Error ? error.message : String(error)
                 }`;
-                writeLog(log, 'launcher', message);
                 stopWatchingReadyFile();
                 settleError(message);
                 void stopProcess(child);
@@ -248,7 +256,6 @@ export function spawnRequestAgent(
             eventFeed?.stop();
             eventFeed = undefined;
             rmSync(readyFile, { force: true });
-            log?.end();
             if (stopped) {
                 onUpdate({ kind: 'stopped', swarmId: swarm.id });
             } else {
@@ -261,7 +268,6 @@ export function spawnRequestAgent(
     } catch (error) {
         stopWatchingReadyFile();
         rmSync(readyFile, { force: true });
-        log?.end();
         settleError(error instanceof Error ? error.message : String(error));
         settleClosed();
     }
@@ -389,4 +395,27 @@ function writeLog(log: WriteStream | undefined, source: string, message: string)
             message.endsWith('\n') ? message : `${message}\n`
         }`
     );
+}
+
+function closeLog(log: WriteStream | undefined): Promise<void> {
+    if (!log || log.destroyed || log.writableFinished) {
+        return Promise.resolve();
+    }
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = () => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            log.off('finish', finish);
+            log.off('close', finish);
+            log.off('error', finish);
+            resolve();
+        };
+        log.once('finish', finish);
+        log.once('close', finish);
+        log.once('error', finish);
+        log.end();
+    });
 }

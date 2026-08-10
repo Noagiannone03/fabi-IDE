@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { mkdtempSync, rmSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
@@ -91,7 +91,10 @@ test('settles process closure once after a spawn error and close', async () => {
         await rejected;
         await handle.closed;
         assert.equal(states.filter(state => state.kind === 'error').length, 1);
-        await new Promise(resolve => setImmediate(resolve));
+        assert.match(
+            readFileSync(join(root, 'logs', 'request-agent-qwen3-4b-v3.log'), 'utf8'),
+            /\[launcher\] error: Request Agent impossible à lancer: spawn failed/
+        );
     } finally {
         if (previous === undefined) {
             delete process.env.FABI_ACCOUNT_TOKEN;
