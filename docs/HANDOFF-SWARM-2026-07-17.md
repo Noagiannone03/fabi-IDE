@@ -9042,3 +9042,141 @@ correction n'est pas encore qualifiée dans un binaire installé à cette entré
 L'ordre restant est : construire/publier 0.1.5, l'installer sur Mac et RTX,
 rejouer le démarrage normal et vérifier un Request Agent stable, puis effectuer
 la génération SSE et le E2E OpenCode avant les tests de panne/NAT.
+
+### Premier lancement à froid 0.1.5, frontière Skippy et candidat rc58 (10 août 2026, suite)
+
+Le desktop 0.1.5 a été reconstruit depuis le clone local complet au commit
+`7906b0e...`, sans utiliser le workspace Documents/iCloud. Le DMG arm64 de
+qualification se trouve sous un répertoire temporaire et porte la somme SHA-256
+`1f11882749134122846ae20d7bb610bcc69a34311a59d88bcb8e4dfb127ae988`.
+Il est ad-hoc, car aucun certificat Developer ID valide n'est présent. Une vraie
+installation neuve, sans `~/.local/share/fabi/MANIFEST`, a été lancée par le
+chemin graphique normal, sans variable de laboratoire. Le launcher a téléchargé
+et installé rc57 en environ 61 secondes, puis la surface IDE a été prête en
+84,4 secondes au total dans le même processus. Environ 22,3 secondes de la phase
+frontend viennent de `SkillPromptCoordinator.onStart`, qui attend
+`skillService.ready`; ce coût doit être profilé séparément et ne doit pas être
+confondu avec l'installation du moteur.
+
+Le démarrage CDP caché sur le Mac mini avait pris 176,8 secondes parce que la
+page Electron distante était `document.hidden` et que Theia attend
+`requestAnimationFrame` pendant `FrontendApplication.start`. Le lancement local
+visible ne reproduit pas ce blocage. Aucun correctif produit n'a été appliqué à
+partir de cet artefact de session SSH. La fermeture normale du desktop local a
+arrêté l'app, le worker et le Request Agent; les deux groupes enfants ont terminé
+leur nettoyage en moins de 250 ms. L'endpoint de mise à jour application
+`/fabi-updates/stable/stable-mac.yml` répond toujours 404 : le runtime se met à
+jour, mais le canal signé de l'application desktop n'est pas encore publié et
+ne doit pas être présenté comme opérationnel.
+
+Ce premier lancement neuf a révélé le défaut qui provoquait la boucle
+`worker arrêté`. Le worker local a d'abord reçu la tranche terminale `[1,28)` à
+32k et téléchargé le package officiel
+`meshllm/Qwen3-0.6B-Q4_K_M-layers`. Le loader Skippy ouvrait
+`shared/metadata.gguf`, puis échouait sur `missing tensor
+'token_embd.weight'`. Une allocation ultérieure `[0,28)` chargeait correctement,
+ce qui exclut une corruption des poids, la pression RAM, Iroh ou la DHT.
+
+La source Mesh/Skippy officielle `0.74.0`, commit exact
+`e60b2fe43aa05271569fbeff2a457133aef456a1`, impose dans
+`runtime_state.rs` les embeddings lorsque le stage est l'entrée **ou** le stage
+terminal sans downstream. Le dernier stage doit en effet ré-embedder le token
+échantillonné avant le pas de decode suivant. Notre adaptation ne les incluait
+que lorsque `span.start == 0`. Le moteur
+`a8c3492ae9c187e2895ceddac39f44d5a7691e8a`, complété par le lockfile natif
+`78cf63d9d2f3a422b557a68ab7e4c9256b8811f8`, reprend exactement cette règle
+dans la sélection des artefacts Python, le calcul de stockage exact et le bridge
+Rust. Des tests couvrent désormais `[1,end)`, `[0,end)` sans doublon et les
+stages intermédiaires.
+
+Validation moteur : 26 tests ciblés, puis 550 tests Python avec un ignore,
+Clippy strict, 31 tests réseau natifs et 5 tests du bridge Skippy passent. La
+matrice `31368161950` est entièrement verte sur Ubuntu, macOS 15 et Windows,
+y compris wheel ABI3, import, DHT à trois nœuds et bridge Skippy. Le CLI `dev`
+`53ffa201aa6b3c2520d9013301f43e1c4d97810f` épingle ce moteur; ses 73 tests
+swarm et son typecheck passent. Le runtime `main`
+`f88ea478f69951f0d23610577230ace0f534fce2` verrouille ce CLI et ce moteur;
+son preflight et sa CI transactionnelle `31368330039` sont verts.
+
+Le tag annoté `v2.7.0-rc58` pointe sur `f88ea478...`. Son workflow public
+`31368699223` a validé le lock, les transactions d'installation et le build
+Linux ARM, mais les autres archives sont encore en construction à cette entrée.
+Ne pas déclarer rc58 publiée ni l'installer par anticipation. Le candidat IDE
+passe à la version desktop 0.1.6 et exige rc58, CLI `53ffa20...` et moteur
+`78cf63d...`; les 82 tests `fabi-swarm` et la compilation des trois extensions
+passent localement. Il reste non commité tant que la release et le test live de
+la tranche terminale ne sont pas terminés.
+
+Sur le VPS, l'image exacte
+`local/parallax-scheduler:swarm-v3-78cf63d` a été construite et contrôlée : son
+label OCI porte le SHA complet, son ABI réseau vaut 1 et un smoke vérifie dans
+l'image les deux règles d'embeddings terminales Python/Rust. Le cutover Compose
+a été effectué sans requête active, avec sauvegarde restaurable sous
+`/home/debian/fabi-rc58-cutover-20260810T081912Z`. Le service conserve la même
+identité Iroh `627ec9c5...`, les mêmes volumes et le même état. Le worker RTX
+encore sous rc57 s'est reconnecté automatiquement et a reformé sa route complète
+`[0,28)` 32k; cela qualifie la compatibilité de contrôle, pas encore l'exécution
+terminale corrigée.
+
+Ordre immédiat obligatoire : attendre les six archives rc58 vertes; arrêter et
+mettre à niveau les workers par les installateurs publics; démarrer la RTX en
+premier puis le Mac pour reproduire une tranche terminale sans couche 0; prouver
+son chargement READY et une génération réelle; ensuite committer/publier le
+desktop 0.1.6 et reprendre le E2E OpenCode, les permissions, l'abort, le churn et
+les NAT. Le speculative decoding reste après cette baseline : Skippy fournit
+déjà VerifyWindow, suffixe/N-gram, MTP, rewind et métriques; Fabi doit exposer
+ces primitives, pas les réécrire, puis les piloter selon le gain E2E WAN réel.
+
+## Publication et qualification d'exécution rc58 (10 août 2026, suite)
+
+Le workflow public runtime `31368699223` est désormais entièrement vert. La
+release `v2.7.0-rc58`, commit runtime
+`f88ea478f69951f0d23610577230ace0f534fce2`, publie les six archives
+Linux/macOS/Windows attendues, y compris CUDA et DirectML, leurs sommes, les
+décompresseurs autonomes et les installateurs. Les installateurs publics
+immutables ont été exécutés sur le Mac mini et la RTX. Les deux manifestes
+installés portent exactement rc58, CLI
+`53ffa201aa6b3c2520d9013301f43e1c4d97810f`, moteur
+`78cf63d9d2f3a422b557a68ab7e4c9256b8811f8`, Skippy, Mesh `0.74.0` et ABI
+`0.1.32`; les imports natifs passent sur Metal et CUDA. Les rollbacks sont
+conservés sous `/Users/gmbh/.local/share/fabi.backup-1786351468-81043` et
+`C:\Users\gmbhl\AppData\Local\fabi.backup-20260810104604592`.
+
+Le premier redémarrage Mac après installation a échoué avant l'inscription :
+le vieux launcher **de laboratoire** forçait encore SGLang/CPU et les anciens
+bootstraps, alors que le launcher produit de l'IDE lit déjà le manifeste et
+émet Skippy/Metal. Ce n'était ni une panne rc58 ni une régression du produit.
+Les launchers Mac et Windows du labo lisent maintenant le manifeste installé,
+refusent un backend incompatible, utilisent les deux bootstraps DHT courants,
+l'enrollment relay, les états V3 par modèle et les limites produit 32k. Un
+launcher Request Agent de qualification garde le credential hors de `argv`.
+Quatre tests de contrat, `zsh -n`, Ruff et `git diff --check` passent. Le
+launcher Windows transféré sur la RTX passe aussi le parseur AST PowerShell
+natif; la CI Windows du commit correspondant doit encore le reconstruire.
+
+Le démarrage RTX puis Mac a finalement produit deux workers actifs, zéro
+initialisation, une route disponible à 32 768 tokens et deux répliques
+complètes autonomes `[0,28)`. Comme ce placement naturel ne reproduit plus la
+tranche terminale, la correction rc58 a été qualifiée séparément sans simuler
+une pression mémoire : l'exécuteur Skippy **du runtime public installé**, le
+catalogue TUF signé et les poids officiels ont ouvert exactement `[1,28)` à
+32 768 tokens sur `MTL0`. Le log charge explicitement `token_embd.weight`, puis
+publie `Skippy executor ready`, plan `skippy-q4-k-m-v2`; le processus se ferme
+sans enfant orphelin. Cela qualifie le défaut précis rc57. Cela ne prétend pas
+qu'une génération distribuée a emprunté cette tranche contrôlée.
+
+Une génération réelle a ensuite traversé le Request Agent rc58 local, la DHT,
+l'autorité de contribution et une route live du cluster Mac + RTX : HTTP 200,
+11 chunks SSE, exactement un `[DONE]`, contenu `RC58_OK`, TTFT 6,278 s et fin
+7,216 s. Après le tour, le Request Agent annonce zéro route active, zéro échec
+récent et aucun état prefill/decode/recovery actif. Son arrêt par `SIGINT`
+supprime le ready-file, ne laisse aucun processus et les deux workers restent
+`READY` à 32k.
+
+La baseline rc58 est donc qualifiée pour le loader terminal corrigé et une
+génération normale, mais le desktop 0.1.6 n'est pas encore publié. Ordre
+restant : E2E Electron/OpenCode complet (outils, Ask edits/YOLO, abort et
+changement de modèle), kills prefill/decode et `replan_cold`, seconde route,
+deux NAT indépendants, device pairing, canal de mise à jour desktop signé,
+puis speculative decoding adaptatif avec comparaison entrelacée contre cette
+baseline. Le speculative n'est toujours pas activé par défaut à cette entrée.

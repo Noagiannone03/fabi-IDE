@@ -116,6 +116,17 @@ Le contrôleur est request-local et route-aware. Il observe en continu :
 - tokens committés par seconde et inter-token latency E2E ;
 - sampling, famille du modèle, longueur de contexte et répétitivité locale.
 
+Skippy `0.74.0` fournit déjà un ajustement local de fenêtre : il démarre à
+`min(4, maximum)`, grandit d'un token après une fenêtre entièrement acceptée
+ou un rejet en queue, et rétrécit après un rejet précoce. Fabi conserve cette
+primitive dans l'exécuteur, mais ne la traite pas comme une politique produit
+suffisante. Elle ne compare ni le coût du proposer au coût cible, ni les octets
+WAN, le RTT, la congestion, le travail périmé ou le débit de tokens committés.
+Le contrôleur V3 décide donc d'abord si une stratégie spéculative mérite d'être
+utilisée sur la route courante, puis lui donne une borne de fenêtre; l'ajustement
+Skippy ne peut évoluer qu'à l'intérieur de cette borne. Une forte acceptation
+ne suffit jamais à maintenir la spéculation si le débit E2E régresse.
+
 Il compare des fenêtres d'observation `target-only` et spéculatives sur la même
 route. La longueur proposée augmente uniquement si le gain E2E observé reste
 positif après le coût du draft, de la vérification et du stale work. Elle baisse
