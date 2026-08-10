@@ -70,11 +70,21 @@ ssh_vps() {
 
 run_mac() {
   local mac_action="$1"
-  ssh_vps "ssh $mac_ssh 'bash -s'" -- "$mac_action" "$network_mode" "${FABI_LAB_ENGINE_SHA:-}" "$lab_scheduler_endpoint" <<'SH'
+  local remote_command
+  local engine_arg="${FABI_LAB_ENGINE_SHA:--}"
+  # Build one escaped command string because OpenSSH concatenates every word
+  # after the host. An empty positional argument does not survive the two
+  # remote shells, so `-` represents the installed runtime explicitly.
+  printf -v remote_command 'ssh %q bash -s -- %q %q %q %q' \
+    "$mac_ssh" "$mac_action" "$network_mode" "$engine_arg" "$lab_scheduler_endpoint"
+  ssh_vps "$remote_command" <<'SH'
 set -euo pipefail
 action="$1"
 network_mode="$2"
 engine_sha="${3:-}"
+if [ "$engine_sha" = "-" ]; then
+  engine_sha=""
+fi
 scheduler_endpoint="${4:-}"
 runtime="$HOME/.local/share/fabi/runtime"
 registry_root="$HOME/.local/share/fabi/trust/model-registry-root-c0fe1ff1c8a45b286056f05d83e38039b8dd3e743e4d3e739177108b7d44285b.json"

@@ -3,7 +3,7 @@
   "name": "fabi",
   "description": "Fabi — peer-to-peer AI IDE for code",
   "author": "undefined studio",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "main": "lib/backend/electron-main.js",
   "dependencies": {
     "@theia/ai-anthropic": "1.72.2",
