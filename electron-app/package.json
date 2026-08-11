@@ -87,7 +87,8 @@
     "download:plugins": "theia download:plugins",
     "package": "yarn download:plugins && yarn bundle && electron-builder --publish never -c electron-builder.yml",
     "package:dir": "yarn download:plugins && yarn bundle && electron-builder --dir --publish never -c electron-builder.yml",
-    "package:mac": "yarn download:plugins && yarn bundle && electron-builder --mac --publish never -c electron-builder.yml"
+    "package:mac": "yarn download:plugins && yarn bundle && electron-builder --mac --publish never -c electron-builder.yml -c.mac.identity=-",
+    "package:mac:release": "yarn download:plugins && yarn bundle && electron-builder --mac --publish never -c electron-builder.yml -c.mac.forceCodeSigning=true"
   },
   "theiaPluginsDir": "plugins",
   "theiaPlugins": {

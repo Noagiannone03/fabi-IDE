@@ -41,6 +41,12 @@ mac:
   icon: resources/fabi.icns
   category: public.app-category.developer-tools
   darkModeSupport: true
+  # The local package:mac command opts into electron-builder's supported
+  # ad-hoc identity. Production uses package:mac:release, which requires a
+  # Developer ID identity instead of silently emitting an unsigned bundle.
+  hardenedRuntime: true
+  entitlements: resources/entitlements.mac.plist
+  entitlementsInherit: resources/entitlements.mac.plist
   # Fabi opens projects chosen by the user. macOS protects these locations and
   # displays these strings when consent is required. The native Theia open
   # dialog remains the authority that grants access; these keys do not request
