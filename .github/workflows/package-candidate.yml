@@ -69,7 +69,10 @@ jobs:
           fi
 
           entitlements="$RUNNER_TEMP/fabi-entitlements.plist"
-          codesign -d --entitlements - "$app_path" > "$entitlements" 2>/dev/null
+          # `--entitlements -` prints Apple's human-readable `[Dict]` format on
+          # current macOS runners. The colon form asks codesign for the XML
+          # property list that PlistBuddy can validate deterministically.
+          codesign -d --entitlements :- "$app_path" > "$entitlements" 2>/dev/null
           for entitlement in \
             com.apple.security.cs.allow-jit \
             com.apple.security.cs.disable-library-validation
