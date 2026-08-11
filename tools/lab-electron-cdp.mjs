@@ -4,9 +4,10 @@ import { pathToFileURL } from 'node:url';
 
 const [automationPath, port, action = 'inspect', timeoutArg = '120000'] = process.argv.slice(2);
 if (!automationPath || !port) {
-    throw new Error('usage: lab-electron-cdp.mjs <playwright-core/index.mjs|puppeteer-core> <port> [inspect|wait-ready] [timeout-ms]');
+    throw new Error('usage: lab-electron-cdp.mjs <playwright-core/index.mjs|puppeteer-core> <port> [inspect|wait-shell|wait-ai|wait-ready] [timeout-ms]');
 }
-if (action !== 'inspect' && action !== 'wait-ready') {
+const waitAction = action === 'wait-shell' || action === 'wait-ai' || action === 'wait-ready';
+if (action !== 'inspect' && !waitAction) {
     throw new Error(`unsupported action: ${action}`);
 }
 const timeoutMs = Number.parseInt(timeoutArg, 10);
@@ -29,7 +30,7 @@ do {
     try {
         browser = await connect();
     } catch (error) {
-        if (action === 'inspect' || Date.now() - startedAt >= timeoutMs) {
+        if (!waitAction || Date.now() - startedAt >= timeoutMs) {
             throw error;
         }
         await pause(250);
@@ -45,15 +46,22 @@ try {
         ? browser.contexts().flatMap(context => context.pages())
         : await browser.pages();
     let mainPage = pages.find(page => page.url().includes('app.asar/lib/frontend'));
-    while (action === 'wait-ready' && !mainPage && Date.now() - startedAt < timeoutMs) {
+    while (waitAction && !mainPage && Date.now() - startedAt < timeoutMs) {
         await pause(100);
         pages = playwright
             ? browser.contexts().flatMap(context => context.pages())
             : await browser.pages();
         mainPage = pages.find(page => page.url().includes('app.asar/lib/frontend'));
     }
+    // Electron launched from an SSH-controlled macOS session can be visible to
+    // CDP while its animation frames remain throttled until the page is brought
+    // forward. This is lab automation only; production launches are activated
+    // by the user's normal GUI action.
+    if (mainPage && waitAction) {
+        await mainPage.bringToFront().catch(() => undefined);
+    }
     const events = [];
-    if (mainPage && action === 'wait-ready') {
+    if (mainPage && waitAction) {
         mainPage.on('console', message => events.push({
             atMs: Date.now() - startedAt,
             type: `console:${message.type()}`,
@@ -70,19 +78,29 @@ try {
             text: `${request.url()} ${request.failure()?.errorText ?? ''}`.slice(0, 4_000),
         }));
     }
+    let shellReadyAtMs;
+    let aiReadyAtMs;
     let readyAtMs;
-    while (action === 'wait-ready' && mainPage && Date.now() - startedAt < timeoutMs) {
-        const ready = await mainPage.evaluate(() =>
-            !!document.querySelector('#theia-app-shell')
-            && document.body?.innerText?.includes('Fabi AI')
-        ).catch(() => false);
+    while (waitAction && mainPage && Date.now() - startedAt < timeoutMs) {
+        const readiness = await mainPage.evaluate(() => ({
+            shell: !!document.querySelector('#theia-app-shell'),
+            ai: document.body?.innerText?.includes('Fabi AI') ?? false,
+        })).catch(() => ({ shell: false, ai: false }));
+        const elapsedMs = Date.now() - startedAt;
+        if (readiness.shell && shellReadyAtMs === undefined) {
+            shellReadyAtMs = elapsedMs;
+        }
+        if (readiness.shell && readiness.ai && aiReadyAtMs === undefined) {
+            aiReadyAtMs = elapsedMs;
+        }
+        const ready = action === 'wait-shell' ? readiness.shell : readiness.shell && readiness.ai;
         if (ready) {
-            readyAtMs = Date.now() - startedAt;
+            readyAtMs = elapsedMs;
             break;
         }
         await pause(250);
     }
-    if (action === 'wait-ready' && readyAtMs === undefined) {
+    if (waitAction && readyAtMs === undefined) {
         exitCode = 2;
     }
     const snapshot = [];
@@ -119,6 +137,8 @@ try {
         action,
         elapsedMs: Date.now() - startedAt,
         readyAtMs,
+        shellReadyAtMs,
+        aiReadyAtMs,
         events,
         pages: snapshot,
     }, null, 2)}\n`, resolve));
