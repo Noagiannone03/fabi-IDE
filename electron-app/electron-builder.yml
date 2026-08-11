@@ -41,6 +41,16 @@ mac:
   icon: resources/fabi.icns
   category: public.app-category.developer-tools
   darkModeSupport: true
+  # Fabi opens projects chosen by the user. macOS protects these locations and
+  # displays these strings when consent is required. The native Theia open
+  # dialog remains the authority that grants access; these keys do not request
+  # broad filesystem access on their own.
+  extendInfo:
+    NSDocumentsFolderUsageDescription: Fabi accède aux projets que vous choisissez dans Documents pour les lire et les modifier.
+    NSDesktopFolderUsageDescription: Fabi accède aux projets que vous choisissez sur le Bureau pour les lire et les modifier.
+    NSDownloadsFolderUsageDescription: Fabi accède aux projets que vous choisissez dans Téléchargements pour les lire et les modifier.
+    NSNetworkVolumesUsageDescription: Fabi accède aux projets que vous choisissez sur un volume réseau pour les lire et les modifier.
+    NSRemovableVolumesUsageDescription: Fabi accède aux projets que vous choisissez sur un volume amovible pour les lire et les modifier.
   target:
     - dmg
     - zip
