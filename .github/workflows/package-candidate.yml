@@ -7,6 +7,108 @@ permissions:
   contents: read
 
 jobs:
+  macos-arm64:
+    name: Package macOS arm64
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - name: Checkout candidate revision
+        uses: actions/checkout@v6
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable pinned Yarn Classic
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install immutable dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Test the Fabi product contract
+        run: yarn --cwd fabi-swarm test
+
+      - name: Build the ad-hoc signed Apple Silicon candidate
+        run: yarn --cwd electron-app package:mac
+
+      - name: Verify the native application contract
+        run: |
+          app_path="$(find electron-app/dist -type d -name 'Fabi.app' -print -quit)"
+          if [ -z "$app_path" ]; then
+            echo 'electron-builder did not produce Fabi.app' >&2
+            exit 1
+          fi
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+
+          identifier="$(codesign -dv --verbose=4 "$app_path" 2>&1 | sed -n 's/^Identifier=//p')"
+          if [ "$identifier" != 'fr.undefinedstudio.fabi' ]; then
+            echo "unexpected application identifier: $identifier" >&2
+            exit 1
+          fi
+
+          expected_version="$(node -p "require('./electron-app/package.json').version")"
+          packaged_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app_path/Contents/Info.plist")"
+          if [ "$packaged_version" != "$expected_version" ]; then
+            echo "unexpected packaged version: $packaged_version (expected $expected_version)" >&2
+            exit 1
+          fi
+
+          executable="$app_path/Contents/MacOS/Fabi"
+          if ! file "$executable" | grep -q 'arm64'; then
+            echo 'the packaged Fabi executable is not Apple Silicon' >&2
+            file "$executable" >&2
+            exit 1
+          fi
+
+          entitlements="$RUNNER_TEMP/fabi-entitlements.plist"
+          codesign -d --entitlements - "$app_path" > "$entitlements" 2>/dev/null
+          for entitlement in \
+            com.apple.security.cs.allow-jit \
+            com.apple.security.cs.disable-library-validation
+          do
+            value="$(/usr/libexec/PlistBuddy -c "Print :$entitlement" "$entitlements")"
+            if [ "$value" != 'true' ]; then
+              echo "missing required entitlement: $entitlement" >&2
+              exit 1
+            fi
+          done
+
+      - name: Record candidate checksums
+        run: |
+          cd electron-app/dist
+          artifacts=()
+          while IFS= read -r artifact; do
+            artifacts+=("$artifact")
+          done < <(find . -maxdepth 1 -type f \
+            \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' -o -name '*.yml' \) \
+            -print | LC_ALL=C sort)
+          if [ "${#artifacts[@]}" -eq 0 ]; then
+            echo 'electron-builder did not produce a macOS distribution artifact' >&2
+            exit 1
+          fi
+          shasum -a 256 "${artifacts[@]}" | sed 's#  \./#  #' > SHA256SUMS
+
+      - name: Upload the qualification candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: fabi-macos-arm64-candidate
+          path: |
+            electron-app/dist/*.dmg
+            electron-app/dist/*.zip
+            electron-app/dist/*.blockmap
+            electron-app/dist/*.yml
+            electron-app/dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 3
+
   windows-x64:
     name: Package Windows x64
     runs-on: windows-latest
