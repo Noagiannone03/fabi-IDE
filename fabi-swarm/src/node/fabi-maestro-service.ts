@@ -64,10 +64,14 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     protected extTimer: NodeJS.Timeout | undefined;
     protected externalScanRunning = false;
     protected hooks: MaestroHookBridge | undefined;
+    protected hooksStarting: Promise<void> | undefined;
+    protected runPromise: Promise<void> | undefined;
 
     protected baseUrl: string | undefined;
     protected engineStatus: MaestroSnapshot['engine'] = 'starting';
+    protected readonly lifecycleAbort = new AbortController();
     protected sseAbort: AbortController | undefined;
+    protected sseReconnectTimer: NodeJS.Timeout | undefined;
     protected pollTimer: NodeJS.Timeout | undefined;
     protected refreshTimer: NodeJS.Timeout | undefined;
     protected pushTimer: NodeJS.Timeout | undefined;
@@ -85,10 +89,7 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     // ---- API RPC ----
 
     async start(): Promise<MaestroSnapshot> {
-        if (!this.started) {
-            this.started = true;
-            void this.run();
-        }
+        this.beginSupervision();
         return this.snapshot();
     }
 
@@ -97,10 +98,7 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     }
 
     async reportOpenSurfaces(ownerId: string, surfaces: MaestroSurface[]): Promise<void> {
-        if (!this.started) {
-            this.started = true;
-            void this.run();
-        }
+        this.beginSupervision();
         if (!ownerId) {
             return;
         }
@@ -218,35 +216,110 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
         void this.ensureHooks();
     }
 
-    /** Crée+démarre le pont de hooks et installe les hooks (idempotent). */
-    protected async ensureHooks(): Promise<void> {
-        if (this.hooks) {
+    /**
+     * Theia attend cette promesse avant de terminer le backend. Maestro possède
+     * donc explicitement tout ce qu'il ouvre : timers, SSE, requêtes et socket.
+     */
+    async onStop(): Promise<void> {
+        if (this.disposed) {
             return;
         }
-        this.hooks = new MaestroHookBridge(() => {
-            void this.scanExternal();
-            this.schedulePush();
+        this.disposed = true;
+        this.lifecycleAbort.abort();
+        this.sseAbort?.abort();
+        this.sseAbort = undefined;
+        this.clearTimer('sseReconnectTimer');
+        this.clearTimer('extTimer');
+        this.clearTimer('pollTimer');
+        this.clearTimer('refreshTimer');
+        this.clearTimer('pushTimer');
+        await this.hooksStarting?.catch(() => undefined);
+        await this.runPromise?.catch(() => undefined);
+        this.runPromise = undefined;
+        const hooks = this.hooks;
+        this.hooks = undefined;
+        await hooks?.stop().catch(err => this.logger.warn(`[maestro] arrêt du bridge: ${String(err)}`));
+        this.client = undefined;
+        this.extMonitor = undefined;
+        this.external = [];
+        this.fabi.clear();
+        this.surfaces.clear();
+        this.baseUrl = undefined;
+    }
+
+    protected beginSupervision(): void {
+        if (this.started || this.disposed) {
+            return;
+        }
+        this.started = true;
+        this.runPromise = this.run().catch(err => {
+            if (!this.disposed) {
+                this.logger.warn(`[maestro] supervision: ${String(err)}`);
+            }
         });
-        await this.hooks.start().catch(err => this.logger.warn(`[maestro] hook bridge: ${String(err)}`));
-        // Fusion idempotente et sûre dans ~/.claude et ~/.codex.
-        await this.hooks.install().catch(err => this.logger.warn(`[maestro] auto-install hooks: ${String(err)}`));
+    }
+
+    /** Crée+démarre le pont de hooks et installe les hooks (idempotent). */
+    protected async ensureHooks(): Promise<void> {
+        if (this.disposed || this.hooks) {
+            return;
+        }
+        if (this.hooksStarting) {
+            return this.hooksStarting;
+        }
+        const pending = (async () => {
+            const bridge = new MaestroHookBridge(() => {
+                void this.scanExternal();
+                this.schedulePush();
+            });
+            try {
+                await bridge.start();
+            } catch (err) {
+                this.logger.warn(`[maestro] hook bridge: ${String(err)}`);
+                return;
+            }
+            if (this.disposed) {
+                await bridge.stop();
+                return;
+            }
+            this.hooks = bridge;
+            // Fusion idempotente et sûre dans ~/.claude et ~/.codex.
+            await bridge.install().catch(err => this.logger.warn(`[maestro] auto-install hooks: ${String(err)}`));
+        })();
+        this.hooksStarting = pending;
+        try {
+            await pending;
+        } finally {
+            if (this.hooksStarting === pending) {
+                this.hooksStarting = undefined;
+            }
+        }
     }
 
     // ---- Boucle de supervision ----
 
     protected async run(): Promise<void> {
         await this.ensureHooks();
+        if (this.disposed) {
+            return;
+        }
 
         // Agents CLI externes (Claude/Codex) : scan disque + liveness, indépendant
         // du sidecar OpenCode → démarre tout de suite.
         this.extMonitor = new ExternalAgentMonitor(this.logger);
         await this.scanExternal();
+        if (this.disposed) {
+            return;
+        }
         this.extTimer = setInterval(() => void this.scanExternal(), 4000);
         this.extTimer.unref?.();
 
         // Chats Fabi AI (sidecar OpenCode).
         await this.ensureBaseUrl();
         await this.refreshSessions();
+        if (this.disposed) {
+            return;
+        }
         this.openEventStream();
         // Filet : capte les sessions créées ailleurs + réconcilie les suppressions.
         this.pollTimer = setInterval(() => void this.refreshSessions(), 6000);
@@ -359,12 +432,17 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
             return;
         }
         this.sseAbort?.abort();
+        this.clearTimer('sseReconnectTimer');
         const ac = new AbortController();
         this.sseAbort = ac;
         const url = `${this.baseUrl}/event`; // GLOBAL (aucun directory) — vérifié.
         const reconnect = (): void => {
-            if (!this.disposed && this.sseAbort === ac && this.baseUrl) {
-                setTimeout(() => this.openEventStream(), 1000).unref?.();
+            if (!this.disposed && this.sseAbort === ac && this.baseUrl && !this.sseReconnectTimer) {
+                this.sseReconnectTimer = setTimeout(() => {
+                    this.sseReconnectTimer = undefined;
+                    this.openEventStream();
+                }, 1000);
+                this.sseReconnectTimer.unref?.();
             }
         };
         try {
@@ -732,7 +810,8 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
         const res = await fetch(url, {
             method,
             headers,
-            body: body !== undefined ? JSON.stringify(body) : undefined
+            body: body !== undefined ? JSON.stringify(body) : undefined,
+            signal: this.lifecycleAbort.signal
         });
         const txt = await res.text();
         if (!res.ok) {
@@ -742,7 +821,7 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     }
 
     protected scheduleRefresh(): void {
-        if (this.refreshTimer) {
+        if (this.disposed || this.refreshTimer) {
             return;
         }
         this.refreshTimer = setTimeout(() => {
@@ -753,7 +832,7 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     }
 
     protected schedulePush(): void {
-        if (this.pushTimer) {
+        if (this.disposed || this.pushTimer) {
             return;
         }
         this.pushTimer = setTimeout(() => {
@@ -769,6 +848,16 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
         } catch {
             // Client mort (frontend fermé/suspendu) → on l'oublie ; il se ré-attachera.
             this.client = undefined;
+        }
+    }
+
+    protected clearTimer(
+        key: 'extTimer' | 'pollTimer' | 'refreshTimer' | 'pushTimer' | 'sseReconnectTimer'
+    ): void {
+        const timer = this[key];
+        if (timer) {
+            clearTimeout(timer);
+            this[key] = undefined;
         }
     }
 }

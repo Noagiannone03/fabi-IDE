@@ -86,12 +86,18 @@ const MANAGED_MARKER = 'fabi-maestro-hook-client.js';
 export class MaestroHookBridge {
 
     protected readonly sessions = new Map<string, HookSession>();
+    protected readonly sockets = new Set<net.Socket>();
     protected server: net.Server | undefined;
-    protected readonly socketPath = platform() === 'darwin'
-        ? join(homedir(), 'Library', 'Application Support', 'Fabi', 'maestro.sock')
-        : join(homedir(), '.fabi', 'maestro.sock');
+    protected readonly socketPath: string;
 
-    constructor(protected readonly onChange: () => void) { }
+    constructor(
+        protected readonly onChange: () => void,
+        socketPath = platform() === 'darwin'
+            ? join(homedir(), 'Library', 'Application Support', 'Fabi', 'maestro.sock')
+            : join(homedir(), '.fabi', 'maestro.sock')
+    ) {
+        this.socketPath = socketPath;
+    }
 
     async start(): Promise<void> {
         if (this.server) {
@@ -99,15 +105,49 @@ export class MaestroHookBridge {
         }
         await fs.mkdir(dirname(this.socketPath), { recursive: true });
         await fs.unlink(this.socketPath).catch(() => undefined);
-        this.server = net.createServer(socket => this.accept(socket));
-        await new Promise<void>((resolve, reject) => {
-            this.server!.once('error', reject);
-            this.server!.listen(this.socketPath, () => {
-                this.server!.off('error', reject);
-                resolve();
+        const server = net.createServer(socket => this.accept(socket));
+        this.server = server;
+        try {
+            await new Promise<void>((resolve, reject) => {
+                server.once('error', reject);
+                server.listen(this.socketPath, () => {
+                    server.off('error', reject);
+                    resolve();
+                });
             });
-        });
+        } catch (error) {
+            if (this.server === server) {
+                this.server = undefined;
+            }
+            server.close();
+            throw error;
+        }
         await fs.chmod(this.socketPath, 0o600).catch(() => undefined);
+    }
+
+    /** Ferme le serveur ET toutes les permissions interactives encore pendantes. */
+    async stop(): Promise<void> {
+        const server = this.server;
+        this.server = undefined;
+        for (const session of this.sessions.values()) {
+            session.socket?.destroy();
+            session.socket = undefined;
+        }
+        this.sessions.clear();
+        for (const socket of this.sockets) {
+            socket.destroy();
+        }
+        this.sockets.clear();
+        if (server) {
+            await new Promise<void>(resolve => {
+                if (!server.listening) {
+                    resolve();
+                    return;
+                }
+                server.close(() => resolve());
+            });
+        }
+        await fs.unlink(this.socketPath).catch(() => undefined);
     }
 
     isRunning(): boolean {
@@ -208,6 +248,8 @@ export class MaestroHookBridge {
     }
 
     protected accept(socket: net.Socket): void {
+        this.sockets.add(socket);
+        socket.once('close', () => this.sockets.delete(socket));
         socket.setEncoding('utf8');
         let buffer = '';
         socket.on('data', chunk => {
@@ -238,6 +280,10 @@ export class MaestroHookBridge {
         const event = typeof payload.hook_event_name === 'string' ? payload.hook_event_name : '';
         const key = this.key(source, id);
         if (event === 'SessionEnd') {
+            const previous = this.sessions.get(key)?.socket;
+            if (previous && previous !== socket) {
+                previous.destroy();
+            }
             this.sessions.delete(key);
             socket.end();
             this.onChange();

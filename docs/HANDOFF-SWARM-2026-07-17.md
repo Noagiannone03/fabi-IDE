@@ -9613,3 +9613,134 @@ des modèles découverts utilisent encore un fallback de famille Qwen dans le
 CLI; avant de déclarer le catalogue réellement multi-modèle, ces capacités
 doivent venir des métadonnées signées/curées par variante et rester
 conservatrices quand elles sont inconnues.
+
+## Cache KV local à la tranche et diagnostic du lag Mac (11 août 2026, suite 5)
+
+Le premier chargement autonome du 32B a isolé un défaut natif réel, distinct
+du budget mémoire Fabi. Le Mac local avait reçu la tranche `[11,25)`, soit 14
+couches sur 64 et environ 3,78 Gio de poids mmap, mais Mesh/Skippy 0.74.0
+créait un cache KV F16 de 8 192 Mio pour **les 64 couches** à 32 768 tokens.
+Le processus avait culminé à 8,46 Go et la protection de pression mémoire
+avait correctement quitté le swarm avant de bloquer la machine. Augmenter un
+seuil ou réduire arbitrairement le contexte aurait masqué la cause.
+
+L'audit du fork Fabi jusqu'au llama.cpp reconstruit a confirmé que Fabi passait
+bien `layer_start=11`, `layer_end=25`, `ctx_size=32768` et le filtrage des
+tensors. Le défaut se trouvait dans la création de la mémoire runtime dense :
+la release 0.74 passait un filtre nul au cache ordinaire. La release officielle
+Mesh `v0.75.1`, révision
+`3295c902d4c4f859aaadf9240042ffdaf06dd07e`, contient précisément le correctif
+amont `Filter staged runtime memory to layer range`, appliqué aux caches dense,
+hybride et récurrent tout en conservant le traitement spécial des sidecars
+MTP. Son ABI est `0.1.35`.
+
+Le moteur candidat épingle désormais cette révision dans le bridge Rust, le
+runner Python et les commandes opérateur. Le runtime candidat verrouille les
+assets officiels 0.75.1 et leurs SHA-256 pour macOS Metal, Linux CPU/CUDA/ROCm/
+Vulkan et Windows CPU/CUDA/ROCm/Vulkan. Les 66 tests ciblés Python, les 5 tests
+du bridge natif et les 3 tests du bundler passent. L'archive macOS officielle a
+été vérifiée puis réellement chargée par le bridge candidat.
+
+La régression a ensuite été rejouée sans Electron, sur les mêmes fichiers
+Qwen3-32B et exactement `[11,25)` à 32 768 tokens. Le journal natif marque les
+couches 0 à 10 et 25 à 63 `filtered`, conserve uniquement 11 à 24 et alloue
+**1 792 Mio** de KV, soit exactement `8192 × 14 / 64`, au lieu de 8 192 Mio.
+Le stage est devenu prêt en 3,88 s, sans swap; `time -l` a mesuré environ
+1,97 Gio de peak memory footprint macOS hors fichiers mmap. Cette preuve
+qualifie le correctif natif local, pas encore la release Fabi multi-plateforme
+ni une génération distribuée 32B.
+
+Un second problème indépendant a été observé pendant le diagnostic : au repos,
+le renderer Fabi consommait environ 45 % CPU cumulé et sa fermeture laissait
+deux processus backend orphelins. Après fermeture explicite de l'application
+et terminaison de ces deux enfants, aucun processus Fabi ne restait; la mémoire
+était saine et les principaux consommateurs CPU redevenaient WindowServer,
+Cursor et Arc. Il reste à profiler/corriger la boucle de rendu idle et le
+lifecycle des enfants, sans transformer ce kill opérateur en comportement
+produit.
+
+Ordre immédiat : terminer la suite complète moteur/runtime, pousser le moteur,
+mettre à jour les pins CLI/runtime et publier rc63; régénérer le contrat 32B
+signé pour Mesh 0.75.1/ABI 0.1.35; installer le candidat sur Mac local, Mac
+mini et RTX; laisser les tranches se placer sans override et qualifier route,
+génération OpenCode, mémoire et gros contexte. Ensuite corriger le CPU idle et
+l'extinction des enfants, puis reprendre kills/replan, seconde route, NAT,
+device pairing et capacités multi-modèles signées.
+
+Le moteur qualifié a finalement été poussé sur
+`codex/swarm-protocol-v3` au commit
+`a4f7e5cd2366c5c5708c3a3f58096fa5f0cf4ad5`. Sa suite complète passe :
+1 049 tests, 8 skips; les fichiers modifiés passent Ruff, rustfmt et
+`git diff --check`. Le wheel ABI3 release a été réellement compilé et chargé
+avec le runtime natif 0.75.1. Le test `cargo test --features
+python-extension` n'est pas une validation utilisable sur macOS parce que ce
+mode produit une extension à symboles Python dynamiques plutôt qu'un binaire
+de test lié à libpython; le build wheel `maturin develop --release` est, lui,
+vert. Ne pas transformer ce point de linkage en faux échec moteur.
+
+Le CLI `dev` est poussé au commit
+`0b32d61122e1b289dd42256ad99297b274c7219e`; ses 73 tests swarm et le
+typecheck monorepo passent. Le runtime `main` est poussé au commit
+`8b145a172cc26eccc7965cbee938255bfa27ff89`, tag annoté
+`v2.7.0-rc63`. Son preflight verrouille de façon cohérente ces deux commits,
+Mesh 0.75.1 et ABI 0.1.35; les tests de bundling, neutralisation de chemins et
+upgrade transactionnel passent. Les workflows `31495013107` (tag) et
+`31495010613` (main) sont encore en cours à cette entrée : ne pas installer ni
+annoncer rc63 avant que le run tag ait produit et validé les six archives.
+
+Une première exécution de la suite complète avait laissé seulement 2,5 Gio
+libres et les tests de cache refusaient correctement la réserve disque. La
+cause était le répertoire Rust `native/fabi-network/target`, composé
+uniquement d'objets régénérables. `cargo clean` a retiré 29,5 Gio de produits
+de build et rendu environ 23 Gio libres; le paquet sélectif 32B, les clés, les
+identités et les sources ont été conservés. Les quatre tests de stockage ont
+alors repassé, puis la suite complète également.
+
+## Refonte du runtime Maestro et extinction symétrique (11 août 2026, suite 6)
+
+Le CPU idle et les enfants orphelins provenaient de deux défauts structurels
+dans Maestro. Chaque mascotte Claude/Codex montait sa propre récursion
+`requestAnimationFrame`, y compris pour la scène sommeil et les widgets Theia
+encore montés mais masqués par les Spaces. Sur un écran 120 Hz, chaque instance
+redessinait donc son canvas 120 fois par seconde. Par ailleurs, le service
+backend Maestro ouvrait des timers, un flux SSE global et un serveur Unix de
+hooks, sans `onStop`; les sockets de permissions Claude/Codex peuvent rester
+ouvertes une heure ou une journée et retenaient le backend après la fermeture.
+Une course permettait aussi à `onStart` et au premier frontend d'initialiser le
+bridge en parallèle.
+
+Le mécanisme d'animation a été remplacé, sans retirer le design ni les scènes,
+par une horloge partagée au niveau de la fenêtre. Toutes les mascottes visibles
+partagent une seule échéance et une seule frame; les scènes travail/alerte/
+sommeil sont cadencées respectivement à 30/24/6 fps. Un
+`IntersectionObserver` partagé active uniquement les surfaces réellement
+visibles, `visibilitychange` suspend toute la fenêtre et la préférence système
+`prefers-reduced-motion` conserve un rendu statique. Quand la dernière
+mascotte disparaît, il ne reste ni timer ni rAF. Cette architecture suit les
+sémantiques documentées de `requestAnimationFrame` et d'IntersectionObserver,
+plutôt qu'une condition locale ajoutée dans chaque composant.
+
+Le backend possède maintenant explicitement son cycle de vie. L'initialisation
+du bridge est sérialisée; `onStop` annule le fetch/SSE et sa reconnexion, vide
+les cinq timers, attend la supervision en cours, ferme toutes les permissions
+pendantes, détruit les sockets acceptés, ferme le serveur et supprime
+`maestro.sock`. `MaestroHookBridge.stop()` et l'arrêt du service sont
+idempotents. Une fin de session détruit aussi une ancienne socket de permission
+au lieu de seulement oublier sa référence.
+
+Deux tests de l'horloge prouvent qu'un ensemble de mascottes ne planifie qu'une
+frame globale, respecte les cadences et ne planifie rien hors écran/suspendu.
+Deux tests de lifecycle utilisent un vrai socket Unix temporaire et vérifient
+la fermeture d'une permission pendante, du serveur, du fichier socket et de
+tous les timers. La suite `fabi-swarm` passe désormais 86 tests. Le build
+Electron complet (extensions Theia, browser, node et electron) termine avec
+zéro erreur.
+
+Un lancement Electron local reconstruit a ensuite été quitté par la voie
+normale. Theia a journalisé l'attente de ses contributions backend, tous les
+processus Electron/Theia ont disparu et le socket Maestro était absent après
+la sortie. Le renderer principal observé au repos variait de 0 à 11 % CPU,
+contre environ 45 % lors du premier incident. Cette mesure est encourageante
+mais ne constitue pas encore un benchmark Maestro chargé avec plusieurs agents;
+il faut refaire ce profil avec le Space Maestro actif et plusieurs mascottes
+avant de déclarer la régression CPU entièrement qualifiée.

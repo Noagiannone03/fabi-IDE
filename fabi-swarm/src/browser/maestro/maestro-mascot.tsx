@@ -2,6 +2,7 @@ import * as React from '@theia/core/shared/react';
 import { foxRects, FOX_W, FOX_H } from '../fabi-pixel';
 import { FabiTypingFox } from '../fabi-typing-fox';
 import { MaestroAgent, MaestroStatus } from '../../common/fabi-maestro-protocol';
+import { animateMaestroCanvas } from './maestro-animation-runtime';
 
 /**
  * Icône d'agent animée dans la liste Maestro.
@@ -24,6 +25,7 @@ const CODEX_BODY = '#6AA9FF';
 type Scene = 'work' | 'sleep' | 'alert';
 const sceneFor = (status: MaestroStatus): Scene =>
     status === 'generating' ? 'work' : status === 'waiting' ? 'alert' : 'sleep';
+const frameRateFor = (scene: Scene): number => scene === 'work' ? 30 : scene === 'alert' ? 24 : 6;
 
 // ── Mappage unités SVG → pixels du canvas (port du `struct V`) ──
 interface V { ox: number; oy: number; s: number; y0: number; }
@@ -209,23 +211,16 @@ const ClawdCanvas: React.FC<{ status: MaestroStatus; body: string; size: number 
         canvas.height = H * dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.imageSmoothingEnabled = false;
-        let raf = 0;
-        let stopped = false;
-        const frame = (now: number): void => {
-            if (stopped) {
-                return;
-            }
+        const animation = animateMaestroCanvas(canvas, now => {
             const t = now / 1000;
             ctx.clearRect(0, 0, W, H);
             if (scene === 'work') { drawWork(ctx, t, W, H, body); }
             else if (scene === 'alert') { drawAlert(ctx, t, W, H, body); }
             else { drawSleep(ctx, t, W, H, body); }
-            raf = window.requestAnimationFrame(frame);
-        };
-        raf = window.requestAnimationFrame(frame);
-        return () => { stopped = true; window.cancelAnimationFrame(raf); };
+        }, frameRateFor(scene));
+        return () => animation.dispose();
     }, [scene, body, size]);
-    return <canvas ref={ref} className="fabi-mascot-canvas" style={{ width: size, height: size }} />;
+    return <canvas ref={ref} className="fabi-mascot-canvas" style={{ width: size, height: size }} aria-hidden="true" />;
 };
 
 /** Renard Fabi au repos (grille pixel officielle, statique). */
