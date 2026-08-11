@@ -12,13 +12,25 @@ const [
     marker,
     timeoutArg = '600000',
     abortAfterArg,
+    permissionModeArg = 'keep',
+    permissionExpectationArg = 'ignore',
 ] = process.argv.slice(2);
 if (!automationPath || !port || !prompt || !marker) {
     throw new Error(
         'usage: lab-electron-chat-e2e.mjs <puppeteer-core> <port> <prompt> <marker> '
-        + '[timeout-ms] [abort-after-ms|route-active:<cluster-status-url>|request-active:<cluster-status-url>'
-        + '|contribution-active:<contribution-status-url>]'
+        + '[timeout-ms] [none|abort-after-ms|route-active:<cluster-status-url>|request-active:<cluster-status-url>'
+        + '|contribution-active:<contribution-status-url>] [keep|ask|auto] '
+        + '[ignore|allow|reject|none]'
     );
+}
+
+const permissionModes = new Set(['keep', 'ask', 'auto']);
+if (!permissionModes.has(permissionModeArg)) {
+    throw new Error(`invalid permission mode: ${permissionModeArg}`);
+}
+const permissionExpectations = new Set(['ignore', 'allow', 'reject', 'none']);
+if (!permissionExpectations.has(permissionExpectationArg)) {
+    throw new Error(`invalid permission expectation: ${permissionExpectationArg}`);
 }
 
 const timeoutMs = Number.parseInt(timeoutArg, 10);
@@ -28,22 +40,23 @@ if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
 const routeAbortPrefix = 'route-active:';
 const requestAbortPrefix = 'request-active:';
 const contributionAbortPrefix = 'contribution-active:';
-const abortRouteStatusUrl = abortAfterArg?.startsWith(routeAbortPrefix)
-    ? abortAfterArg.slice(routeAbortPrefix.length)
+const normalizedAbortArg = abortAfterArg === 'none' ? undefined : abortAfterArg;
+const abortRouteStatusUrl = normalizedAbortArg?.startsWith(routeAbortPrefix)
+    ? normalizedAbortArg.slice(routeAbortPrefix.length)
     : undefined;
-const abortRequestStatusUrl = abortAfterArg?.startsWith(requestAbortPrefix)
-    ? abortAfterArg.slice(requestAbortPrefix.length)
+const abortRequestStatusUrl = normalizedAbortArg?.startsWith(requestAbortPrefix)
+    ? normalizedAbortArg.slice(requestAbortPrefix.length)
     : undefined;
-const abortContributionStatusUrl = abortAfterArg?.startsWith(contributionAbortPrefix)
-    ? abortAfterArg.slice(contributionAbortPrefix.length)
+const abortContributionStatusUrl = normalizedAbortArg?.startsWith(contributionAbortPrefix)
+    ? normalizedAbortArg.slice(contributionAbortPrefix.length)
     : undefined;
 const abortStatusUrl = abortRouteStatusUrl ?? abortRequestStatusUrl;
 const abortStateStatusUrl = abortStatusUrl ?? abortContributionStatusUrl;
-const abortAfterMs = abortAfterArg === undefined || abortStateStatusUrl !== undefined
+const abortAfterMs = normalizedAbortArg === undefined || abortStateStatusUrl !== undefined
     ? undefined
-    : Number.parseInt(abortAfterArg, 10);
+    : Number.parseInt(normalizedAbortArg, 10);
 if (abortAfterMs !== undefined && (!Number.isFinite(abortAfterMs) || abortAfterMs < 0)) {
-    throw new Error(`invalid abort trigger: ${abortAfterArg}`);
+    throw new Error(`invalid abort trigger: ${normalizedAbortArg}`);
 }
 if (abortStateStatusUrl !== undefined) {
     const url = new URL(abortStateStatusUrl);
@@ -151,6 +164,56 @@ try {
     }), {
         timeout: 30_000,
     }, textboxSelector);
+    if (permissionModeArg !== 'keep') {
+        const triggerOpened = await page.evaluate(() => {
+            const isVisible = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const trigger = Array.from(document.querySelectorAll(
+                'button[aria-label="Politique des outils"]'
+            )).find(isVisible);
+            if (!trigger) {
+                return false;
+            }
+            trigger.click();
+            return true;
+        });
+        if (!triggerOpened) {
+            throw new Error('permission mode trigger is not visible');
+        }
+        const expectedLabel = permissionModeArg === 'auto' ? 'YOLO' : 'Ask edits';
+        await page.waitForFunction(label => {
+            const isVisible = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            return Array.from(document.querySelectorAll(
+                '.fabi-permission-mode [role="option"], .fabi-permission-mode .fabi-mode-option'
+            )).some(element => isVisible(element)
+                && (element.textContent ?? '').trim().startsWith(label));
+        }, { timeout: 2_000 }, expectedLabel);
+        const selectedMode = await page.evaluate(label => {
+            const isVisible = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const option = Array.from(document.querySelectorAll(
+                '.fabi-permission-mode [role="option"], .fabi-permission-mode .fabi-mode-option'
+            )).find(element => isVisible(element)
+                && (element.textContent ?? '').trim().startsWith(label));
+            if (!option) {
+                return false;
+            }
+            option.click();
+            return true;
+        }, expectedLabel);
+        if (!selectedMode) {
+            throw new Error(`${expectedLabel} option is not visible`);
+        }
+        record('permission-mode-selected', `${permissionModeArg}:${expectedLabel}`);
+        await pause(100);
+    }
     const baseline = await page.evaluate(({ markerText }) => ({
         body: document.body?.innerText ?? '',
         markerCount: (document.body?.innerText ?? '').split(markerText).length - 1,
@@ -206,6 +269,8 @@ try {
     let firstResponseAtMs;
     let completedAtMs;
     let abortedAtMs;
+    let permissionObservedAtMs;
+    let permissionRepliedAtMs;
     let finalSnapshot;
 
     while (Date.now() - startedAt < timeoutMs) {
@@ -217,6 +282,8 @@ try {
             });
             const send = visible('[aria-label="Send (Enter)"]');
             const cancel = visible('[aria-label*="Cancel"], [aria-label*="Stop"], [aria-label*="Abort"]');
+            const permissionAllow = visible('.fabi-tc-allow');
+            const permissionDeny = visible('.fabi-tc-deny');
             const articles = Array.from(document.querySelectorAll('[role="article"]')).filter(article => {
                 const rect = article.getBoundingClientRect();
                 return rect.width > 0 && rect.height > 0;
@@ -243,6 +310,14 @@ try {
                     const rect = cancel.getBoundingClientRect();
                     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
                 })() : undefined,
+                permissionAllowRect: permissionAllow ? (() => {
+                    const rect = permissionAllow.getBoundingClientRect();
+                    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+                })() : undefined,
+                permissionDenyRect: permissionDeny ? (() => {
+                    const rect = permissionDeny.getBoundingClientRect();
+                    return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+                })() : undefined,
                 interestingLines: lines.filter(line => /prépar|génér|réflé|outil|fichier|permission|prêt|failed|timeout|problème|erreur/i.test(line)).slice(-20),
             };
         }, { markerText: marker });
@@ -265,11 +340,31 @@ try {
             sendClass: snapshot.sendClass,
             sendAriaLabel: snapshot.sendAriaLabel,
             cancelVisible: snapshot.cancelVisible,
+            permissionVisible: !!(snapshot.permissionAllowRect || snapshot.permissionDenyRect),
             interestingLines: snapshot.interestingLines,
         });
         if (signature !== lastSignature) {
             observations.push({ atMs: Date.now() - startedAt, ...JSON.parse(signature) });
             lastSignature = signature;
+        }
+
+        const permissionRect = permissionExpectationArg === 'allow'
+            ? snapshot.permissionAllowRect
+            : permissionExpectationArg === 'reject' ? snapshot.permissionDenyRect : undefined;
+        if (
+            permissionObservedAtMs === undefined
+            && (snapshot.permissionAllowRect || snapshot.permissionDenyRect)
+        ) {
+            permissionObservedAtMs = Date.now() - startedAt;
+            record('permission-observed', permissionExpectationArg);
+        }
+        if (permissionRect && permissionRepliedAtMs === undefined) {
+            await page.mouse.click(
+                permissionRect.x + permissionRect.width / 2,
+                permissionRect.y + permissionRect.height / 2
+            );
+            permissionRepliedAtMs = Date.now() - startedAt;
+            record('permission-replied', permissionExpectationArg);
         }
 
         let abortReason;
@@ -333,12 +428,30 @@ try {
         exitCode = 3;
         record('timeout', `assistant marker not observed within ${timeoutMs} ms`);
     }
+    if (
+        exitCode === 0
+        && (permissionExpectationArg === 'allow' || permissionExpectationArg === 'reject')
+        && permissionRepliedAtMs === undefined
+    ) {
+        exitCode = 5;
+        record('permission-expectation-missed', permissionExpectationArg);
+    }
+    if (
+        exitCode === 0
+        && permissionExpectationArg === 'none'
+        && permissionObservedAtMs !== undefined
+    ) {
+        exitCode = 6;
+        record('unexpected-permission', permissionModeArg);
+    }
 
     await page.screenshot({ path: '/tmp/fabi-chat-e2e-final.png', fullPage: true }).catch(() => undefined);
     process.stdout.write(`${JSON.stringify({
         ok: exitCode === 0,
         prompt,
         marker,
+        permissionMode: permissionModeArg,
+        permissionExpectation: permissionExpectationArg,
         mode: abortRouteStatusUrl !== undefined
             ? 'abort-on-active-route'
             : abortRequestStatusUrl !== undefined ? 'abort-on-active-request'
@@ -348,6 +461,8 @@ try {
         firstBusyAtMs,
         firstResponseAtMs,
         abortedAtMs,
+        permissionObservedAtMs,
+        permissionRepliedAtMs,
         completedAtMs,
         totalAfterSubmitMs: completedAtMs === undefined ? undefined : completedAtMs - submittedAtMs,
         baselineMarkerCount: baseline.markerCount,

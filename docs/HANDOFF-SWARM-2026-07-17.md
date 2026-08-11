@@ -9402,3 +9402,64 @@ prefill/decode avec `replan_cold`, seconde route indépendante, deux NAT sans
 Tailscale, device pairing multi-machine, puis publication desktop Developer ID
 notarisée et canal de mise à jour signé. Le speculative decoding adaptatif
 reste après ces garanties de sûreté et de reprise.
+
+## RTX rc60, CI desktop multi-plateforme et permissions OpenCode (11 août 2026, suite 2)
+
+La RTX a été remise dans un état produit après un lancement manuel de deux
+`llama-server.exe` concurrents : Qwen3-Coder 30B sur 8080 et BGE-M3 sur 8081
+ont été arrêtés explicitement, sans supprimer leurs fichiers. Aucun Ollama ne
+tournait. La tâche headless rc59 a été arrêtée, puis l'installateur public
+Windows CUDA `v2.7.0-rc60` a été exécuté et son intégrité vérifiée. Le manifeste
+porte maintenant le CLI `f7ee751...`, le moteur `7d9753e...`, Skippy/Mesh
+`0.74.0`, ABI `0.1.32` et CUDA; l'ancien runtime reste récupérable sous
+`C:\Users\gmbhl\AppData\Local\fabi.backup-20260811111959251`. Windows ne
+présentait aucune session utilisateur (`quser` vide, aucun `explorer.exe`) : le
+GUI Electron n'a volontairement pas été lancé dans une fausse session SYSTEM.
+Le worker headless rc60 a en revanche rejoint avec son identité stable
+`c4a8c520...`, tranche `[0,28)`, contexte 32 768 et 3,5 Gio de KV disponible.
+
+Le workflow candidat desktop ne contrôlait jusque-là que Windows et n'aurait
+pas détecté la régression de signature macOS. Les commits `832b23f` puis
+`63b721e` ajoutent un job natif `macos-15` ARM64, Node 22/Yarn Classic épinglés,
+les 82 tests produit, le bundle ad hoc explicite, `codesign --deep --strict`,
+l'identifiant, la version, l'architecture, les deux entitlements et les sommes
+SHA-256. La première exécution a correctement refusé le parseur d'entitlements :
+sur le macOS actuel, `codesign --entitlements -` produit le format humain
+`[Dict]`; `codesign --entitlements :-` produit le plist XML déterministe attendu
+par PlistBuddy. La vérification cryptographique n'a pas été relâchée. Le run
+final `31478401891` est vert : macOS ARM64 en 6 min 50 s et Windows x64 en
+9 min 43 s, avec installation NSIS silencieuse réelle et artefacts candidats
+sur les deux plateformes.
+
+Le harness Electron pilote désormais aussi les deux contrôles réels
+`Ask edits`/`YOLO`, observe les cartes `Autoriser`/`Refuser`, peut y répondre et
+échoue si une permission attendue manque ou si YOLO en affiche une. Il reste un
+simple client CDP de l'interface installée : le chemin exécuté demeure
+Electron → intégration Fabi → OpenCode 1.15 → outils/permissions → Request
+Agent → swarm V3. Un smoke Ask sans outil a terminé avec le marqueur exact en
+72,793 s et aucune fausse carte.
+
+Le premier essai d'édition a fourni une preuve utile mais négative : Qwen3-0.6B
+a bien émis un appel OpenCode `edit`, mais avec `oldString` égal à `newString`.
+OpenCode l'a rejeté avant autorisation avec `No changes to apply`; le harness a
+donc refusé le faux succès textuel et le fichier est resté intact. Avec les
+arguments exacts explicités, Ask a ensuite été qualifié de bout en bout : carte
+visible à 74,583 s, clic Autoriser à 74,590 s, outil `edit` `completed`, contenu
+réel `ASK_EDIT_CONTENT_OK`, réponse finale exacte et UI idle en 100,233 s.
+
+Le miroir YOLO a également exécuté le vrai outil `edit` avec la configuration
+OpenCode toujours fixée à `edit: ask`. Aucune carte n'est apparue, aucune
+permission n'est restée en attente et le fichier contenait réellement
+`YOLO_EDIT_CONTENT_OK` : le broker de chat a donc bien acquitté la demande
+automatiquement sans règle persistante. Qwen3-0.6B a toutefois terminé le
+second message après outil avec une pensée disant qu'il allait répondre, mais
+sans bloc texte final. Le statut OpenCode était idle et l'outil réussi; ce tour
+qualifie YOLO et la modification, **pas** encore une réponse utilisateur finale
+après outil sur ce petit modèle. Le fichier témoin a ensuite été supprimé.
+
+Reste immédiatement : conserver ce harness et ses assertions dans Git,
+requalifier la réponse post-outil avec un modèle agentique plus apte ou un
+correctif fondé si le défaut vient du protocole, puis changement de modèle,
+kills prefill/decode et `replan_cold`, seconde route/RunPod, deux NAT réels,
+device pairing et distribution Developer ID/notarisée. Le speculative decoding
+reste après ces garanties de fonctionnement et de reprise.
