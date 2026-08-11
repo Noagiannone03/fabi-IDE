@@ -9237,3 +9237,90 @@ le nouveau signal DHT. L'ordre suivant reste : CI verte, tag/release rc59,
 déploiement du scheduler exact, installation des workers, E2E Electron visible
 avec le tour long et preuve de premier token, puis churn/reprise/NAT. Le
 speculative decoding reste explicitement après cette qualification.
+
+## E2E produit rc59 et annulation transactionnelle rc60 (11 août 2026)
+
+Les CI restées en cours à l'entrée précédente sont devenues vertes. Le runtime
+public `v2.7.0-rc59`, commit
+`fac7f426795a1a291cae1286cfaf5639b1a3bd07`, contient le CLI
+`242383e378b9593a2372794282b4e4338ce3c572` et le moteur
+`587a38fd9d9065f1cd514f6301ba469109bb7a70`. Ses six archives et installateurs
+Linux, macOS et Windows sont publics. Le scheduler VPS a été remplacé par une
+image construite sur ce moteur exact, et les runtimes publics rc59 ont été
+installés sur le Mac mini et la RTX. Le desktop 0.1.7 a été construit depuis
+un clone local complet, installé sous `/Users/noagiannone/Applications/Fabi.app`
+et lancé sans injection de contrat de laboratoire. Le canal de mise à jour
+desktop signé répond toujours 404 et reste donc à publier; seul le runtime est
+auto-réparable à cette entrée.
+
+Le cluster live a formé trois répliques complètes autonomes `[0,28)` : RTX
+CUDA, Mac mini Metal et Mac local Metal, toutes sous Skippy/Mesh `0.74.0` et ABI
+`0.1.32`. La RTX a aussi été arrêtée accidentellement puis relancée par la tâche
+produit `FabiWorkerIroh`; après arrêt des serveurs Llama, elle a republié sa
+capacité réelle, ses liens directs/relay et l'état V3 `ready`. Le placement
+adaptatif a choisi une enveloppe de 18 100 tokens pendant la demande live; ce
+n'est pas une constante du modèle mais la géométrie courante issue de la
+mémoire et de l'histogramme signé.
+
+Un vrai tour Electron/OpenCode visible, lancé par CDP contre l'application
+installée, a envoyé « Réponds uniquement par OK. N'utilise aucun outil. » et a
+reçu exactement `OK`. Le prompt OpenCode qualifié contenait 13 664 tokens; le
+scheduler local en avait estimé 13 620, ce qui a correctement déclenché un
+second plan avec la tokenisation Rust exacte. La requête
+`73893916-2afb-4d31-86be-0e6818b679a6` a traversé planning, autorisation,
+réservation, prefill, decode et release. Mesures : TTFT 47 300 ms, 9,91 tokens/s,
+114 tokens de sortie et 59,372 s pour le tour UI complet. Après génération,
+les trois workers étaient encore `READY`, le KV était rendu et le Request Agent
+n'avait ni route active ni échec récent.
+
+Le harness réutilisable `tools/lab-electron-chat-e2e.mjs` pilote le vrai
+Monaco visible, distingue la réponse finale des pensées et des messages
+utilisateur, et sait cliquer l'abort. Un abort pendant « Préparation du
+contexte » a rendu l'UI à `Prêt` en 1,222 s, sans réponse finale ni loader
+orphelin. Il a néanmoins révélé une fuite réelle après coup : la requête
+`65b9d867-4bd9-47a7-9bd9-ec422ab7702a` a continué jusqu'au Request Agent,
+a été recalculée à 13 816 tokens, puis le scheduler a bien journalisé
+`Streaming client disconnected`, mais le permit de la seconde route est resté
+actif. Un nouveau chat affichait donc légitimement `capacity_reached`.
+
+La cause n'était ni un timer ni l'IDE. Starlette annule la tâche qui produit le
+`StreamingResponse`; sous la cancellation de niveau AnyIO, chaque nouvel
+`await` est annulé tant qu'il reste dans le scope annulé. L'abort RPC était
+déjà protégé par `CancelScope(shield=True)`, mais la libération de route et de
+permit exécutée juste après ne l'était pas. Le moteur
+`7d9753e2009c6a08d7994507ba0420e279dbb804` centralise désormais cette
+garantie dans `_release_route`, donc tous les chemins stream, non-stream,
+erreur et token-replan révoquent le fence et le permit même sous cancellation.
+Un test reproduit explicitement un scope AnyIO déjà annulé; les tests existants
+avec la seule edge-cancellation asyncio ne couvraient pas ce défaut.
+
+Validation : 51 tests handler/gate/frontend, puis 1 041 tests moteur réussis et
+8 ignorés sur le Mac sans worker concurrent. La CI native
+`31471284391` est verte sur Ubuntu, macOS 15 et Windows, y compris wheel ABI3,
+imports, DHT trois nœuds et contrats V3. Le CLI `dev`
+`f7ee75107907b8cd470628f1b1587347a182853e` épingle ce moteur; ses tests de
+pin et son typecheck passent. Le runtime `main`
+`cad514c0e30db24914cf030fdc373817cd876538` verrouille les deux commits et
+son preflight/transaction d'installation est vert. Le tag annoté
+`v2.7.0-rc60` a été poussé, mais son workflow public est encore en construction
+à cette entrée : ne pas annoncer ni installer rc60 avant les six archives
+vertes.
+
+Le Mac local n'avait plus que 3,8 Gio libres, ce qui faisait échouer proprement
+les tests de cache exigeant la réserve produit. Après vérification des modèles
+et des processus, 19,2 Gio d'artefacts régénérables ont été supprimés : cache
+sélectif Qwen3-4B, snapshots Hugging Face Qwen3-1.7B/Qwen3-4B et clone temporaire
+du build rc59. Qwen3-0.6B/Skippy, le runtime, les identités et les dépôts ont été
+conservés; le disque dispose maintenant d'environ 24 Gio. La fermeture normale
+du desktop a supprimé tous ses enfants et ramené `active_requests` à zéro.
+
+L'essai `Ask edits` a bien affiché pensée et carte outil, mais Qwen3-0.6B a
+malformé l'appel demandé et tenté un `FileSystem.readFile` sur le répertoire du
+workspace; aucun fichier n'a été créé. Cela ne qualifie donc encore ni
+l'approbation ni YOLO. Ordre immédiat : attendre les six artefacts rc60,
+installer rc60 localement par l'installateur public, relancer l'application
+produit, refaire l'abort et prouver `active_requests=0` sans redémarrage, puis
+rejouer outils/permissions avec un appel explicite, kills prefill/decode et
+`replan_cold`, seconde route, NAT indépendants, changement de modèle, device
+pairing et canal desktop signé. Le speculative decoding vient après cette
+baseline de sûreté; il n'est pas activé à cette entrée.
