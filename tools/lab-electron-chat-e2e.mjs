@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const [
@@ -12,7 +15,9 @@ const [
 ] = process.argv.slice(2);
 if (!automationPath || !port || !prompt || !marker) {
     throw new Error(
-        'usage: lab-electron-chat-e2e.mjs <puppeteer-core> <port> <prompt> <marker> [timeout-ms] [abort-after-ms]'
+        'usage: lab-electron-chat-e2e.mjs <puppeteer-core> <port> <prompt> <marker> '
+        + '[timeout-ms] [abort-after-ms|route-active:<cluster-status-url>|request-active:<cluster-status-url>'
+        + '|contribution-active:<contribution-status-url>]'
     );
 }
 
@@ -20,11 +25,41 @@ const timeoutMs = Number.parseInt(timeoutArg, 10);
 if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
     throw new Error(`invalid timeout: ${timeoutArg}`);
 }
-const abortAfterMs = abortAfterArg === undefined
+const routeAbortPrefix = 'route-active:';
+const requestAbortPrefix = 'request-active:';
+const contributionAbortPrefix = 'contribution-active:';
+const abortRouteStatusUrl = abortAfterArg?.startsWith(routeAbortPrefix)
+    ? abortAfterArg.slice(routeAbortPrefix.length)
+    : undefined;
+const abortRequestStatusUrl = abortAfterArg?.startsWith(requestAbortPrefix)
+    ? abortAfterArg.slice(requestAbortPrefix.length)
+    : undefined;
+const abortContributionStatusUrl = abortAfterArg?.startsWith(contributionAbortPrefix)
+    ? abortAfterArg.slice(contributionAbortPrefix.length)
+    : undefined;
+const abortStatusUrl = abortRouteStatusUrl ?? abortRequestStatusUrl;
+const abortStateStatusUrl = abortStatusUrl ?? abortContributionStatusUrl;
+const abortAfterMs = abortAfterArg === undefined || abortStateStatusUrl !== undefined
     ? undefined
     : Number.parseInt(abortAfterArg, 10);
 if (abortAfterMs !== undefined && (!Number.isFinite(abortAfterMs) || abortAfterMs < 0)) {
-    throw new Error(`invalid abort delay: ${abortAfterArg}`);
+    throw new Error(`invalid abort trigger: ${abortAfterArg}`);
+}
+if (abortStateStatusUrl !== undefined) {
+    const url = new URL(abortStateStatusUrl);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        throw new Error(`unsupported abort status URL: ${abortStateStatusUrl}`);
+    }
+}
+const abortEnabled = abortAfterMs !== undefined || abortStateStatusUrl !== undefined;
+const accountToken = abortContributionStatusUrl === undefined
+    ? undefined
+    : (await readFile(
+        process.env.FABI_E2E_ACCOUNT_TOKEN_FILE ?? join(homedir(), '.config', 'fabi', 'account-token'),
+        'utf8'
+    )).trim();
+if (abortContributionStatusUrl !== undefined && !accountToken) {
+    throw new Error('contribution-active requires a non-empty local Fabi account token');
 }
 
 const automation = await import(pathToFileURL(automationPath).href);
@@ -45,6 +80,53 @@ const record = (type, text) => {
         type,
         text: String(text).slice(0, 4_000),
     });
+};
+
+const readClusterRequestState = async () => {
+    if (abortStatusUrl === undefined) {
+        return { activeRouteRequestIds: [], maxRunningRequests: 0 };
+    }
+    const response = await fetch(abortStatusUrl, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) {
+        throw new Error(`route status returned HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    const routes = payload?.data?.swarm_v3_execution?.active_routes;
+    if (!Array.isArray(routes)) {
+        throw new Error('route status does not expose data.swarm_v3_execution.active_routes');
+    }
+    const maxRunningRequests = payload?.data?.max_running_request;
+    if (!Number.isInteger(maxRunningRequests) || maxRunningRequests < 0) {
+        throw new Error('route status does not expose a valid data.max_running_request');
+    }
+    return {
+        activeRouteRequestIds: routes.map(route => String(route?.request_id ?? '')).filter(Boolean),
+        maxRunningRequests,
+    };
+};
+
+const readContributionState = async () => {
+    if (abortContributionStatusUrl === undefined) {
+        return { activeRequests: 0 };
+    }
+    const response = await fetch(abortContributionStatusUrl, {
+        headers: {
+            accept: 'application/json',
+            authorization: `Bearer ${accountToken}`,
+        },
+        signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) {
+        throw new Error(`contribution status returned HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    if (!Number.isInteger(payload?.active_requests) || payload.active_requests < 0) {
+        throw new Error('contribution status does not expose a valid active_requests');
+    }
+    return { activeRequests: payload.active_requests };
 };
 
 try {
@@ -72,8 +154,14 @@ try {
     const baseline = await page.evaluate(({ markerText }) => ({
         body: document.body?.innerText ?? '',
         markerCount: (document.body?.innerText ?? '').split(markerText).length - 1,
-        articleCount: document.querySelectorAll('[role="article"]').length,
+        articleCount: Array.from(document.querySelectorAll('[role="article"]')).filter(element => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        }).length,
     }), { markerText: marker });
+    const baselineRequestState = await readClusterRequestState();
+    const baselineContributionState = await readContributionState();
+    const baselineActiveRouteIds = new Set(baselineRequestState.activeRouteRequestIds);
 
     const inputRect = await page.evaluate(selector => {
         const textbox = Array.from(document.querySelectorAll(selector)).find(element => {
@@ -121,7 +209,7 @@ try {
     let finalSnapshot;
 
     while (Date.now() - startedAt < timeoutMs) {
-        const snapshot = await page.evaluate(({ markerText, baselineArticleCount }) => {
+        const snapshot = await page.evaluate(({ markerText }) => {
             const body = document.body?.innerText ?? '';
             const visible = selector => Array.from(document.querySelectorAll(selector)).find(element => {
                 const rect = element.getBoundingClientRect();
@@ -129,9 +217,15 @@ try {
             });
             const send = visible('[aria-label="Send (Enter)"]');
             const cancel = visible('[aria-label*="Cancel"], [aria-label*="Stop"], [aria-label*="Abort"]');
-            const articles = Array.from(document.querySelectorAll('[role="article"]'));
-            const newArticles = articles.slice(baselineArticleCount);
-            const assistantFinals = newArticles.flatMap(article => Array.from(
+            const articles = Array.from(document.querySelectorAll('[role="article"]')).filter(article => {
+                const rect = article.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            });
+            // Theia may recycle/prune article nodes as a conversation grows,
+            // so an article-count offset is not a stable cursor. The marker is
+            // unique per run; inspect every assistant final and select the
+            // latest one instead.
+            const assistantFinals = articles.flatMap(article => Array.from(
                 article.querySelectorAll('.theia-ResponseNode-Content')
             )).filter(content => !content.querySelector('.fabi-think'))
                 .map(content => (content.innerText ?? '').trim())
@@ -151,7 +245,7 @@ try {
                 })() : undefined,
                 interestingLines: lines.filter(line => /prépar|génér|réflé|outil|fichier|permission|prêt|failed|timeout|problème|erreur/i.test(line)).slice(-20),
             };
-        }, { markerText: marker, baselineArticleCount: baseline.articleCount });
+        }, { markerText: marker });
         finalSnapshot = snapshot;
 
         const busy = snapshot.cancelVisible
@@ -178,23 +272,51 @@ try {
             lastSignature = signature;
         }
 
+        let abortReason;
         if (
             abortAfterMs !== undefined
-            && abortedAtMs === undefined
-            && snapshot.cancelRect
             && Date.now() - startedAt - submittedAtMs >= abortAfterMs
         ) {
+            abortReason = `${Date.now() - startedAt - submittedAtMs} ms elapsed`;
+        } else if (abortStatusUrl !== undefined && snapshot.cancelRect) {
+            const requestState = await readClusterRequestState();
+            const newRouteIds = requestState.activeRouteRequestIds
+                .filter(requestId => !baselineActiveRouteIds.has(requestId));
+            if (newRouteIds.length > 0) {
+                abortReason = `active route ${newRouteIds.join(',')}`;
+                record('abort-route-observed', abortReason);
+            } else if (
+                abortRequestStatusUrl !== undefined
+                && requestState.maxRunningRequests > baselineRequestState.maxRunningRequests
+            ) {
+                abortReason = `active request permit ${requestState.maxRunningRequests}`;
+                record('abort-request-observed', abortReason);
+            }
+        } else if (abortContributionStatusUrl !== undefined && snapshot.cancelRect) {
+            const contributionState = await readContributionState();
+            if (contributionState.activeRequests > baselineContributionState.activeRequests) {
+                abortReason = `active contribution permit ${contributionState.activeRequests}`;
+                record('abort-contribution-observed', abortReason);
+            }
+        }
+        if (abortedAtMs === undefined && snapshot.cancelRect && abortReason !== undefined) {
             const rect = snapshot.cancelRect;
             await page.mouse.click(rect.x + rect.width / 2, rect.y + rect.height / 2);
             abortedAtMs = Date.now() - startedAt;
-            record('abort-clicked', `after ${abortedAtMs - submittedAtMs} ms`);
+            record('abort-clicked', abortReason);
         }
 
         const assistantMarkerVisible = snapshot.latestAssistantFinal.includes(marker);
         const idle = !snapshot.cancelVisible && snapshot.sendAriaLabel === 'Send (Enter)';
-        const abortCompleted = abortAfterMs !== undefined && abortedAtMs !== undefined && idle;
-        if ((assistantMarkerVisible && idle) || abortCompleted) {
+        const abortCompleted = abortEnabled && abortedAtMs !== undefined && idle;
+        if (abortCompleted || (!abortEnabled && assistantMarkerVisible && idle)) {
             completedAtMs = Date.now() - startedAt;
+            break;
+        }
+        if (abortEnabled && assistantMarkerVisible && idle) {
+            completedAtMs = Date.now() - startedAt;
+            exitCode = 4;
+            record('abort-trigger-missed', 'generation completed before the requested abort state was observed');
             break;
         }
 
@@ -217,7 +339,11 @@ try {
         ok: exitCode === 0,
         prompt,
         marker,
-        mode: abortAfterMs === undefined ? 'completion' : 'abort',
+        mode: abortRouteStatusUrl !== undefined
+            ? 'abort-on-active-route'
+            : abortRequestStatusUrl !== undefined ? 'abort-on-active-request'
+            : abortContributionStatusUrl !== undefined ? 'abort-on-active-contribution'
+            : abortAfterMs === undefined ? 'completion' : 'abort-after-delay',
         submittedAtMs,
         firstBusyAtMs,
         firstResponseAtMs,

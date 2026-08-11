@@ -9324,3 +9324,81 @@ rejouer outils/permissions avec un appel explicite, kills prefill/decode et
 `replan_cold`, seconde route, NAT indépendants, changement de modèle, device
 pairing et canal desktop signé. Le speculative decoding vient après cette
 baseline de sûreté; il n'est pas activé à cette entrée.
+
+## Publication rc60, desktop signé pour le labo et abort qualifié (11 août 2026, suite)
+
+Le workflow runtime `31471908323` est désormais entièrement vert. La release
+publique `v2.7.0-rc60`, commit runtime
+`cad514c0e30db24914cf030fdc373817cd876538`, contient le CLI
+`f7ee75107907b8cd470628f1b1587347a182853e` et le moteur
+`7d9753e2009c6a08d7994507ba0420e279dbb804`. Les six archives macOS Metal,
+Linux ARM/CPU/CUDA et Windows CUDA/DirectML, leurs sommes, décompresseurs et
+les deux installateurs sont publiés. L'installateur public de la release a
+remplacé rc59 sur le Mac local; son manifeste porte exactement rc60, Skippy,
+Mesh `0.74.0`, ABI `0.1.32`, Metal et les deux commits attendus. Le rollback
+transactionnel est conservé sous
+`/Users/noagiannone/.local/share/fabi.backup-1786437904-85256`.
+
+Le scheduler VPS a été construit dans l'image
+`local/parallax-scheduler:swarm-v3-7d9753e`. Son label OCI, l'ABI réseau `1`
+et la présence de `CancelScope(shield=True)` dans `_release_route` ont été
+vérifiés *dans l'image* avant le cutover. Le compose précédent est sauvegardé
+sous `/home/debian/fabi-rc60-cutover.dqcI34`; l'identité Iroh est restée
+`627ec9c5...`. Le Mac mini et la RTX se sont réinscrits automatiquement et ont
+retrouvé l'état `READY`, une liaison directe et une route à 17 912 tokens sans
+requête active. Le Mac local les a ensuite rejoints sous le runtime public
+rc60, en Skippy/Metal, sans variable de laboratoire.
+
+Le build desktop 0.1.8 a révélé une lacune de packaging antérieure : en
+l'absence de certificat Apple, electron-builder sautait la signature et ne
+laissait que les signatures linker internes d'Electron. `codesign --verify
+--deep --strict` échouait donc avec `code has no resources`. La documentation
+officielle [electron-builder](https://www.electron.build/docs/features/code-signing/code-signing-mac/)
+confirme qu'il faut demander explicitement `mac.identity: "-"` pour un build ad hoc, avec Hardened Runtime,
+`allow-jit` et `disable-library-validation`; une distribution réelle exige un
+Developer ID et une notarisation. Le commit desktop `5473dab` sépare désormais
+les deux chemins : `package:mac` signe en ad hoc pour la qualification locale,
+tandis que `package:mac:release` active `forceCodeSigning` et échoue sans
+Developer ID. Un essai négatif sans certificat a bien échoué avant de produire
+une release. La notarisation et les secrets Apple restent à provisionner : le
+build ad hoc ne doit pas être présenté comme une release utilisateur signée.
+
+Le desktop a été reconstruit depuis le clone local complet
+`/private/tmp/fabi-ide-rc60.ziAVm8`, au commit `5473dab`, avec Node `22.22.3`
+et electron-builder `26.15.7`. Node 26 n'est pas compatible avec la chaîne
+Theia/yargs actuelle; le workflow candidat épingle déjà Node 22 et le build de
+qualification a utilisé le même runtime au lieu de modifier yargs. La nouvelle
+app passe la vérification profonde stricte, porte
+`fr.undefinedstudio.fabi`, version 0.1.8, et le DMG a pour SHA-256
+`712c39f306d283e10de5390e728d83ef50402e9a18f488cc4757505fbfe3d378`.
+Elle est installée sous `/Users/noagiannone/Applications/Fabi.app`; l'ancienne
+0.1.7 reste récupérable sous
+`/Users/noagiannone/Applications/Fabi-0.1.7.app`.
+
+L'abort rc60 a été qualifié sur un événement réel et non sur un délai. Le
+harness Electron sait maintenant attendre soit une route, soit une requête,
+soit surtout le permit de contribution authentifié; il refuse aussi le faux
+positif où la génération finirait avant le déclencheur et ignore les articles
+Theia cachés/recyclés. Pour la requête
+`ddfe4472-8b33-4a32-9a21-929e1a7ccd6e`, Stop a été cliqué seulement après
+observation de `active_requests=1`. Le journal SSE prouve deux plans dus à la
+tokenisation exacte : epoch 19 puis epoch 20, tous deux passés par `prefilling`
+et tous deux suivis d'un événement `released`; le second release manquait sous
+rc59. Après l'abort, l'UI est revenue à `Prêt` en 202 ms, le Request Agent
+affichait zéro route, zéro phase, zéro checkpoint et zéro entrée de recovery,
+et le gate était revenu à `eligible`, `active_requests=0`, sans redémarrage.
+
+Un nouveau chat créé dans la même application a ensuite reçu exactement
+`FRESH_RC60_OK`. La requête
+`06dec2c1-c6af-4dbc-accd-db46ef3d96da` contenait 13 580 tokens d'entrée :
+TTFT 40,696 s, 9,87 tokens/s et 157 tokens de sortie; le tour UI complet a pris
+57,159 s. Après le tour, route, permit, phases et checkpoints étaient encore à
+zéro. Les 82 tests produit `fabi-swarm`, le contrôle syntaxique du harness, le
+plist d'entitlements et la signature du bundle passent.
+
+L'ordre restant ne change pas : qualifier Ask edits puis YOLO avec de vrais
+outils et modifications de fichiers, changement de modèle, kills réels pendant
+prefill/decode avec `replan_cold`, seconde route indépendante, deux NAT sans
+Tailscale, device pairing multi-machine, puis publication desktop Developer ID
+notarisée et canal de mise à jour signé. Le speculative decoding adaptatif
+reste après ces garanties de sûreté et de reprise.
