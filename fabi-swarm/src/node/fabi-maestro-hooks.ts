@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import * as net from 'node:net';
@@ -15,12 +16,15 @@ const HOOK_CLIENT_SOURCE = `#!/usr/bin/env node
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const args = process.argv.slice(2);
 const si = args.indexOf('--source');
 const source = si >= 0 ? args[si + 1] : 'codex';
 const socketPath = process.env.FABI_MAESTRO_SOCKET || (
-    process.platform === 'darwin'
+    process.platform === 'win32'
+        ? '\\\\.\\pipe\\fabi-maestro-' + crypto.createHash('sha256').update(os.homedir().toLowerCase()).digest('hex').slice(0, 20)
+        : process.platform === 'darwin'
         ? path.join(os.homedir(), 'Library', 'Application Support', 'Fabi', 'maestro.sock')
         : path.join(os.homedir(), '.fabi', 'maestro.sock')
 );
@@ -83,6 +87,31 @@ interface HookSession {
 
 const MANAGED_MARKER = 'fabi-maestro-hook-client.js';
 
+/**
+ * Node attend un chemin de socket Unix sur macOS/Linux et un nom de Named
+ * Pipe dans l'espace `\\\\.\\pipe\\` sur Windows. Le suffixe par utilisateur
+ * évite qu'une session Windows différente puisse monopoliser le nom global.
+ */
+export function maestroIpcEndpoint(
+    homeDirectory = homedir(),
+    platformName: NodeJS.Platform = platform()
+): string {
+    if (platformName === 'win32') {
+        const userScope = createHash('sha256')
+            .update(homeDirectory.toLowerCase())
+            .digest('hex')
+            .slice(0, 20);
+        return `\\\\.\\pipe\\fabi-maestro-${userScope}`;
+    }
+    return platformName === 'darwin'
+        ? join(homeDirectory, 'Library', 'Application Support', 'Fabi', 'maestro.sock')
+        : join(homeDirectory, '.fabi', 'maestro.sock');
+}
+
+function isWindowsNamedPipe(endpoint: string): boolean {
+    return endpoint.startsWith('\\\\.\\pipe\\') || endpoint.startsWith('\\\\?\\pipe\\');
+}
+
 export class MaestroHookBridge {
 
     protected readonly sessions = new Map<string, HookSession>();
@@ -92,9 +121,7 @@ export class MaestroHookBridge {
 
     constructor(
         protected readonly onChange: () => void,
-        socketPath = platform() === 'darwin'
-            ? join(homedir(), 'Library', 'Application Support', 'Fabi', 'maestro.sock')
-            : join(homedir(), '.fabi', 'maestro.sock')
+        socketPath = maestroIpcEndpoint()
     ) {
         this.socketPath = socketPath;
     }
@@ -103,8 +130,10 @@ export class MaestroHookBridge {
         if (this.server) {
             return;
         }
-        await fs.mkdir(dirname(this.socketPath), { recursive: true });
-        await fs.unlink(this.socketPath).catch(() => undefined);
+        if (!isWindowsNamedPipe(this.socketPath)) {
+            await fs.mkdir(dirname(this.socketPath), { recursive: true });
+            await fs.unlink(this.socketPath).catch(() => undefined);
+        }
         const server = net.createServer(socket => this.accept(socket));
         this.server = server;
         try {
@@ -122,7 +151,9 @@ export class MaestroHookBridge {
             server.close();
             throw error;
         }
-        await fs.chmod(this.socketPath, 0o600).catch(() => undefined);
+        if (!isWindowsNamedPipe(this.socketPath)) {
+            await fs.chmod(this.socketPath, 0o600).catch(() => undefined);
+        }
     }
 
     /** Ferme le serveur ET toutes les permissions interactives encore pendantes. */
@@ -147,7 +178,9 @@ export class MaestroHookBridge {
                 server.close(() => resolve());
             });
         }
-        await fs.unlink(this.socketPath).catch(() => undefined);
+        if (!isWindowsNamedPipe(this.socketPath)) {
+            await fs.unlink(this.socketPath).catch(() => undefined);
+        }
     }
 
     isRunning(): boolean {

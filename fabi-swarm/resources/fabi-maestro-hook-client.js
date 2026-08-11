@@ -6,13 +6,16 @@ const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
 const args = process.argv.slice(2);
 const sourceIndex = args.indexOf('--source');
 const source = sourceIndex >= 0 ? args[sourceIndex + 1] : 'codex';
 const socketPath = process.env.FABI_MAESTRO_SOCKET || (
-    process.platform === 'darwin'
+    process.platform === 'win32'
+        ? '\\\\.\\pipe\\fabi-maestro-' + crypto.createHash('sha256').update(os.homedir().toLowerCase()).digest('hex').slice(0, 20)
+        : process.platform === 'darwin'
         ? path.join(os.homedir(), 'Library', 'Application Support', 'Fabi', 'maestro.sock')
         : path.join(os.homedir(), '.fabi', 'maestro.sock')
 );
