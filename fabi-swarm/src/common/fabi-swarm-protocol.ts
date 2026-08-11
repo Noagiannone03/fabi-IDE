@@ -17,12 +17,12 @@ export const FabiSwarmClient = Symbol('FabiSwarmClient');
 /** Registry Fabi (prod) — liste les swarms et expose le flux SSE. */
 export const FABI_REGISTRY_URL = 'https://server.undefinedstudio.fr/fabi-registry';
 /** Repli V3 si le registry est injoignable : le swarm produit qualifié. */
-export const FABI_FALLBACK_SCHEDULER_URL = 'https://server.undefinedstudio.fr/fabi-scheduler/qwen3-4b-v3';
-export const FABI_FALLBACK_SCHEDULER_PEER = 'e88817843267aed089d8aa88bcca70426c3bfe93670289eaddd6abb74009b625';
+export const FABI_FALLBACK_SCHEDULER_URL = 'https://server.undefinedstudio.fr/fabi-scheduler/qwen3-0-6b-v3';
+export const FABI_FALLBACK_SCHEDULER_PEER = '627ec9c575d634525f2fabf451d9120316c47061df4b13be1049715c434cceb2';
 /** Modèle de repli si rien n'est annoncé. */
-export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-4B';
+export const FABI_FALLBACK_MODEL = 'Qwen/Qwen3-0.6B';
 /** TUF root qualifiée avec le moteur V3. Une rotation impose une release Fabi. */
-export const FABI_QUALIFIED_MODEL_ROOT_SHA256 = 'c0fe1ff1c8a45b286056f05d83e38039b8dd3e743e4d3e739177108b7d44285b';
+export const FABI_QUALIFIED_MODEL_ROOT_SHA256 = '322767d6181161a6a6d1457849b1780870c59abe527b0e1775ddd914e6ed5d7a';
 /** Compatibility epoch for signed discovery and model-execution contracts. */
 export const FABI_QUALIFIED_CATALOG_SCHEMA_VERSION = 3;
 /** Id du provider tel qu'enregistré dans Theia AI. */

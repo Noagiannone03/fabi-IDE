@@ -9463,3 +9463,82 @@ correctif fondé si le défaut vient du protocole, puis changement de modèle,
 kills prefill/decode et `replan_cold`, seconde route/RunPod, deux NAT réels,
 device pairing et distribution Developer ID/notarisée. Le speculative decoding
 reste après ces garanties de fonctionnement et de reprise.
+
+## Catalogue root3 générique et candidat Skippy 32B (11 août 2026, suite 3)
+
+Le moteur `swarm-engine/codex/swarm-protocol-v3` est poussé au commit
+`beef1d73fb9bde3d36e4e29b7b2ae43d0e245bd7`. La commande opérateur générique
+`build-skippy-package-bundle` ne parcourt plus les poids Safetensors source :
+elle résout les révisions immuables du modèle logique et du paquet Mesh,
+télécharge seulement le petit `shared/metadata.gguf`, vérifie localement sa
+taille, son SHA-256 et sa géométrie avec le runtime natif qualifié, puis signe
+le contrat. Les divergences de nombre de couches, largeur d'activation,
+contexte, géométrie KV, quantification, hash ou taille sont refusées. La suite
+complète moteur passe : 1 048 tests, 8 skips.
+
+Une nouvelle autorité TUF indépendante, dite root3, a été créée **hors VPS**
+sous le répertoire privé opérateur
+`~/Library/Application Support/Fabi Operator/model-registry-root3-20260811`.
+Les clés root, targets et snapshot ainsi que leur passphrase restent locales.
+La racine bootstrap publique a pour SHA-256
+`322767d6181161a6a6d1457849b1780870c59abe527b0e1775ddd914e6ed5d7a`.
+Root3 contient exactement le contrat Qwen3-0.6B qualifié
+`18b52f3789641d5da1352d42d072ec361dd29da356841a887c4a41ad4e7d6081`
+et le candidat Qwen3-32B
+`b3916837d204112d38dc735144235322a42d2da2aa26ba9d1064c0bc2981132f`.
+Le second référence 92 artefacts, 64 couches, 20 413 386 509 octets
+d'exécution signés et zéro tensor Safetensors source. Son état exact reste
+volontairement désactivé avant qualification live.
+
+Le dépôt public root3 est servi parallèlement, sans écraser root2, sous
+`https://server.undefinedstudio.fr/fabi-swarm-registry-v3/root3/`. Le vrai
+client TUF a résolu et vérifié les deux `model_swarm_id`, d'abord par HTTP
+local puis par HTTPS public. Les huit fichiers publics ne contiennent aucune
+clé privée. Les expirations initiales sont : root 11 août 2027, targets
+10 septembre 2026, snapshot 18 août 2026, timestamp 12 août 2026. La clé
+publique de capacité génération 1 reste la même et expire le 28 octobre 2026,
+ce qui permet de conserver l'autorité de requête existante sans rotation
+cachée.
+
+Pour que la migration parallèle ne laisse pas expirer root3, des unités
+systemd templatisées `fabi-tuf-timestamp-refresh@.service/.timer` ont été
+ajoutées. L'instance root3 possède son répertoire de credentials séparé et ne
+reçoit que `timestamp.pem` et sa passphrase; les trois clés offline ne sont
+jamais copiées sur le VPS. Les unités passent `systemd-analyze verify`.
+L'instance `root3` est active; son premier run isolé, sans réseau ni capability,
+a publié le timestamp version 2, puis le client TUF a revérifié le 32B par
+HTTPS.
+
+Le CLI `dev` est poussé au commit `578abfffeafde9586902ba0ef934ade573c677f4`
+avec le nouveau pin moteur; ses tests ciblés et le typecheck monorepo passent.
+Le runtime `main` est poussé au commit
+`8118fec415650cc4f50ad685bb8cc7aa245d0bf6`, tag
+`v2.7.0-rc61`. Le lock distant est vert et les six builds de plateformes sont
+encore en cours à cette entrée : Linux x64 CPU/CUDA, Linux ARM64 CPU et macOS
+Metal sont verts; Windows CUDA/Vulkan restent en construction. L'archive macOS
+a été téléchargée séparément, son SHA-256 passe et son manifeste porte
+exactement rc61, CLI `578abff...`, moteur `beef1d7...`, Skippy 0.74.0/ABI
+0.1.32/Metal. Ne pas installer ni annoncer rc61 avant les deux Windows et la
+vérification des six manifests.
+
+Le VPS était arrivé à 100 % pendant la construction de l'image scheduler. Le
+nettoyage a retiré uniquement sept conteneurs scheduler déjà arrêtés et leurs
+anciennes images immuables, toutes reconstruisibles depuis Git. Aucun volume,
+état DHT, clé, catalogue ou service actif n'a été touché. Le volume système est
+revenu à 19 Gio libres. Le build `local/parallax-scheduler:swarm-v3-beef1d7`
+est terminé; son label OCI et son smoke import natif portent exactement
+`beef1d7`. Le déploiement root3 est poussé au commit moteur `5c4ab51`. Le
+nouveau coordinateur Qwen3-32B possède ses propres ports HTTP 3027, transport
+18162 et catalogue 19194, un volume et une identité propres, exige trois nœuds
+pour le laboratoire mais n'injecte aucune tranche. Son EndpointId persistant
+`efbb3006...` est autorisé explicitement par le relay. Il répond en état
+`waiting_workers`, transport Iroh et admission V3 active. Sa découverte reste
+volontairement `false` jusqu'au cutover rc61/root3 : les clients root2 ne voient
+donc pas un modèle qu'ils seraient incapables d'authentifier.
+
+Ordre immédiat : attendre les deux archives Windows rc61, vérifier les six
+manifests, construire le desktop 0.1.9, installer rc61 sur Mac/RTX/local,
+basculer atomiquement le profil public vers root3, redéployer le 0.6B et rendre
+le 32B découvrable, puis laisser les trois workers choisir leurs tranches sans
+override. Aucun E2E 32B ni téléchargement sélectif live n'est encore revendiqué
+à cette entrée.

@@ -87,7 +87,7 @@ if [ "$engine_sha" = "-" ]; then
 fi
 scheduler_endpoint="${4:-}"
 runtime="$HOME/.local/share/fabi/runtime"
-registry_root="$HOME/.local/share/fabi/trust/model-registry-root-c0fe1ff1c8a45b286056f05d83e38039b8dd3e743e4d3e739177108b7d44285b.json"
+registry_root="$HOME/.local/share/fabi/trust/model-registry-root-322767d6181161a6a6d1457849b1780870c59abe527b0e1775ddd914e6ed5d7a.json"
 screen_name="fabi-worker-$network_mode"
 if [ "$network_mode" = "iroh" ]; then
   launcher="$HOME/.local/share/fabi/mac-worker-iroh.sh"
@@ -225,7 +225,7 @@ run_windows() {
   [Convert]::FromBase64String("$win_hf_home_b64")
 )
 \$Runtime = Join-Path \$env:LOCALAPPDATA "fabi\\runtime"
-\$RegistryRoot = Join-Path \$env:LOCALAPPDATA "fabi\\trust\\model-registry-root-c0fe1ff1c8a45b286056f05d83e38039b8dd3e743e4d3e739177108b7d44285b.json"
+\$RegistryRoot = Join-Path \$env:LOCALAPPDATA "fabi\\trust\\model-registry-root-322767d6181161a6a6d1457849b1780870c59abe527b0e1775ddd914e6ed5d7a.json"
 \$TaskName = if (\$NetworkMode -eq "iroh") {
   "FabiWorkerIroh"
 } elseif (\$NetworkMode -eq "public") {
