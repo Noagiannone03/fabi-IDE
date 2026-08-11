@@ -9542,3 +9542,74 @@ basculer atomiquement le profil public vers root3, redéployer le 0.6B et rendre
 le 32B découvrable, puis laisser les trois workers choisir leurs tranches sans
 override. Aucun E2E 32B ni téléchargement sélectif live n'est encore revendiqué
 à cette entrée.
+
+## Cutover root3 et isolation des autorités TUF (11 août 2026, suite 4)
+
+La release runtime `v2.7.0-rc61` a finalement terminé entièrement verte dans
+le run `31484105968`, y compris Windows CUDA et Windows Vulkan, avec les six
+archives, installateurs, sidecars et attestations. Le candidat desktop 0.1.9
+est également vert sur macOS ARM64 et Windows x64 dans le run `31485746591`.
+Les archives Windows ont été revérifiées localement par SHA-256 et provenance
+GitHub; les manifests portent exactement rc61, CLI `578abff...`, moteur
+`beef1d7...` et Skippy/Mesh 0.74.0 ABI 0.1.32. Le desktop 0.1.9 passe
+`codesign --deep --strict` sur Mac et son installateur NSIS a été réellement
+installé dans la CI Windows.
+
+Le runtime rc61 et le desktop 0.1.9 ont été installés sur le Mac local, le Mac
+mini et la RTX. Le proxy public 32B retournait d'abord 502 alors que le port
+local 3027 répondait. La cause n'était pas le swarm : le Caddyfile avait été
+remplacé atomiquement sur l'hôte et le bind mount du conteneur conservait
+l'ancien inode, dépourvu de la route 32B. La configuration hôte a été validée
+avec le binaire Caddy exact, puis seul `edge-caddy` a été recréé. Les routes
+HTTPS 0.6B et 32B répondent désormais 200 vers leurs EndpointId respectifs.
+
+Le profil public Registry a ensuite été rechargé avec root3. `/v1/swarms`
+publie exactement `qwen3-0-6b-v3` et `qwen3-32b-v3`, tous deux `online`, avec
+la racine `322767d6...`; l'ancien 4B reste arrêté. Le secret interne
+relay-vers-Registry qui avait été visible dans une sortie opérateur a été
+renouvelé dans les deux services sans l'imprimer. Les permissions sont
+`640 root:docker` côté Registry et `600 root:root` côté relay; Registry, relay
+et les deux schedulers sont actifs et leurs URL publiques répondent 200.
+
+Le premier démarrage produit du 32B a fourni une preuve partielle utile. Les
+deux applications Mac, lancées sans variable de laboratoire, ont sélectionné
+le swarm persistant 32B et rejoint le scheduler root3. Le Mac local annonce
+environ 6,4 Gio utilisables et le Mac mini environ 6,9 Gio; les deux sont
+acceptés, sains et attendent le troisième nœud sans tranche forcée. La RTX
+n'avait aucune session Windows interactive, donc Electron ne pouvait pas
+constituer une validation UI honnête. Son worker rc61 CUDA a été lancé par la
+tâche headless qualifiée, toujours sans span imposé, et a mesuré 14,18 Gio.
+
+Ce troisième join a révélé un vrai défaut de migration : le répertoire local
+`FABI_SWARM_V3_STATE_DIR/metadata` contenait encore un `timestamp.json` root2.
+Le nouveau bootstrap root3 a correctement refusé sa signature avec
+`timestamp was signed by 0/1 keys`. Effacer manuellement le cache aurait masqué
+le défaut. La documentation `python-tuf` précise que `metadata_dir` est l'état
+durable d'un seul dépôt et que l'Updater charge les métadonnées locales avant
+les distantes. Le moteur isole donc maintenant metadata et targets sous
+`authorities/<sha256-des-octets-bootstrap>/`. Une rotation TUF continue,
+double-signée depuis le même bootstrap, conserve son anti-rollback; une
+autorité indépendante ne peut plus contaminer ni être contaminée par le cache
+précédent. L'executor dérive exactement le même chemin depuis
+`FABI_MODEL_REGISTRY_ROOT`, sans fallback plat.
+
+Le correctif moteur est poussé au commit
+`dc90403099b1cc0ac918aca8615fca9f845fcfca`; un test fait cohabiter deux
+autorités indépendantes dans le même état client. La suite complète passe :
+1 049 tests, 8 skips, Ruff vert. Le CLI `dev` est poussé au commit
+`e6bf1e0500928320ddffb029d2fc0b3262c835d2`; ses 73 tests swarm et son
+typecheck passent. Le runtime `main` est poussé au commit
+`05b5d216d801eca621d425b36d9cc6d51d85337c`, tag `v2.7.0-rc62`; le workflow
+release `31489645643` est encore en cours à cette entrée. Le desktop candidat
+est passé à 0.1.10 et épingle rc62/les deux nouveaux commits; ses 82 tests et
+la compilation des extensions passent, mais il n'est pas encore publié.
+
+Ne pas revendiquer encore la route 32B ni une génération : il faut attendre les
+six builds rc62, installer le runtime sur les trois machines, relancer le join
+RTX, observer les trois téléchargements sélectifs et la route complète, puis
+faire une génération Request Agent/OpenCode. L'UI Windows normale reste aussi
+à refaire avec une vraie session utilisateur. Enfin, les capacités OpenCode
+des modèles découverts utilisent encore un fallback de famille Qwen dans le
+CLI; avant de déclarer le catalogue réellement multi-modèle, ces capacités
+doivent venir des métadonnées signées/curées par variante et rester
+conservatrices quand elles sont inconnues.
