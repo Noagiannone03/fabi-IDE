@@ -46,6 +46,8 @@ import { MaestroSurfaceReporter } from './maestro/maestro-surface-reporter';
 import { AIConfigurationContainerWidget } from '@theia/ai-ide/lib/browser/ai-configuration/ai-configuration-widget';
 import { FabiAIConfigurationContainerWidget } from './fabi-ai-configuration-widget';
 import { FabiModelStorageSettingsWidget } from './fabi-model-storage-settings';
+import { ChatService } from '@theia/ai-chat/lib/common/chat-service';
+import { FabiChatService } from './fabi-chat-service';
 
 // Renomme le panneau IA « AI Chat » → « Fabi AI ». LABEL est le champ statique
 // utilisé par ChatViewWidget pour son titre/caption ; on le change au chargement
@@ -78,6 +80,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(FabiCodeAgent).toSelf().inSingletonScope();
     bind(Agent).toService(FabiCodeAgent);
     bind(ChatAgent).toService(FabiCodeAgent);
+    // Conserve les nouveaux messages pendant un tour actif. Le service Theia
+    // standard annule sinon le tour précédent avant même d'invoquer l'agent.
+    bind(FabiChatService).toSelf().inSingletonScope();
+    rebind(ChatService).toService(FabiChatService);
     // Theia's stock naming agent requires a Theia LanguageModel. Fabi does not
     // register one by design, so preserve the request-derived title without a
     // doomed background inference and its misleading error log.

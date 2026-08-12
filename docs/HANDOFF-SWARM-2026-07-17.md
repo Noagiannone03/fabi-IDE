@@ -9818,3 +9818,57 @@ comme un bootstrap. Ensuite seulement former une vraie route multi-worker
 32B, puis reprendre les kills prefill/decode, la deuxième route, les deux NAT
 indépendants et le device pairing. Le pod RunPod est payant et doit être
 supprimé dès la fin de ces qualifications.
+
+## File FIFO des tours de chat et audit du mode Goal (12 août 2026, suite 2)
+
+Le message « Un nouveau tour a remplacé le tour précédent » ne provenait pas
+d'OpenCode. Le service de chat frontend standard de Theia appelle
+`cancelIncompleteRequests()` avant chaque nouvel envoi. Cette annulation
+arrivait donc avant même l'invocation de l'agent Fabi et se propageait jusqu'à
+`/abort`, alors que l'utilisateur voulait seulement préparer le prochain tour.
+
+Fabi possède maintenant sa propre sémantique de conversation. Un service de
+chat frontend qualifié conserve les réponses incomplètes, et
+`FabiChatTurnQueue` admet exactement un tour à la fois par session Theia. Les
+autres conversations restent parallèles. Chaque message supplémentaire garde
+sa vraie bulle et affiche une progression native « En attente · position N »;
+il passe automatiquement à « Démarrage du tour… » lorsque le tour précédent
+est terminé. Annuler un ticket encore en file ne touche jamais au tour actif;
+annuler le tour actif conserve le chemin `/abort` existant et la file ne
+progresse qu'après la fin effective de cet abort. L'abonnement SSE n'est créé
+qu'après admission du ticket afin qu'aucun token du tour courant ne puisse
+être attaché à la réponse suivante.
+
+Les tests prouvent l'ordre FIFO, l'annulation isolée et le parallélisme entre
+deux chats. La suite `fabi-swarm` passe avec 91 tests et le build TypeScript de
+l'extension est vert. Il reste à faire un E2E Electron réel avec trois messages
+envoyés pendant une génération longue, puis un abort du message actif et d'un
+message en attente. La file est volontairement en mémoire : elle survit aux
+tours longs, mais pas encore au redémarrage complet du renderer.
+
+L'audit primaire d'OpenCode confirme que lancer plusieurs `prompt_async`
+concurrents sur la même session n'est pas une alternative sûre : les travaux
+amont décrivent encore des chevauchements de messages/assistants, tandis que
+la spécification V2 introduit explicitement une inbox durable avec les modes
+`steer` et FIFO `queue`. La sérialisation Fabi reste donc le choix correct pour
+le fork V1 actuel; elle pourra ensuite être remplacée par l'inbox native V2
+sans changer l'expérience utilisateur.
+
+Le plugin communautaire `prevalentWare/opencode-goal-plugin` a aussi été
+audité à sa release `0.1.31`. Il fournit un objectif persistant, des outils de
+création/lecture/mise à jour, des budgets, checkpoints, preuves de complétion,
+continuations automatiques et protections contre l'absence de progrès. Goal
+est orthogonal aux modes Ask/Agent : l'objectif pilote plusieurs tours, tandis
+que l'exécution sous-jacente reste en mode build/Agent.
+
+Il ne faut pas simplement ajouter ce paquet à `opencode.json`. Fabi lance
+OpenCode avec `OPENCODE_PURE=1`, et le loader ignore volontairement les plugins
+externes dans ce mode afin qu'une installation utilisateur ne puisse pas
+injecter du code dans le runtime qualifié. La voie produit retenue est donc un
+plugin **interne, épinglé et testé** dans le fork OpenCode. La release 0.1.31
+annonce officiellement OpenCode `>=1.17.1`, alors que le fork Fabi s'identifie
+encore comme 1.15.0; sa compatibilité réelle doit être qualifiée avant toute
+intégration. Il faut aussi appeler son `dispose()` lors de l'arrêt, conserver
+le lien session Theia -> session OpenCode et faire dépendre la fin SSE de
+l'état Goal réel plutôt que d'un timeout. Aucun de ces points n'est encore
+revendiqué comme implémenté dans cette entrée.

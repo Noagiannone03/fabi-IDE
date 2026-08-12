@@ -36,6 +36,7 @@ import { FABI_CODE_MODES, normalizeFabiCodeMode } from '../common/fabi-code-mode
 import {
     FABI_CODE_PERMISSION_MODE_SETTING, normalizeFabiCodePermissionMode
 } from '../common/fabi-code-permission-mode';
+import { FabiChatTurnQueue } from '../common/fabi-chat-turn-queue';
 
 /** Id stable du provider/agent Fabi (référencé par DefaultChatAgentId). */
 export const FABI_CODE_AGENT_ID = 'fabi-code';
@@ -76,6 +77,8 @@ export class FabiCodeAgent implements ChatAgent {
     protected readonly sessions = new Map<string, string>();
     /** Créations en cours (évite les doublons sur invocations concurrentes). */
     protected readonly creating = new Map<string, Promise<string>>();
+    /** Une FIFO par chat Theia ; deux conversations restent indépendantes. */
+    protected readonly turnQueue = new FabiChatTurnQueue();
 
     /** Session OpenCode déjà créée pour une session Theia ouverte. */
     getOpenCodeSessionId(theiaSessionId: string): string | undefined {
@@ -193,6 +196,45 @@ export class FabiCodeAgent implements ChatAgent {
     }
 
     async invoke(request: MutableChatRequestModel): Promise<void> {
+        const progressId = `fabi-queued:${request.id}`;
+        const ticket = this.turnQueue.enqueue(request.session.id, position => {
+            if (position > 0) {
+                request.response.addProgressMessage({
+                    id: progressId,
+                    content: `En attente · position ${position}`,
+                    status: 'inProgress',
+                    show: 'untilFirstContent'
+                });
+            }
+        });
+        const waitCancellation = request.response.cancellationToken.onCancellationRequested(() => {
+            if (!ticket.active) {
+                ticket.cancel();
+            }
+        });
+
+        const admitted = await ticket.ready;
+        waitCancellation.dispose();
+        if (!admitted || request.response.cancellationToken.isCancellationRequested) {
+            ticket.finish();
+            return;
+        }
+        request.response.addProgressMessage({
+            id: progressId,
+            content: 'Démarrage du tour…',
+            status: 'inProgress',
+            show: 'untilFirstContent'
+        });
+
+        try {
+            await this.invokeActive(request);
+        } finally {
+            ticket.finish();
+        }
+    }
+
+    /** Exécute le seul tour admis de cette conversation. */
+    protected async invokeActive(request: MutableChatRequestModel): Promise<void> {
         const response = request.response;
         // Le contenu se pousse sur le ChatResponseImpl interne (response.response) ;
         // complete()/error()/cancellationToken sont sur le MutableChatResponseModel.
