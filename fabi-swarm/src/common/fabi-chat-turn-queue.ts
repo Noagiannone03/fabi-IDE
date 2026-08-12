@@ -2,8 +2,12 @@
  * File FIFO used by the Fabi chat bridge.
  *
  * Theia invokes chat agents concurrently and, by default, cancels the previous
- * request. OpenCode sessions are sequential conversations, so Fabi admits one
- * request at a time per Theia chat while leaving different chats independent.
+ * request. A Fabi installation deliberately exposes a single consumer slot:
+ * turns from every chat/workspace therefore share this machine-wide FIFO.
+ *
+ * The backend owns the authoritative instance. Keeping this dependency-free
+ * primitive in `common` also makes its fairness/cancellation semantics directly
+ * testable without booting Electron or OpenCode.
  */
 
 export type FabiChatTurnPositionListener = (position: number) => void;
@@ -28,9 +32,9 @@ interface MutableTicket extends FabiChatTurnTicket {
 }
 
 export class FabiChatTurnQueue {
-    protected readonly queues = new Map<string, MutableTicket[]>();
+    protected readonly queue: MutableTicket[] = [];
 
-    enqueue(sessionId: string, onPosition?: FabiChatTurnPositionListener): FabiChatTurnTicket {
+    enqueue(_turnId: string, onPosition?: FabiChatTurnPositionListener): FabiChatTurnTicket {
         let resolveReady: (active: boolean) => void = () => undefined;
         const ready = new Promise<boolean>(resolve => {
             resolveReady = resolve;
@@ -51,24 +55,21 @@ export class FabiChatTurnQueue {
             get settled(): boolean {
                 return this._settled;
             },
-            cancel: () => this.remove(sessionId, ticket, false),
-            finish: () => this.remove(sessionId, ticket, true)
+            cancel: () => this.remove(ticket, false),
+            finish: () => this.remove(ticket, true)
         };
 
-        const queue = this.queues.get(sessionId) ?? [];
-        queue.push(ticket);
-        this.queues.set(sessionId, queue);
-        this.refresh(sessionId, queue);
+        this.queue.push(ticket);
+        this.refresh();
         return ticket;
     }
 
-    protected remove(sessionId: string, ticket: MutableTicket, finished: boolean): void {
+    protected remove(ticket: MutableTicket, finished: boolean): void {
         if (ticket._settled) {
             return;
         }
-        const queue = this.queues.get(sessionId);
-        const index = queue?.indexOf(ticket) ?? -1;
-        if (!queue || index < 0) {
+        const index = this.queue.indexOf(ticket);
+        if (index < 0) {
             ticket._settled = true;
             if (!ticket._active) {
                 ticket._resolveReady(false);
@@ -81,21 +82,17 @@ export class FabiChatTurnQueue {
         if (ticket._active && !finished) {
             return;
         }
-        queue.splice(index, 1);
+        this.queue.splice(index, 1);
         ticket._settled = true;
         if (!ticket._active) {
             ticket._resolveReady(false);
         }
-        if (queue.length === 0) {
-            this.queues.delete(sessionId);
-            return;
-        }
-        this.refresh(sessionId, queue);
+        this.refresh();
     }
 
-    protected refresh(sessionId: string, queue: MutableTicket[]): void {
-        for (let index = 0; index < queue.length; index++) {
-            const ticket = queue[index];
+    protected refresh(): void {
+        for (let index = 0; index < this.queue.length; index++) {
+            const ticket = this.queue[index];
             const changed = ticket._position !== index;
             ticket._position = index;
             if (changed) {
@@ -105,9 +102,6 @@ export class FabiChatTurnQueue {
                 ticket._active = true;
                 ticket._resolveReady(true);
             }
-        }
-        if (queue.length === 0) {
-            this.queues.delete(sessionId);
         }
     }
 }

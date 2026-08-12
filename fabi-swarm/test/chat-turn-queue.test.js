@@ -43,16 +43,36 @@ test('cancelling a queued turn does not cancel the active turn', async () => {
     third.finish();
 });
 
-test('different chats are admitted independently', async () => {
+test('different chats and workspaces share the machine consumer slot', async () => {
     const queue = new FabiChatTurnQueue();
     const chatA = queue.enqueue('chat-a');
     const chatB = queue.enqueue('chat-b');
 
     assert.equal(await chatA.ready, true);
-    assert.equal(await chatB.ready, true);
     assert.equal(chatA.active, true);
-    assert.equal(chatB.active, true);
+    assert.equal(chatB.active, false);
+    assert.equal(chatB.position, 1);
 
     chatA.finish();
+    assert.equal(await chatB.ready, true);
+    assert.equal(chatB.active, true);
     chatB.finish();
+});
+
+test('a cancelled turn from another workspace never interrupts the owner', async () => {
+    const queue = new FabiChatTurnQueue();
+    const owner = queue.enqueue('space-a:turn-1');
+    const cancelled = queue.enqueue('space-b:turn-1');
+    const next = queue.enqueue('space-a:turn-2');
+
+    assert.equal(await owner.ready, true);
+    cancelled.cancel();
+    assert.equal(await cancelled.ready, false);
+    assert.equal(owner.active, true);
+    assert.equal(owner.settled, false);
+    assert.equal(next.position, 1);
+
+    owner.finish();
+    assert.equal(await next.ready, true);
+    next.finish();
 });

@@ -9970,3 +9970,58 @@ aligné à droite. Les 95 tests de l'extension, son build TypeScript, le bundle
 navigateur et le bundle Electron passent. L'aperçu navigateur a été lancé sans
 worker local, puis arrêté; l'application Fabi utilisateur déjà ouverte n'a pas
 été remplacée pendant cette validation.
+
+## File de consommation globale multi-espace (12 août 2026, suite 4)
+
+La sémantique de l'entrée « File FIFO des tours » ci-dessus a été renforcée :
+la file n'est plus indépendante pour chaque chat. Une installation Fabi
+n'expose volontairement qu'un seul slot de consommation, partagé par tous les
+chats, espaces de travail et pages. Un message envoyé depuis un second espace
+reste visible avec « En attente · position N · une autre génération est en
+cours », puis démarre automatiquement lorsque le tour propriétaire se termine.
+Cela empêche qu'une seule contribution locale ouvre plusieurs générations
+concurrentes et surcharge la machine ou le compte.
+
+La garantie n'est pas seulement frontend. `FabiCodeServiceImpl`, singleton du
+backend Electron, possède la FIFO autoritaire et sérialise les appels OpenCode
+avant `prompt_async`. Chaque requête porte son propre `turnId`; annuler un
+message encore en attente le retire sans appeler `/abort` sur la session qui
+travaille déjà. Le slot actif n'est libéré que par la fin durable du tour,
+l'erreur, l'abort explicite ou l'arrêt propre du backend, jamais par un timer.
+Un Goal conserve donc naturellement le slot pendant toutes ses continuations
+jusqu'à son état stable final.
+
+Une porte de rendu locale est conservée dans chaque renderer. Elle empêche deux
+réponses du même chat, qui partagent une session OpenCode, de monter leurs
+abonnements simultanément et de mélanger leurs fragments SSE. Le backend reste
+la source de vérité entre renderers et diffuse positions, activité et fins à
+tous les clients RPC attachés; fermer un renderer ne remplace plus le client
+des autres fenêtres. Créer une session dans un autre workspace ne déplace plus
+non plus le flux SSE hors du tour actif : le changement de scope n'intervient
+qu'après admission globale.
+
+Ce design suit le pattern maintenu d'une queue à concurrence 1 et annulation
+séparée des travaux en attente (API officielle `p-queue`/`p-limit`), tout en
+réutilisant la primitive FIFO déjà testée dans Fabi car la position live et la
+distinction `cancel`/`finish` font partie du contrat UI. Références primaires :
+
+- https://github.com/sindresorhus/p-queue ;
+- https://github.com/sindresorhus/p-limit ;
+- https://theia-ide.org/docs/architecture/ ;
+- `@theia/core/src/common/messaging/proxy-factory.ts` pour le cycle de vie des
+  clients RPC et `onDidCloseConnection`.
+
+Preuves locales : 98 tests `fabi-swarm` passent, dont deux tests de service qui
+lancent des tours provenant de workspaces différents et prouvent l'ordre
+global, la diffusion à deux renderers et l'annulation isolée d'un deuxième
+message du même chat. Le build TypeScript complet et le bundle Electron passent
+sans erreur; `git diff --check` et la syntaxe du harness E2E sont verts. Il
+reste à faire la preuve Electron visuelle sur plusieurs espaces avec un vrai
+tour long, puis abort d'un ticket en attente et du ticket actif.
+
+Le runtime Goal candidat est `v2.7.0-rc65`, runtime commit `d812cab`, CLI
+`6a6c9b420` et moteur `f3ac200e2`. À cette entrée, le rerun GitHub
+`31588865445` est toujours en cours : lock, installateurs, macOS arm64 et Linux
+arm64 sont verts; les autres archives, dont Windows CUDA/DirectML, ne sont pas
+encore toutes terminées. Ne pas qualifier ni installer rc65 avant la conclusion
+verte et la vérification des assets de release.

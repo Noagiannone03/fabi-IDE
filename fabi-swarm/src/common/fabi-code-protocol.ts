@@ -29,8 +29,19 @@ export interface FabiCodeServerInfo {
     detail?: string;
     /** Nombre de tours réellement en cours dans OpenCode (0 hors génération). */
     activeTurns: number;
+    /** Tours utilisateur en attente derrière le slot machine actif. */
+    queuedTurns: number;
     /** Phase agrégée des tours, distincte du cycle de vie du sidecar. */
     activity: 'idle' | 'preparing' | 'generating';
+}
+
+/** État d'un tour dans la file de consommation globale de cette installation. */
+export interface FabiCodeTurnQueueState {
+    turnId: string;
+    sessionId: string;
+    state: 'queued' | 'active' | 'released';
+    /** 0 = slot acquis ; 1 = prochain tour ; etc. */
+    position: number;
 }
 
 /**
@@ -187,6 +198,8 @@ export interface FabiCodeClient {
     onUserMessage(sessionId: string, messageId: string): void;
     /** Event OpenCode brut (pour le widget de chat qui mirroite la session). */
     onEngineEvent(event: FabiCodeEvent): void;
+    /** Position live d'un message dans la FIFO globale de l'installation. */
+    onTurnQueueChanged(state: FabiCodeTurnQueueState): void;
 }
 
 /**
@@ -220,11 +233,13 @@ export interface FabiCodeService {
         text: string,
         directory?: string,
         mode?: import('./fabi-code-mode').FabiCodeMode,
-        permissionMode?: import('./fabi-code-permission-mode').FabiCodePermissionMode
+        permissionMode?: import('./fabi-code-permission-mode').FabiCodePermissionMode,
+        /** Identifiant unique de la requête UI, utilisé pour annuler un tour en attente sans toucher au tour actif. */
+        turnId?: string
     ): Promise<void>;
 
     /** Interrompt le tour en cours dans le même scope workspace que le prompt. */
-    abort(sessionId: string, directory?: string): Promise<void>;
+    abort(sessionId: string, directory?: string, turnId?: string): Promise<void>;
 
     /**
      * Historique complet d'une session (JSON brut d'OpenCode : `[{info, parts}]`)

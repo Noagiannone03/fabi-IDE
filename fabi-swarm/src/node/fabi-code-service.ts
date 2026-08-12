@@ -22,8 +22,10 @@ import { ILogger } from '@theia/core';
 import { BackendApplicationContribution } from '@theia/core/lib/node';
 import {
     FabiCodeService, FabiCodeClient, FabiCodeServerInfo, FabiCodePart,
-    FabiCodePermission, FabiCodePermissionReply, FabiCodeQuestion, parseFabiCodeQuestion
+    FabiCodePermission, FabiCodePermissionReply, FabiCodeQuestion, parseFabiCodeQuestion,
+    FabiCodeTurnQueueState
 } from '../common/fabi-code-protocol';
+import { FabiChatTurnQueue, FabiChatTurnTicket } from '../common/fabi-chat-turn-queue';
 import {
     automaticPermissionReply, FabiCodePermissionMode, normalizeFabiCodePermissionMode,
     OpenCodeSessionParent, resolveOpenCodeRootSessionId
@@ -67,6 +69,13 @@ interface TurnWaiter {
     goalContinuationObservedActive: boolean;
 }
 
+interface QueuedMachineTurn {
+    readonly turnId: string;
+    readonly sessionId: string;
+    readonly ticket: FabiChatTurnTicket;
+    cancelled: boolean;
+}
+
 @injectable()
 export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationContribution {
 
@@ -74,10 +83,11 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     // Optionnel : fournit le Request Agent local + le jeton de compte.
     @inject(FabiSwarmService) @optional() protected readonly swarm?: FabiSwarmService;
 
-    protected client: FabiCodeClient | undefined;
+    /** Every renderer attached to this backend receives events for its own sessions. */
+    protected readonly clients = new Set<FabiCodeClient>();
     protected server: ServerHandle | undefined;
     protected baseUrl: string | undefined;
-    protected info: FabiCodeServerInfo = { status: 'stopped', activeTurns: 0, activity: 'idle' };
+    protected info: FabiCodeServerInfo = { status: 'stopped', activeTurns: 0, queuedTurns: 0, activity: 'idle' };
     /** Modèle à utiliser (providerID/modelID) — résolu au spawn. */
     protected modelId = FABI_FALLBACK_MODEL;
     /** Signature de config réellement chargée dans le sidecar OpenCode. */
@@ -86,6 +96,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected readonly inflight = new Map<string, AbortController>();
     /** Tours OpenCode en cours : résolus par état durable, erreur ou abort. */
     protected readonly turnWaiters = new Map<string, TurnWaiter>();
+    /** Authoritative FIFO shared by every chat, workspace and renderer. */
+    protected readonly machineTurnQueue = new FabiChatTurnQueue();
+    protected readonly queuedMachineTurns = new Map<string, QueuedMachineTurn>();
+    protected turnSequence = 0;
     protected readonly turnPhases = new Map<string, 'preparing' | 'generating'>();
     protected readonly partStream = new FabiCodePartAccumulator();
     protected sseAbort: AbortController | undefined;
@@ -108,21 +122,47 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     protected readonly publishedQuestionIds = new Set<string>();
 
     setClient(client: FabiCodeClient | undefined): void {
-        this.client = client;
-        if (client) {
-            // Rendu immédiat à l'attache.
-            client.onServerStatus(this.info);
-            // Un renderer peut se recharger pendant qu'OpenCode attend une
-            // réponse. Les listes REST sont la vérité durable ; le SSE seul ne
-            // rejouera pas l'event `asked` déjà consommé.
-            this.publishedPermissionIds.clear();
-            this.publishedQuestionIds.clear();
-            if (this.baseUrl) {
-                void this.reconcilePendingInteractions().catch(error => {
-                    this.logger.warn(`[fabi-code] reprise des interactions impossible: ${error instanceof Error ? error.message : String(error)}`);
-                });
+        if (!client) {
+            this.clients.clear();
+            return;
+        }
+        this.addClient(client);
+    }
+
+    /** Register one renderer without evicting other Fabi windows. */
+    addClient(client: FabiCodeClient): void {
+        this.clients.add(client);
+        client.onServerStatus(this.info);
+        // Un renderer peut se recharger pendant qu'OpenCode attend une
+        // réponse. Les listes REST sont la vérité durable ; le SSE seul ne
+        // rejouera pas l'event `asked` déjà consommé.
+        this.publishedPermissionIds.clear();
+        this.publishedQuestionIds.clear();
+        if (this.baseUrl) {
+            void this.reconcilePendingInteractions().catch(error => {
+                this.logger.warn(`[fabi-code] reprise des interactions impossible: ${error instanceof Error ? error.message : String(error)}`);
+            });
+        }
+    }
+
+    removeClient(client: FabiCodeClient): void {
+        this.clients.delete(client);
+    }
+
+    protected broadcast(send: (client: FabiCodeClient) => void): void {
+        for (const client of this.clients) {
+            try {
+                send(client);
+            } catch {
+                // The connection close hook removes stale proxies. A push must
+                // never break the durable turn lifecycle in the meantime.
             }
         }
+    }
+
+    protected publishQueueState(state: FabiCodeTurnQueueState): void {
+        this.broadcast(client => client.onTurnQueueChanged(state));
+        this.setStatus(this.info.status, this.info.detail);
     }
 
     // ---- BackendApplicationContribution ----
@@ -157,6 +197,16 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         this.permissionPolicies.clear();
         this.publishedPermissionIds.clear();
         this.publishedQuestionIds.clear();
+        for (const entry of this.queuedMachineTurns.values()) {
+            entry.cancelled = true;
+            if (entry.ticket.active) {
+                entry.ticket.finish();
+            } else {
+                entry.ticket.cancel();
+            }
+        }
+        this.queuedMachineTurns.clear();
+        this.clients.clear();
         await this.server?.stop().catch(() => undefined);
     }
 
@@ -306,8 +356,9 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         const activity = [...this.turnPhases.values()].includes('generating')
             ? 'generating'
             : this.turnPhases.size > 0 ? 'preparing' : 'idle';
-        this.info = { status, url: this.baseUrl, detail, activeTurns: this.turnWaiters.size, activity };
-        this.client?.onServerStatus(this.info);
+        const queuedTurns = [...this.queuedMachineTurns.values()].filter(entry => !entry.ticket.active).length;
+        this.info = { status, url: this.baseUrl, detail, activeTurns: this.turnWaiters.size, queuedTurns, activity };
+        this.broadcast(client => client.onServerStatus(this.info));
         if (status === 'ready' && this.baseUrl) {
             const waiters = this.readyWaiters;
             this.readyWaiters = [];
@@ -447,7 +498,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         // tout l'état). Les callbacks normalisés ci-dessous restent pour le
         // relais ChatAgent historique.
         if (type) {
-            this.client?.onEngineEvent({ sessionId, type, properties: props });
+            this.broadcast(client => client.onEngineEvent({ sessionId, type, properties: props }));
         }
         if (type === 'message.part.updated') {
             const part = props.part as Record<string, unknown> | undefined;
@@ -456,7 +507,8 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                     this.markTurnActive(sessionId);
                     this.setTurnPhase(sessionId, 'generating');
                 }
-                this.client?.onPart(this.partStream.remember(this.normalizePart(sessionId, part)));
+                const normalized = this.partStream.remember(this.normalizePart(sessionId, part));
+                this.broadcast(client => client.onPart(normalized));
             }
         } else if (type === 'message.part.delta') {
             const messageId = typeof props.messageID === 'string' ? props.messageID : '';
@@ -469,14 +521,15 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 // possibly delayed Request Agent phase: decode has started.
                 this.markTurnActive(sessionId);
                 this.setTurnPhase(sessionId, 'generating');
-                this.client?.onPart(cumulative);
+                this.broadcast(client => client.onPart(cumulative));
             }
         } else if (type === 'message.updated') {
             // En début de tour, le message UTILISATEUR est publié → on capte son
             // id pour les checkpoints (revert/delete).
             const info = props.info as { id?: string; role?: string } | undefined;
             if (info?.role === 'user' && typeof info.id === 'string') {
-                this.client?.onUserMessage(sessionId, info.id);
+                const messageId = info.id;
+                this.broadcast(client => client.onUserMessage(sessionId, messageId));
             }
         } else if (type === 'session.status') {
             const status = (props.status as { type?: string } | undefined)?.type;
@@ -501,7 +554,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         } else if (type === 'file.edited') {
             const path = typeof props.path === 'string' ? props.path : undefined;
             if (path) {
-                this.client?.onFileEdited(sessionId, path);
+                this.broadcast(client => client.onFileEdited(sessionId, path));
             }
         } else if (type === 'permission.asked') {
             void this.publishPermission(props).catch(error => {
@@ -607,21 +660,21 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 this.logger.warn(`[fabi-code] approbation automatique impossible, retour au dialogue: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
-        if (!this.client) {
+        if (this.clients.size === 0) {
             return;
         }
         this.publishedPermissionIds.add(permission.id);
-        this.client.onPermissionAsked(enriched);
+        this.broadcast(client => client.onPermissionAsked(enriched));
     }
 
     protected async publishQuestion(question: FabiCodeQuestion, directory = this.sseDirectory): Promise<void> {
-        if (this.publishedQuestionIds.has(question.id) || !this.client) {
+        if (this.publishedQuestionIds.has(question.id) || this.clients.size === 0) {
             return;
         }
         const rootSessionId = await this.resolveRootSessionId(question.sessionId, directory)
             .catch(() => question.sessionId);
         this.publishedQuestionIds.add(question.id);
-        this.client.onQuestionAsked({ ...question, rootSessionId });
+        this.broadcast(client => client.onQuestionAsked({ ...question, rootSessionId }));
     }
 
     /** Rejoue les interactions qui survivent à une reconnexion SSE/renderer. */
@@ -692,7 +745,9 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
 
     async createSession(directory?: string): Promise<string> {
         await this.ensureCurrentServer();
-        this.ensureEventStreamFor(directory);
+        // Creating a chat in another workspace must not move the single SSE
+        // stream away from a generation already in progress. The stream is
+        // switched only after that chat acquires the machine turn below.
         const res = await this.http('POST', '/session', { title: 'Fabi' }, directory);
         const json = JSON.parse(res) as { id?: string };
         if (!json.id) {
@@ -706,12 +761,64 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         text: string,
         directory?: string,
         mode: FabiCodeMode = 'build',
-        permissionMode?: FabiCodePermissionMode
+        permissionMode?: FabiCodePermissionMode,
+        requestedTurnId?: string
+    ): Promise<void> {
+        const turnId = requestedTurnId?.trim() || `${sessionId}:backend-${++this.turnSequence}`;
+        if (this.queuedMachineTurns.has(turnId)) {
+            throw new Error(`Le tour ${turnId} existe déjà dans la file Fabi.`);
+        }
+
+        let entry: QueuedMachineTurn | undefined;
+        const ticket = this.machineTurnQueue.enqueue(turnId, position => {
+            if (entry) {
+                this.publishQueueState({
+                    turnId,
+                    sessionId,
+                    state: position === 0 ? 'active' : 'queued',
+                    position
+                });
+            }
+        });
+        entry = { turnId, sessionId, ticket, cancelled: false };
+        this.queuedMachineTurns.set(turnId, entry);
+        this.publishQueueState({
+            turnId,
+            sessionId,
+            state: ticket.active ? 'active' : 'queued',
+            position: ticket.position
+        });
+
+        try {
+            const admitted = await ticket.ready;
+            if (!admitted || entry.cancelled || this.stopping) {
+                return;
+            }
+            await this.promptActive(sessionId, text, directory, mode, permissionMode, entry);
+        } finally {
+            ticket.finish();
+            if (this.queuedMachineTurns.get(turnId) === entry) {
+                this.queuedMachineTurns.delete(turnId);
+            }
+            this.publishQueueState({ turnId, sessionId, state: 'released', position: -1 });
+        }
+    }
+
+    protected async promptActive(
+        sessionId: string,
+        text: string,
+        directory: string | undefined,
+        mode: FabiCodeMode,
+        permissionMode: FabiCodePermissionMode | undefined,
+        queueEntry: QueuedMachineTurn
     ): Promise<void> {
         await this.ensureCurrentServer();
+        if (queueEntry.cancelled || this.stopping) {
+            return;
+        }
         this.ensureEventStreamFor(directory);
         if (this.turnWaiters.has(sessionId)) {
-            throw new Error('Un tour est déjà actif pour ce chat ; le nouveau message doit rester dans la file.');
+            throw new Error('Invariant Fabi violé : un tour OpenCode est encore actif après admission FIFO.');
         }
         const normalizedMode = normalizeFabiCodeMode(mode);
         const agent = openCodeAgentForFabiMode(normalizedMode);
@@ -758,7 +865,24 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
     }
 
-    async abort(sessionId: string, directory?: string): Promise<void> {
+    async abort(sessionId: string, directory?: string, turnId?: string): Promise<void> {
+        const queued = turnId
+            ? this.queuedMachineTurns.get(turnId)
+            : [...this.queuedMachineTurns.values()].find(entry => entry.sessionId === sessionId && entry.ticket.active);
+        if (queued) {
+            queued.cancelled = true;
+            if (!queued.ticket.active) {
+                queued.ticket.cancel();
+                // The waiting prompt wakes with `admitted=false`; its single
+                // finally block publishes `released` and removes the entry.
+                return;
+            }
+            // Admission acquired but OpenCode not started yet: promptActive
+            // observes the flag after its awaited startup gate and releases.
+            if (!this.turnWaiters.has(sessionId)) {
+                return;
+            }
+        }
         const goalMode = this.turnWaiters.get(sessionId)?.goalMode === true;
         this.inflight.get(sessionId)?.abort();
         this.inflight.delete(sessionId);
@@ -952,7 +1076,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         waiter.resolve();
         this.partStream.clearSession(sessionId);
         this.setStatus(this.info.status, this.info.detail);
-        this.client?.onTurnDone(sessionId, error);
+        this.broadcast(client => client.onTurnDone(sessionId, error));
     }
 
     protected finishAllTurns(error: string): void {

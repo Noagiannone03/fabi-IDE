@@ -41,7 +41,8 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(ctx =>
         new RpcConnectionHandler<FabiCodeClient>(FABI_CODE_SERVICE_PATH, client => {
             const service = ctx.container.get<FabiCodeServiceImpl>(FabiCodeService);
-            service.setClient(client);
+            service.addClient(client);
+            client.onDidCloseConnection(() => service.removeClient(client));
             return service;
         })
     ).inSingletonScope();

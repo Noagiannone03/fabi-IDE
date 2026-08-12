@@ -3,7 +3,8 @@ import { Emitter, Event } from '@theia/core';
 import { RemoteConnectionProvider, ServiceConnectionProvider } from '@theia/core/lib/browser';
 import {
     FabiCodeService, FabiCodeClient, FABI_CODE_SERVICE_PATH,
-    FabiCodeServerInfo, FabiCodePart, FabiCodePermission, FabiCodeQuestion, FabiCodeEvent
+    FabiCodeServerInfo, FabiCodePart, FabiCodePermission, FabiCodeQuestion, FabiCodeEvent,
+    FabiCodeTurnQueueState
 } from '../common/fabi-code-protocol';
 
 /**
@@ -25,9 +26,10 @@ export class FabiCodeFrontend implements FabiCodeClient {
     protected readonly questionEmitter = new Emitter<FabiCodeQuestion>();
     protected readonly userMessageEmitter = new Emitter<{ sessionId: string; messageId: string }>();
     protected readonly engineEventEmitter = new Emitter<FabiCodeEvent>();
+    protected readonly turnQueueEmitter = new Emitter<FabiCodeTurnQueueState>();
 
     /** Dernier état serveur (rendu immédiat à l'attache). */
-    server: FabiCodeServerInfo = { status: 'stopped', activeTurns: 0, activity: 'idle' };
+    server: FabiCodeServerInfo = { status: 'stopped', activeTurns: 0, queuedTurns: 0, activity: 'idle' };
 
     readonly onServerStatusEvent: Event<FabiCodeServerInfo> = this.serverEmitter.event;
     readonly onPartEvent: Event<FabiCodePart> = this.partEmitter.event;
@@ -37,6 +39,7 @@ export class FabiCodeFrontend implements FabiCodeClient {
     readonly onQuestionAskedEvent: Event<FabiCodeQuestion> = this.questionEmitter.event;
     readonly onUserMessageEvent: Event<{ sessionId: string; messageId: string }> = this.userMessageEmitter.event;
     readonly onEngineEventEvent: Event<FabiCodeEvent> = this.engineEventEmitter.event;
+    readonly onTurnQueueChangedEvent: Event<FabiCodeTurnQueueState> = this.turnQueueEmitter.event;
 
     constructor(
         @inject(RemoteConnectionProvider) connectionProvider: ServiceConnectionProvider
@@ -69,5 +72,8 @@ export class FabiCodeFrontend implements FabiCodeClient {
     }
     onEngineEvent(event: FabiCodeEvent): void {
         this.engineEventEmitter.fire(event);
+    }
+    onTurnQueueChanged(state: FabiCodeTurnQueueState): void {
+        this.turnQueueEmitter.fire(state);
     }
 }

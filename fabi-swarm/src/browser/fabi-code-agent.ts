@@ -79,9 +79,12 @@ export class FabiCodeAgent implements ChatAgent {
     protected readonly sessions = new Map<string, string>();
     /** Créations en cours (évite les doublons sur invocations concurrentes). */
     protected readonly creating = new Map<string, Promise<string>>();
-    /** Une FIFO par chat Theia ; deux conversations restent indépendantes. */
+    /**
+     * Porte de rendu locale : deux réponses d'une même session OpenCode ne
+     * doivent jamais monter leurs abonnements SSE simultanément. Le backend
+     * possède en plus la FIFO autoritaire qui arbitre toutes les fenêtres.
+     */
     protected readonly turnQueue = new FabiChatTurnQueue();
-
     /** Session OpenCode déjà créée pour une session Theia ouverte. */
     getOpenCodeSessionId(theiaSessionId: string): string | undefined {
         return this.sessions.get(theiaSessionId);
@@ -209,7 +212,7 @@ export class FabiCodeAgent implements ChatAgent {
 
     async invoke(request: MutableChatRequestModel): Promise<void> {
         const progressId = `fabi-queued:${request.id}`;
-        const ticket = this.turnQueue.enqueue(request.session.id, position => {
+        const ticket = this.turnQueue.enqueue(request.id, position => {
             if (position > 0) {
                 request.response.addProgressMessage({
                     id: progressId,
@@ -231,13 +234,6 @@ export class FabiCodeAgent implements ChatAgent {
             ticket.finish();
             return;
         }
-        request.response.addProgressMessage({
-            id: progressId,
-            content: 'Démarrage du tour…',
-            status: 'inProgress',
-            show: 'untilFirstContent'
-        });
-
         try {
             await this.invokeActive(request);
         } finally {
@@ -281,6 +277,7 @@ export class FabiCodeAgent implements ChatAgent {
             const activeCards = new Map<string, ToolCallChatResponseContentImpl>();
             let settled = false;
             let goalSub: { dispose(): void } = { dispose: () => undefined };
+            const queueProgressId = `fabi-queued:${request.id}`;
             const mode = normalizeFabiCodeMode(request.request.modeId);
             const goalProgressId = `fabi-goal:${request.id}`;
             if (mode === 'goal') {
@@ -314,6 +311,7 @@ export class FabiCodeAgent implements ChatAgent {
                 questionSub.dispose();
                 userMsgSub.dispose();
                 goalSub.dispose();
+                queueSub.dispose();
                 if (error) {
                     response.error(new Error(error));
                 } else {
@@ -418,11 +416,25 @@ export class FabiCodeAgent implements ChatAgent {
                 }
             });
 
+            const queueSub = this.engine.onTurnQueueChangedEvent(state => {
+                if (state.turnId !== request.id || settled || state.state === 'released') {
+                    return;
+                }
+                response.addProgressMessage({
+                    id: queueProgressId,
+                    content: state.state === 'active'
+                        ? 'Démarrage du tour…'
+                        : `En attente · position ${state.position} · une autre génération est en cours`,
+                    status: 'inProgress',
+                    show: 'untilFirstContent'
+                });
+            });
+
             const cancelSub = token.onCancellationRequested(() => {
                 // OpenCode instances are scoped by workspace. Omitting `dir`
                 // targets the server's default instance and leaves the real
                 // provider request running even though Theia looks canceled.
-                void this.engine.service.abort(ocSession, dir).catch(() => undefined);
+                void this.engine.service.abort(ocSession, dir, request.id).catch(() => undefined);
                 this.quickInput.hide();
                 finish();
             });
@@ -538,7 +550,7 @@ export class FabiCodeAgent implements ChatAgent {
             const permissionMode = normalizeFabiCodePermissionMode(
                 request.session.settings?.[FABI_CODE_PERMISSION_MODE_SETTING]
             );
-            this.engine.service.prompt(ocSession, userText, dir, mode, permissionMode).catch(err => {
+            this.engine.service.prompt(ocSession, userText, dir, mode, permissionMode, request.id).catch(err => {
                 finish(err instanceof Error ? err.message : String(err));
             });
         });
