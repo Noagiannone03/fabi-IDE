@@ -2,7 +2,7 @@ import * as React from '@theia/core/shared/react';
 import * as ReactDOM from '@theia/core/shared/react-dom';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { URI } from '@theia/core';
-import { Bot, Check, ChevronDown, Hand, MessageCircleQuestion, WandSparkles } from 'lucide-react';
+import { Bot, Check, ChevronDown, Hand, MessageCircleQuestion, Target, WandSparkles } from 'lucide-react';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
 import { CHAT_VIEW_LANGUAGE_EXTENSION } from '@theia/ai-chat-ui/lib/browser/chat-view-language-contribution';
 import { ChatRequestModel, MutableChatModel } from '@theia/ai-chat/lib/common/chat-model';
@@ -14,14 +14,15 @@ import {
     FABI_CODE_PERMISSION_MODE_SETTING, FabiCodePermissionMode,
     normalizeFabiCodePermissionMode
 } from '../common/fabi-code-permission-mode';
+import { FabiCodeMode, normalizeFabiCodeMode } from '../common/fabi-code-mode';
 
 interface FabiModeControlsPortalProps {
     host: HTMLElement;
-    agentMode: 'build' | 'plan';
+    agentMode: FabiCodeMode;
     permissionMode: FabiCodePermissionMode;
     disabled: boolean;
     permissionDisabled: boolean;
-    onAgentModeChange: (mode: 'build' | 'plan') => void;
+    onAgentModeChange: (mode: FabiCodeMode) => void;
     onPermissionModeChange: (mode: FabiCodePermissionMode) => void;
 }
 
@@ -38,10 +39,13 @@ function FabiModeMenu<Value extends string>(props: {
     value: Value;
     options: readonly FabiModeOption<Value>[];
     disabled: boolean;
+    align?: 'start' | 'end';
     onChange: (value: Value) => void;
 }): React.ReactElement {
     const [open, setOpen] = React.useState(false);
+    const [menuPosition, setMenuPosition] = React.useState({ left: 8, top: 8, maxHeight: 240 });
     const root = React.useRef<HTMLDivElement>(null);
+    const menu = React.useRef<HTMLDivElement>(null);
     const selected = props.options.find(option => option.value === props.value) ?? props.options[0];
 
     const focusTrigger = React.useCallback(() => {
@@ -49,7 +53,7 @@ function FabiModeMenu<Value extends string>(props: {
     }, []);
 
     const focusOption = React.useCallback((position: 'selected' | 'first' | 'last' | 'next' | 'previous') => {
-        const options = Array.from(root.current?.querySelectorAll<HTMLButtonElement>('.fabi-mode-option') ?? []);
+        const options = Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('.fabi-mode-option') ?? []);
         if (options.length === 0) {
             return;
         }
@@ -63,12 +67,30 @@ function FabiModeMenu<Value extends string>(props: {
         options[index]?.focus();
     }, [props.options, props.value]);
 
+    const updateMenuPosition = React.useCallback(() => {
+        const trigger = root.current?.querySelector<HTMLButtonElement>('.fabi-mode-trigger');
+        if (!trigger) {
+            return;
+        }
+        const rect = trigger.getBoundingClientRect();
+        const menuWidth = 258;
+        const viewportMargin = 8;
+        const desiredLeft = props.align === 'end' ? rect.right - menuWidth : rect.left;
+        const rightmostLeft = Math.max(viewportMargin, window.innerWidth - menuWidth - viewportMargin);
+        setMenuPosition({
+            left: Math.max(viewportMargin, Math.min(desiredLeft, rightmostLeft)),
+            top: rect.top - 7,
+            maxHeight: Math.max(96, rect.top - viewportMargin - 7)
+        });
+    }, [props.align]);
+
     React.useEffect(() => {
         if (!open) {
             return undefined;
         }
         const closeOutside = (event: MouseEvent) => {
-            if (!root.current?.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (!root.current?.contains(target) && !menu.current?.contains(target)) {
                 setOpen(false);
             }
         };
@@ -78,13 +100,23 @@ function FabiModeMenu<Value extends string>(props: {
                 focusTrigger();
             }
         };
+        const reposition = () => updateMenuPosition();
+        updateMenuPosition();
         document.addEventListener('mousedown', closeOutside);
         document.addEventListener('keydown', closeOnEscape);
+        window.addEventListener('resize', reposition);
+        window.addEventListener('scroll', reposition, true);
+        window.visualViewport?.addEventListener('resize', reposition);
+        window.visualViewport?.addEventListener('scroll', reposition);
         return () => {
             document.removeEventListener('mousedown', closeOutside);
             document.removeEventListener('keydown', closeOnEscape);
+            window.removeEventListener('resize', reposition);
+            window.removeEventListener('scroll', reposition, true);
+            window.visualViewport?.removeEventListener('resize', reposition);
+            window.visualViewport?.removeEventListener('scroll', reposition);
         };
-    }, [focusTrigger, open]);
+    }, [focusTrigger, open, updateMenuPosition]);
 
     React.useEffect(() => {
         if (open) {
@@ -113,11 +145,17 @@ function FabiModeMenu<Value extends string>(props: {
                 <span>{selected.label}</span>
                 <ChevronDown className='fabi-mode-chevron' size={12} strokeWidth={1.9} aria-hidden='true' />
             </button>
-            {open && (
+            {open && ReactDOM.createPortal(
                 <div
+                    ref={menu}
                     className='fabi-mode-menu'
                     role='listbox'
                     aria-label={props.ariaLabel}
+                    style={{
+                        left: `${menuPosition.left}px`,
+                        top: `${menuPosition.top}px`,
+                        maxHeight: `${menuPosition.maxHeight}px`
+                    }}
                     onKeyDown={event => {
                         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                             event.preventDefault();
@@ -149,13 +187,14 @@ function FabiModeMenu<Value extends string>(props: {
                             {option.value === props.value && <Check className='fabi-mode-check' size={13} strokeWidth={2.2} aria-hidden='true' />}
                         </button>
                     ))}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
 }
 
-const AGENT_MODE_OPTIONS: readonly FabiModeOption<'build' | 'plan'>[] = [
+const AGENT_MODE_OPTIONS: readonly FabiModeOption<FabiCodeMode>[] = [
     {
         value: 'build', label: 'Agent', detail: 'Explore, exécute et modifie le projet',
         icon: <Bot size={13} strokeWidth={1.9} />
@@ -163,6 +202,10 @@ const AGENT_MODE_OPTIONS: readonly FabiModeOption<'build' | 'plan'>[] = [
     {
         value: 'plan', label: 'Ask', detail: 'Analyse et répond sans appliquer d’edit',
         icon: <MessageCircleQuestion size={13} strokeWidth={1.9} />
+    },
+    {
+        value: 'goal', label: 'Goal', detail: 'Poursuit un objectif jusqu’à sa validation',
+        icon: <Target size={13} strokeWidth={1.9} />
     }
 ];
 
@@ -189,12 +232,24 @@ function FabiModeControlsPortal(props: FabiModeControlsPortalProps): React.React
         if (!target) {
             return undefined;
         }
+        props.host.classList.add('fabi-chat-input-widget');
         mount.className = 'fabi-mode-controls-host';
+        const hideNativeMode = () => {
+            for (const selector of Array.from(target.querySelectorAll('.theia-ChatInput-ModeSelector'))) {
+                selector.parentElement?.classList.add('fabi-native-mode-source');
+            }
+        };
+        hideNativeMode();
+        const observer = new MutationObserver(hideNativeMode);
+        observer.observe(target, { childList: true, subtree: true });
         const nativeMode = target.querySelector('.theia-ChatInput-ModeSelector')?.parentElement;
-        nativeMode?.classList.add('fabi-native-mode-source');
-        target.insertBefore(mount, nativeMode?.nextSibling ?? target.firstChild);
+        target.insertBefore(mount, nativeMode ?? target.firstChild);
         return () => {
-            nativeMode?.classList.remove('fabi-native-mode-source');
+            observer.disconnect();
+            props.host.classList.remove('fabi-chat-input-widget');
+            for (const selector of Array.from(target.querySelectorAll('.theia-ChatInput-ModeSelector'))) {
+                selector.parentElement?.classList.remove('fabi-native-mode-source');
+            }
             mount.remove();
         };
     }, [mount, props.host]);
@@ -214,6 +269,7 @@ function FabiModeControlsPortal(props: FabiModeControlsPortalProps): React.React
                 value={props.permissionMode}
                 options={PERMISSION_MODE_OPTIONS}
                 disabled={props.permissionDisabled}
+                align='end'
                 onChange={props.onPermissionModeChange}
             />
         </span>,
@@ -377,7 +433,7 @@ export class FabiChatInputWidget extends AIChatInputWidget {
                 {super.render()}
                 <FabiModeControlsPortal
                     host={this.node}
-                    agentMode={this.receivingAgent?.currentModeId === 'plan' ? 'plan' : 'build'}
+                    agentMode={normalizeFabiCodeMode(this.receivingAgent?.currentModeId)}
                     permissionMode={visiblePermissionMode}
                     disabled={this.requestInProgress || !this.ready}
                     permissionDisabled={permissionModeDisabled}

@@ -9872,3 +9872,101 @@ intégration. Il faut aussi appeler son `dispose()` lors de l'arrêt, conserver
 le lien session Theia -> session OpenCode et faire dépendre la fin SSE de
 l'état Goal réel plutôt que d'un timeout. Aucun de ces points n'est encore
 revendiqué comme implémenté dans cette entrée.
+
+## Mode Goal natif qualifié dans le fork OpenCode (12 août 2026, suite 3)
+
+Le mode Goal est maintenant implémenté, sans réactiver le chargement libre de
+plugins désactivé par `OPENCODE_PURE=1`. Le fork OpenCode embarque comme
+dépendance produit exacte `@prevalentware/opencode-goal-plugin@0.1.31`
+(intégrité npm verrouillée dans `bun.lock`) et charge uniquement son entrypoint
+serveur comme plugin interne de confiance. Le paquet n'est ni copié ni patché
+dans `node_modules`; il reste remplaçable par une future version qualifiée. La
+source primaire auditée est
+https://github.com/prevalentWare/opencode-goal-plugin, complétée par les
+contrats officiels OpenCode https://opencode.ai/docs/plugins/ et
+https://opencode.ai/docs/commands/.
+
+Goal reste une politique au-dessus de l'agent `build`, pas un faux agent LLM.
+L'IDE envoie le marqueur interne `variant=fabi-goal`; le wrapper crée alors
+l'objectif avant le premier appel modèle, au lieu d'espérer que le modèle
+appelle lui-même `create_goal`. Un objectif actif n'est jamais remplacé par un
+message suivant. Un objectif fermé permet d'en créer un nouveau; un objectif
+mis en pause ne reprend que lorsqu'un nouveau message est explicitement envoyé
+en mode Goal. Les messages Agent et Ask ne peuvent pas le reprendre.
+
+Les fonctions amont conservées comprennent l'état persistant par session, les
+checkpoints, la comptabilité de tokens, les preuves obligatoires pour
+`complete`, le blocker obligatoire pour `unmet`, la protection Plan, la
+compaction, la détection d'absence de progrès, l'attente des Task enfants et la
+continuation automatique. Le produit configure 25 continuations automatiques
+par défaut et une seule défaillance d'envoi avant pause. Aucun watchdog
+`max_turn_time` n'est activé : une longue génération n'est jamais déclarée en
+panne selon un délai arbitraire. La continuation dépend du vrai passage de la
+session à `idle` et de l'état persistant Goal.
+
+Une incompatibilité réelle avec OpenCode 1.15 a été trouvée pendant la suite
+complète. Lorsqu'une Task échouait avant de produire un résultat, le fork
+publiait `tool.execute.after(..., undefined)`, alors que son contrat plugin
+exige une sortie complète. Goal accédait légitimement à `output.output` et
+levait une erreur. Le paquet communautaire n'a pas été contourné : le défaut a
+été corrigé à la source dans `session/prompt.ts`. Une Task en erreur conserve
+son `ToolPart` officiel, mais le hook `after` n'est émis que si un résultat
+existe. Le test amont « failed subtask preserves metadata on error tool state »
+repasse isolément.
+
+La fin visible d'un Goal ne repose pas sur le premier `session.idle`. Le
+wrapper exécute d'abord la décision du plugin puis publie
+`fabi.goal.status`, avec une décision explicite `continued`, `wrapup` ou
+`settled`. L'IDE attend le `busy` du tour automatique suivant avant d'accepter
+un état terminal. Cela couvre aussi le double edge OpenCode 1
+`session.status:idle` + `session.idle` et le dernier tour de synthèse envoyé
+après une limite de budget. Une reconnexion SSE relit l'état durable via
+`GET /session/:id/goal`.
+
+Stop est maintenant maîtrisable : avant `/abort`, l'IDE appelle
+`POST /session/:id/goal/pause`. Le prochain idle ne peut donc pas relancer le
+modèle contre la volonté de l'utilisateur. Le plugin reçoit aussi `dispose()`
+à la fermeture de son scope afin de supprimer ses timers. La liaison session
+Theia -> session OpenCode est stockée dans les settings sérialisés du chat;
+un redémarrage du renderer retrouve le même objectif plutôt que de créer une
+session vide.
+
+L'interface expose Goal dans le sélecteur Agent/Ask avec une icône cible. Une
+progression persistante distingue objectif actif, nombre de continuations,
+objectif atteint avec preuves, blocage, pause, budget et limite d'usage. Les
+messages envoyés pendant ce travail restent dans la FIFO par chat ajoutée à
+l'entrée précédente.
+
+Preuves locales à cette entrée : 4 tests directs du wrapper Goal (création
+déterministe, absence d'effet en Agent, pause/reprise contrôlée et continuation
+sur idle) passent; 15 tests ciblés Goal/HTTP/parité passent; le typecheck du
+fork est vert; le binaire macOS arm64 a été construit avec
+`--single --skip-embed-web-ui` et son smoke test `--version` passe. Côté IDE,
+95 tests `fabi-swarm` et son build TypeScript passent. Une suite CLI complète
+antérieure a donné 2 437 passes et trois échecs : deux étaient dus au snapshot
+de modèles généré par le build et à un flake SDK, et repassent isolément après
+suppression du seul artefact généré; le test historique
+`getSmallModel returns appropriate small model` reste en échec parce que la
+configuration Fabi injecte depuis mai 2026 son propre `small_model`. Ce dernier
+échec précède Goal et ne doit pas être masqué ni présenté comme qualifié.
+
+Ce qui n'est pas encore revendiqué : aucun runtime Goal versionné ni desktop
+Goal signé n'est publié à cette entrée, et aucun E2E Electron avec un vrai
+modèle n'a encore prouvé plusieurs continuations, Stop/pause puis reprise après
+redémarrage. Le fork CLI qualifié a été poussé sur `dev` au commit
+`6a6c9b420` après ses tests ciblés et son typecheck. Prochaine porte : publier
+un nouveau runtime (post-rc64), reconstruire le desktop, puis effectuer ce
+scénario réel avant d'annoncer Goal prêt pour les utilisateurs.
+
+Le compositeur ne présente plus le sélecteur de mode natif de Theia en plus du
+sélecteur Fabi. Le parent exact du contrôle natif est masqué dès la phase de
+layout React et un `MutationObserver` couvre ses éventuelles recréations lors
+d'un changement d'agent. Les menus Fabi ne sont plus positionnés dans le
+conteneur d'options, dont l'overflow pouvait les rogner : ils sont rendus dans
+un portail sur `document.body`, positionnés au-dessus de leur bouton et
+recalculés lors des scrolls, redimensionnements et changements de viewport.
+Le placement est borné aux bords de la fenêtre et le menu des permissions reste
+aligné à droite. Les 95 tests de l'extension, son build TypeScript, le bundle
+navigateur et le bundle Electron passent. L'aperçu navigateur a été lancé sans
+worker local, puis arrêté; l'application Fabi utilisateur déjà ouverte n'a pas
+été remplacée pendant cette validation.

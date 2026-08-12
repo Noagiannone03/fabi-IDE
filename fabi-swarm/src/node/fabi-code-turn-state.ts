@@ -13,6 +13,50 @@ export interface OpenCodeMessageState {
 }
 
 export type OpenCodeTurnStatus = 'active' | 'settled' | 'unobserved';
+export type FabiGoalTurnStatus = 'active' | 'settled' | 'missing';
+export type FabiGoalIdleDecision = 'continued' | 'wrapup' | 'settled' | undefined;
+
+export interface FabiGoalTurnTransition {
+    state: FabiGoalTurnStatus;
+    continuationPending: boolean;
+    continuationObservedActive: boolean;
+}
+
+const SETTLED_GOAL_STATUSES = new Set([
+    'complete', 'unmet', 'paused', 'budgetLimited', 'usageLimited'
+]);
+
+/** Unknown future states stay active so a plugin upgrade cannot truncate work. */
+export function classifyFabiGoalTurnStatus(status: string | null): FabiGoalTurnStatus {
+    if (status === null) {
+        return 'missing';
+    }
+    return SETTLED_GOAL_STATUSES.has(status) ? 'settled' : 'active';
+}
+
+/**
+ * Reduce one post-idle Goal decision. OpenCode 1 publishes modern and legacy
+ * idle events, so a duplicate stable snapshot cannot settle a continuation
+ * until that continuation has actually reached `busy`.
+ */
+export function reduceFabiGoalTurn(
+    status: string | null,
+    decision: FabiGoalIdleDecision,
+    continuationPending: boolean,
+    continuationObservedActive: boolean
+): FabiGoalTurnTransition {
+    if (decision === 'continued' || decision === 'wrapup') {
+        return { state: 'active', continuationPending: true, continuationObservedActive: false };
+    }
+    if (continuationPending && !continuationObservedActive) {
+        return { state: 'active', continuationPending, continuationObservedActive };
+    }
+    return {
+        state: classifyFabiGoalTurnStatus(status),
+        continuationPending,
+        continuationObservedActive
+    };
+}
 
 /**
  * OpenCode removes idle sessions from its live status map. An absent entry is

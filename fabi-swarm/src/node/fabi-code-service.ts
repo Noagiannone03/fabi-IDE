@@ -39,9 +39,13 @@ import {
 } from './fabi-code-config';
 import { FabiCodePartAccumulator } from './fabi-code-part-stream';
 import {
-    classifyOpenCodeTurnStatus, hasNewCompletedAssistantMessage,
+    FabiGoalIdleDecision, reduceFabiGoalTurn, classifyOpenCodeTurnStatus, hasNewCompletedAssistantMessage,
     OpenCodeMessageState, OpenCodeSessionStatuses, snapshotAssistantMessageIds
 } from './fabi-code-turn-state';
+import {
+    FabiCodeMode, normalizeFabiCodeMode, openCodeAgentForFabiMode,
+    openCodeVariantForFabiMode
+} from '../common/fabi-code-mode';
 
 const SWARM_READY_TIMEOUT_MS = 120_000;
 const OPENCODE_SSE_MAX_EVENT_BYTES = 16 * 1024 * 1024;
@@ -55,6 +59,12 @@ interface TurnWaiter {
     observedActive: boolean;
     /** Assistant messages that predated this prompt. */
     previousAssistantIds: ReadonlySet<string>;
+    /** Goal spans multiple OpenCode idle/busy cycles until its durable state closes. */
+    goalMode: boolean;
+    /** Goal dispatched another model turn from its last committed idle edge. */
+    goalContinuationPending: boolean;
+    /** The dispatched continuation reached OpenCode busy before its next idle. */
+    goalContinuationObservedActive: boolean;
 }
 
 @injectable()
@@ -479,6 +489,12 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         } else if (type === 'session.idle') {
             // Event déprécié mais encore émis par OpenCode 1.15 avec status=idle.
             this.handleTurnIdle(sessionId);
+        } else if (type === 'fabi.goal.status') {
+            this.handleGoalStatus(
+                sessionId,
+                typeof props.status === 'string' ? props.status : null,
+                typeof props.decision === 'string' ? props.decision : undefined
+            );
         } else if (type === 'session.error') {
             const err = props.error as { data?: { message?: string } } | undefined;
             this.finishTurn(sessionId, err?.data?.message ?? 'erreur de session');
@@ -689,11 +705,16 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         sessionId: string,
         text: string,
         directory?: string,
-        agent = 'build',
+        mode: FabiCodeMode = 'build',
         permissionMode?: FabiCodePermissionMode
     ): Promise<void> {
         await this.ensureCurrentServer();
         this.ensureEventStreamFor(directory);
+        if (this.turnWaiters.has(sessionId)) {
+            throw new Error('Un tour est déjà actif pour ce chat ; le nouveau message doit rester dans la file.');
+        }
+        const normalizedMode = normalizeFabiCodeMode(mode);
+        const agent = openCodeAgentForFabiMode(normalizedMode);
         this.sessionParents.set(sessionId, undefined);
         this.permissionPolicies.set(sessionId, {
             mode: normalizeFabiCodePermissionMode(permissionMode),
@@ -702,11 +723,15 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         const ac = new AbortController();
         this.inflight.set(sessionId, ac);
         try {
-            const done = this.waitForTurn(sessionId, directory);
+            const done = this.waitForTurn(sessionId, directory, normalizedMode === 'goal');
             const waiter = this.turnWaiters.get(sessionId)!;
             waiter.previousAssistantIds = await this.snapshotAssistantIds(sessionId, directory);
             const body: Record<string, unknown> = { parts: [{ type: 'text', text }] };
             body.agent = agent; // 'build' (édite) | 'plan' (lecture seule)
+            const variant = openCodeVariantForFabiMode(normalizedMode);
+            if (variant) {
+                body.variant = variant;
+            }
             // OpenCode 1.15 fournit un acquittement asynchrone explicite. La
             // génération et sa fin sont suivies par /event + /session/status ;
             // aucune connexion HTTP n'est gardée pendant un long prefill/decode.
@@ -734,8 +759,23 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     }
 
     async abort(sessionId: string, directory?: string): Promise<void> {
+        const goalMode = this.turnWaiters.get(sessionId)?.goalMode === true;
         this.inflight.get(sessionId)?.abort();
         this.inflight.delete(sessionId);
+        if (goalMode) {
+            try {
+                // Pausing first prevents Goal's idle hook from interpreting the
+                // user abort as an invitation to dispatch another model turn.
+                await this.http(
+                    'POST',
+                    `/session/${encodeURIComponent(sessionId)}/goal/pause`,
+                    {},
+                    directory
+                );
+            } catch (error) {
+                this.logger.warn(`[fabi-code] Goal non mis en pause avant abort: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
         try {
             await this.http('POST', `/session/${encodeURIComponent(sessionId)}/abort`, {}, directory);
         } catch {
@@ -748,18 +788,17 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         }
     }
 
-    protected waitForTurn(sessionId: string, directory?: string): Promise<void> {
-        const previous = this.turnWaiters.get(sessionId);
-        if (previous) {
-            this.finishTurn(sessionId, 'Un nouveau tour a remplacé le tour précédent.');
-        }
+    protected waitForTurn(sessionId: string, directory?: string, goalMode = false): Promise<void> {
         return new Promise<void>(resolve => {
             this.turnWaiters.set(sessionId, {
                 resolve,
                 directory,
                 accepted: false,
                 observedActive: false,
-                previousAssistantIds: new Set()
+                previousAssistantIds: new Set(),
+                goalMode,
+                goalContinuationPending: false,
+                goalContinuationObservedActive: false
             });
             this.turnPhases.set(sessionId, 'preparing');
             this.setStatus(this.info.status, this.info.detail);
@@ -786,6 +825,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
             return;
         }
         if (state === 'settled') {
+            if (waiter.goalMode) {
+                await this.reconcileGoalTurn(sessionId, waiter);
+                return;
+            }
             this.finishTurn(sessionId);
             return;
         }
@@ -794,6 +837,10 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         // réponse assistant achevée (cas où les deux bords SSE ont été manqués).
         const messages = await this.readMessages(sessionId, waiter.directory);
         if (hasNewCompletedAssistantMessage(messages, waiter.previousAssistantIds)) {
+            if (waiter.goalMode) {
+                await this.reconcileGoalTurn(sessionId, waiter);
+                return;
+            }
             this.finishTurn(sessionId);
         }
     }
@@ -802,12 +849,21 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
         const waiter = this.turnWaiters.get(sessionId);
         if (waiter) {
             waiter.observedActive = true;
+            if (waiter.goalContinuationPending) {
+                waiter.goalContinuationObservedActive = true;
+            }
         }
     }
 
     protected handleTurnIdle(sessionId: string): void {
         const waiter = this.turnWaiters.get(sessionId);
         if (!waiter) {
+            return;
+        }
+        // Goal publishes `fabi.goal.status` only after its idle continuation
+        // decision has committed. Finishing on this earlier edge would cut the
+        // visible response between two automatic turns.
+        if (waiter.goalMode) {
             return;
         }
         if (waiter.observedActive) {
@@ -824,6 +880,48 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
                 this.logger.warn(`[fabi-code] réconciliation idle impossible: ${error instanceof Error ? error.message : String(error)}`);
             });
         }
+    }
+
+    protected async reconcileGoalTurn(sessionId: string, waiter: TurnWaiter): Promise<void> {
+        if (this.turnWaiters.get(sessionId) !== waiter) {
+            return;
+        }
+        const raw = await this.http(
+            'GET',
+            `/session/${encodeURIComponent(sessionId)}/goal`,
+            undefined,
+            waiter.directory
+        );
+        const goal = JSON.parse(raw) as { status?: string } | null;
+        this.handleGoalStatus(sessionId, goal?.status ?? null);
+    }
+
+    protected handleGoalStatus(sessionId: string, status: string | null, decision?: string): void {
+        const waiter = this.turnWaiters.get(sessionId);
+        if (!waiter?.goalMode) {
+            return;
+        }
+        const normalizedDecision: FabiGoalIdleDecision =
+            decision === 'continued' || decision === 'wrapup' || decision === 'settled' ? decision : undefined;
+        const transition = reduceFabiGoalTurn(
+            status,
+            normalizedDecision,
+            waiter.goalContinuationPending,
+            waiter.goalContinuationObservedActive
+        );
+        waiter.goalContinuationPending = transition.continuationPending;
+        waiter.goalContinuationObservedActive = transition.continuationObservedActive;
+        const state = transition.state;
+        if (state === 'active') {
+            return;
+        }
+        if (state === 'missing') {
+            this.finishTurn(sessionId, 'Le mode Goal n’a pas pu créer son objectif persistant.');
+            return;
+        }
+        // complete, unmet, paused and safety limits are all deliberate stable
+        // states. Their final assistant text is already present in the stream.
+        this.finishTurn(sessionId);
     }
 
     protected async readMessages(sessionId: string, directory?: string): Promise<OpenCodeMessageState[]> {

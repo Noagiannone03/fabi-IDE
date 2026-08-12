@@ -212,13 +212,14 @@ export interface FabiCodeService {
      * Envoie un message utilisateur dans la session. Les fragments arrivent en
      * live via `onPart`; la promesse se résout quand le tour est terminé
      * (`onTurnDone` est aussi émis). `directory` cible le workspace.
-     * `agent` choisit le mode OpenCode : 'build' (édite) | 'plan' (lecture seule).
+     * `mode` choisit Agent, Ask ou Goal. Goal s'exécute sous l'agent build et
+     * active le plugin Goal interne qualifié.
      */
     prompt(
         sessionId: string,
         text: string,
         directory?: string,
-        agent?: string,
+        mode?: import('./fabi-code-mode').FabiCodeMode,
         permissionMode?: import('./fabi-code-permission-mode').FabiCodePermissionMode
     ): Promise<void>;
 

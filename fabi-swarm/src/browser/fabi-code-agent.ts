@@ -47,6 +47,8 @@ export interface FabiCodeCheckpoint {
     messageId: string;
 }
 export const FABI_CODE_CHECKPOINT_KEY = 'fabiCodeCheckpoint';
+/** Persisted in Theia's serialized chat settings so Goal state survives a desktop restart. */
+export const FABI_OPENCODE_SESSION_SETTING = 'fabi.openCodeSessionId';
 
 @injectable()
 export class FabiCodeAgent implements ChatAgent {
@@ -92,15 +94,25 @@ export class FabiCodeAgent implements ChatAgent {
     }
 
     /** Récupère (ou crée) la session OpenCode liée à cette session de chat Theia. */
-    protected async ensureSession(theiaSessionId: string, dir: string | undefined): Promise<string> {
+    protected async ensureSession(request: MutableChatRequestModel, dir: string | undefined): Promise<string> {
+        const theiaSessionId = request.session.id;
         const existing = this.sessions.get(theiaSessionId);
         if (existing) {
             return existing;
+        }
+        const persisted = request.session.settings?.[FABI_OPENCODE_SESSION_SETTING];
+        if (typeof persisted === 'string' && persisted.trim().length > 0) {
+            this.sessions.set(theiaSessionId, persisted);
+            return persisted;
         }
         let pending = this.creating.get(theiaSessionId);
         if (!pending) {
             pending = this.engine.service.createSession(dir).then(id => {
                 this.sessions.set(theiaSessionId, id);
+                request.session.setSettings({
+                    ...(request.session.settings ?? {}),
+                    [FABI_OPENCODE_SESSION_SETTING]: id
+                });
                 this.creating.delete(theiaSessionId);
                 return id;
             }).catch(err => {
@@ -252,7 +264,7 @@ export class FabiCodeAgent implements ChatAgent {
 
         let ocSession: string;
         try {
-            ocSession = await this.ensureSession(request.session.id, dir);
+            ocSession = await this.ensureSession(request, dir);
         } catch (err) {
             response.error(err instanceof Error ? err : new Error(String(err)));
             return;
@@ -268,6 +280,17 @@ export class FabiCodeAgent implements ChatAgent {
             // terminer toute carte encore animée lors d'une vraie fin/erreur.
             const activeCards = new Map<string, ToolCallChatResponseContentImpl>();
             let settled = false;
+            let goalSub: { dispose(): void } = { dispose: () => undefined };
+            const mode = normalizeFabiCodeMode(request.request.modeId);
+            const goalProgressId = `fabi-goal:${request.id}`;
+            if (mode === 'goal') {
+                response.addProgressMessage({
+                    id: goalProgressId,
+                    content: 'Goal actif · création de l’objectif persistant…',
+                    status: 'inProgress',
+                    show: 'whileIncomplete'
+                });
+            }
             // Id du message UTILISATEUR de ce tour : ses parts (l'écho du prompt)
             // ne doivent PAS être rendues dans la réponse de l'assistant.
             let userMessageId: string | undefined;
@@ -290,6 +313,7 @@ export class FabiCodeAgent implements ChatAgent {
                 permSub.dispose();
                 questionSub.dispose();
                 userMsgSub.dispose();
+                goalSub.dispose();
                 if (error) {
                     response.error(new Error(error));
                 } else {
@@ -482,9 +506,35 @@ export class FabiCodeAgent implements ChatAgent {
                 }
             });
 
+            goalSub = this.engine.onEngineEventEvent(event => {
+                if (mode !== 'goal' || event.sessionId !== ocSession || event.type !== 'fabi.goal.status') {
+                    return;
+                }
+                const status = typeof event.properties.status === 'string' ? event.properties.status : null;
+                const autoTurns = typeof event.properties.autoTurns === 'number' ? event.properties.autoTurns : undefined;
+                const maxAutoTurns = typeof event.properties.maxAutoTurns === 'number' ? event.properties.maxAutoTurns : undefined;
+                const turnCount = autoTurns === undefined
+                    ? ''
+                    : ` · tour automatique ${autoTurns}${maxAutoTurns === undefined ? '' : `/${maxAutoTurns}`}`;
+                const labels: Record<string, string> = {
+                    active: `Goal actif${turnCount}`,
+                    complete: 'Goal atteint · preuves validées',
+                    unmet: 'Goal non atteint · blocage documenté',
+                    paused: 'Goal en pause · intervention nécessaire',
+                    budgetLimited: 'Goal en pause · budget atteint',
+                    usageLimited: 'Goal en pause · limite d’usage atteinte'
+                };
+                const terminal = status !== 'active';
+                response.addProgressMessage({
+                    id: goalProgressId,
+                    content: status ? (labels[status] ?? `Goal · ${status}`) : 'Goal indisponible',
+                    status: status === 'complete' ? 'completed' : terminal ? 'failed' : 'inProgress',
+                    show: terminal ? 'forever' : 'whileIncomplete'
+                });
+            });
+
             // Theia records the selected native mode on each request. Normalize
             // it before forwarding so only real OpenCode primary agents pass.
-            const mode = normalizeFabiCodeMode(request.request.modeId);
             const permissionMode = normalizeFabiCodePermissionMode(
                 request.session.settings?.[FABI_CODE_PERMISSION_MODE_SETTING]
             );
