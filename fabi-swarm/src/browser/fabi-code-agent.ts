@@ -80,11 +80,12 @@ export class FabiCodeAgent implements ChatAgent {
     /** Créations en cours (évite les doublons sur invocations concurrentes). */
     protected readonly creating = new Map<string, Promise<string>>();
     /**
-     * Porte de rendu locale : deux réponses d'une même session OpenCode ne
-     * doivent jamais monter leurs abonnements SSE simultanément. Le backend
-     * possède en plus la FIFO autoritaire qui arbitre toutes les fenêtres.
+     * Portes de rendu par session : deux réponses d'une même session OpenCode
+     * ne montent jamais leurs abonnements SSE simultanément. Les autres chats
+     * s'inscrivent immédiatement dans la FIFO backend afin de conserver leur
+     * véritable ordre d'arrivée global, y compris entre plusieurs renderers.
      */
-    protected readonly turnQueue = new FabiChatTurnQueue();
+    protected readonly sessionTurnQueues = new Map<string, FabiChatTurnQueue>();
     /** Session OpenCode déjà créée pour une session Theia ouverte. */
     getOpenCodeSessionId(theiaSessionId: string): string | undefined {
         return this.sessions.get(theiaSessionId);
@@ -212,7 +213,10 @@ export class FabiCodeAgent implements ChatAgent {
 
     async invoke(request: MutableChatRequestModel): Promise<void> {
         const progressId = `fabi-queued:${request.id}`;
-        const ticket = this.turnQueue.enqueue(request.id, position => {
+        const sessionId = request.session.id;
+        const turnQueue = this.sessionTurnQueues.get(sessionId) ?? new FabiChatTurnQueue();
+        this.sessionTurnQueues.set(sessionId, turnQueue);
+        const ticket = turnQueue.enqueue(request.id, position => {
             if (position > 0) {
                 request.response.addProgressMessage({
                     id: progressId,
@@ -232,12 +236,18 @@ export class FabiCodeAgent implements ChatAgent {
         waitCancellation.dispose();
         if (!admitted || request.response.cancellationToken.isCancellationRequested) {
             ticket.finish();
+            if (turnQueue.size === 0) {
+                this.sessionTurnQueues.delete(sessionId);
+            }
             return;
         }
         try {
             await this.invokeActive(request);
         } finally {
             ticket.finish();
+            if (turnQueue.size === 0) {
+                this.sessionTurnQueues.delete(sessionId);
+            }
         }
     }
 

@@ -34,6 +34,10 @@ interface MutableTicket extends FabiChatTurnTicket {
 export class FabiChatTurnQueue {
     protected readonly queue: MutableTicket[] = [];
 
+    get size(): number {
+        return this.queue.length;
+    }
+
     enqueue(_turnId: string, onPosition?: FabiChatTurnPositionListener): FabiChatTurnTicket {
         let resolveReady: (active: boolean) => void = () => undefined;
         const ready = new Promise<boolean>(resolve => {
