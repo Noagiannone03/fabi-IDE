@@ -9744,3 +9744,77 @@ contre environ 45 % lors du premier incident. Cette mesure est encourageante
 mais ne constitue pas encore un benchmark Maestro chargé avec plusieurs agents;
 il faut refaire ce profil avec le Space Maestro actif et plusieurs mascottes
 avant de déclarer la régression CPU entièrement qualifiée.
+
+## Capacité CUDA WDDM mesurée par NVML et premier E2E Qwen3-32B (12 août 2026)
+
+Le bootstrap 32B a révélé deux états auparavant confondus par l'interface. Les
+deux Macs avaient terminé leurs tranches `[0,12)` et `[4,20)`, mais aucune route
+ne couvrait encore les 64 couches. Le worker RunPod RTX 5090 téléchargeait puis
+matérialisait sa tranche `[0,64)`. Le texte générique « bootstrap en cours » ne
+signifiait donc pas que le worker Mac avait échoué. Le commit IDE `95a57e1`
+affiche maintenant une contribution locale prête séparément de la construction
+du reste de la route; le prompt demeure correctement verrouillé jusqu'à une
+route admissible. Les 88 tests `fabi-swarm` passent.
+
+Un défaut distinct et plus grave a été reproduit sur la RTX 4080 SUPER Windows
+pendant qu'un `llama-server` utilisateur restait volontairement actif. À la
+même seconde, `nvidia-smi`/NVML mesurait 16 376 Mio totaux, 13 294 Mio utilisés
+et 2 754 Mio libres, alors que la primitive CUDA exposée par Skippy annonçait
+14 750 769 152 octets libres. L'ancien worker publiait ainsi environ 13,48 Gio
+utilisables et pouvait accepter une tranche qui ne tenait pas dans la mémoire
+globale réelle.
+
+L'audit du chemin exact Mesh 0.75.1 -> Skippy -> llama.cpp a confirmé que
+`ggml_backend_dev_get_props` finit par utiliser `cudaMemGetInfo()`. Sous WDDM,
+l'espace d'adressage CUDA est virtualisé et cette valeur ne constitue pas un
+budget global fiable face aux allocations graphiques ou aux autres processus.
+La documentation officielle NVML définit au contraire la mémoire device
+globale et `nvidia-smi` s'appuie sur NVML. Les discussions NVIDIA reproduisent
+explicitement cette divergence sous WDDM :
+
+- https://docs.nvidia.com/deploy/nvml-api/group__nvmlDeviceQueries.html ;
+- https://docs.nvidia.com/deploy/nvml-api/structnvmlMemory__v2__t.html ;
+- https://forums.developer.nvidia.com/t/cudamemgetinfo-vs-nvmldevicegetmemoryinfo/320791 ;
+- https://forums.developer.nvidia.com/t/cudamemgetinfo-not-reporting-the-actual-gpu-memory-stats/161335 .
+
+Le moteur `f3ac200e2b47fd44b557f3d69323e64afe94a94e` utilise désormais le
+binding NVIDIA maintenu `nvidia-ml-py==13.610.43` pour l'admission CUDA. Il
+résout la carte par le même PCI BDF que Skippy, vérifie que la mémoire totale
+correspond afin de ne jamais mesurer une autre carte, lit NVML v2 à chaque
+cycle de capacité et échoue fermé si l'identité ou la sonde est indisponible.
+La réserve CUDA produit de 512 Mio reste ensuite soustraite. Metal et les
+autres backends ne changent pas. Une validation réelle sur la RTX encombrée a
+renvoyé 17 171 480 576 octets totaux, 13 939 675 136 utilisés et
+2 886 823 936 libres; Fabi aurait donc annoncé environ 2,18 Gio utilisables au
+lieu de 13,48 Gio.
+
+La suite complète moteur passe avec 1 057 tests, 8 skips; Ruff, Black et
+`git diff --check` sont verts. La CI native `31581532090` est entièrement
+verte sur Ubuntu, macOS 15 et Windows, y compris wheel ABI3, DHT trois nœuds,
+contrats V3 et bridge Skippy. Le CLI `dev`
+`e2f64aa73c699cd14cf3d8925f50a3bc6981f3f6` épingle ce moteur; son test de pin
+et son typecheck passent. Le runtime `main`
+`62449dcca55be4a3558ddd2caef7b59b012ead9b`, tag `v2.7.0-rc64`, verrouille
+les deux commits avec Mesh 0.75.1/ABI 0.1.35. Son workflow release
+`31582445217` est encore en construction à cette entrée : ne pas installer ni
+annoncer rc64 avant que toutes les archives, notamment Windows CUDA, soient
+vertes.
+
+Après le téléchargement sélectif d'environ 20 Gio, le worker RunPod a publié
+`ready`, `[0,64)`, contexte 32 768 et 8 Gio de KV. Le catalogue DHT est passé
+à `route_ready`. Deux requêtes réelles ont traversé le Request Agent local, la
+réservation, le frontend Skippy CUDA et le SSE. La seconde, en `/no_think`, a
+renvoyé exactement `FABI_32B_READY`, `finish_reason=stop`, puis `[DONE]`.
+Après les deux tours, le journal porte `completed=2`, zéro échec, zéro route
+active, zéro checkpoint et zéro phase orpheline. Cette preuve qualifie le data
+plane 32B et la libération; la route choisie n'utilisait que la RTX 5090 pleine
+et ne constitue donc pas encore la preuve d'une pipeline 32B distribuée entre
+plusieurs machines.
+
+Ordre immédiat : attendre rc64, installer la release publique sur les hôtes,
+rejouer la RTX 4080 encombrée pour prouver l'annonce NVML produit, construire
+le desktop 0.1.12 et vérifier que l'état de contribution n'est plus présenté
+comme un bootstrap. Ensuite seulement former une vraie route multi-worker
+32B, puis reprendre les kills prefill/decode, la deuxième route, les deux NAT
+indépendants et le device pairing. Le pod RunPod est payant et doit être
+supprimé dès la fin de ces qualifications.
