@@ -246,6 +246,23 @@ export function deriveConnection(
         return { reason: 'need-more-peers', ready: false, headline: 'En attente de peers',
             activity: need ? `${total}/${need} nœuds — en attente d'un contributeur de plus` : `${total} nœud(s) — en attente d'un contributeur de plus`, ...base };
     }
+    // Le worker local peut déjà servir sa tranche alors qu'aucune route
+    // complète n'existe encore. Cet état n'est plus un bootstrap local : la
+    // contribution est réelle et ses couches restent disponibles pendant
+    // qu'un autre pair télécharge/charge le complément. Le prompt reste bien
+    // verrouillé (`ready: false`) jusqu'à une route routable.
+    if (worker.stage === 'ready') {
+        const localSpan = layersAssigned !== undefined
+            ? `${layersAssigned} couche(s) locale(s) prête(s)`
+            : 'ta tranche locale est prête';
+        const completing = peersInitializing && peersInitializing > 0
+            ? `${peersInitializing} autre worker charge le complément`
+            : 'attente d’un worker couvrant les couches manquantes';
+        return { reason: 'need-more-peers', ready: false, headline: 'Contribution active',
+            activity: `${localSpan} — ${completing}`,
+            detail: 'Fabi activera le chat dès qu’un chemin complet pourra exécuter le modèle de bout en bout',
+            ...base };
+    }
     if (total === 0) {
         return { reason: 'connecting', ready: false, headline: 'Connexion au swarm',
             activity: 'découverte du scheduler via le DHT…', ...base };

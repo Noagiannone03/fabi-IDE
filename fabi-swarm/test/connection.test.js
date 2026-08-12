@@ -30,6 +30,29 @@ test('reports the real join and automatic layer allocation stage', () => {
     assert.match(state.activity, /allocation des couches/);
 });
 
+test('reports a ready local contribution while another worker completes the route', () => {
+    const state = deriveConnection(
+        swarm({
+            peers: 3,
+            initNodesNum: 3,
+            needMoreNodes: true,
+            nodesActive: 2,
+            nodesInitializing: 1,
+            pipelineCount: 0,
+            pipelineReady: false,
+            routingReady: false
+        }),
+        { kind: 'running', stage: 'ready', startLayer: 0, endLayer: 4 }
+    );
+
+    assert.equal(state.reason, 'need-more-peers');
+    assert.equal(state.ready, false);
+    assert.equal(state.headline, 'Contribution active');
+    assert.match(state.activity, /4 couche\(s\) locale\(s\) prête\(s\)/);
+    assert.match(state.activity, /1 autre worker charge le complément/);
+    assert.doesNotMatch(state.activity, /bootstrap/i);
+});
+
 test('does not claim readiness while an allocated pipeline still loads', () => {
     const state = deriveConnection(
         swarm({ schedulerStatus: 'available', pipelineCount: 1, pipelineReadyCount: 0, pipelineReady: false, nodesInitializing: 1 }),
