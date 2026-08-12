@@ -10036,3 +10036,118 @@ installé sans override sur le Mac local, le Mac mini et la RTX. Le système de
 mise à jour stable signé reste séparément non qualifié tant qu'il n'existe pas
 de publication durable sous `/fabi-updates/stable/` et de signature/notarisation
 produit.
+
+## Qualification desktop rc65 et FIFO multi-espace réelle (12 août 2026, suite 5)
+
+Le workflow desktop `31591575868`, construit sur le commit exact
+`ede58f99e16e93d6d827c1a9d6a6a655e2a1b00a`, est désormais entièrement vert
+sur macOS arm64 et Windows x64. Le candidat porte la version `0.1.13`, le
+runtime `v2.7.0-rc65`, le CLI `6a6c9b420eeb95c10223a3569a5ba8540fd28112`
+et le moteur `f3ac200e2b47fd44b557f3d69323e64afe94a94e`. Le DMG macOS vérifié
+fait 221 810 804 octets et porte le SHA-256
+`aea487b9bec8c7a79b6edeca55ffd6f0a710674d9deced647487c1a10feffb16`;
+son bundle `fr.undefinedstudio.fabi` est arm64 et passe
+`codesign --verify --deep --strict`. Le job Windows inclut le smoke install
+silencieux NSIS. Ces artefacts restent des candidats de CI, pas encore le
+canal stable signé.
+
+Le runtime public rc65 puis le desktop candidat ont été installés
+transactionnellement sur le Mac local et sur `mac-mini-projet-ia`, sans
+override de modèle, de tranche, de capacité ni de backend. Les deux manifestes
+runtime portent les révisions exactes ci-dessus, Mesh `0.75.1` et ABI
+`0.1.35`; la détection produit a choisi Metal. La fermeture préalable par la
+voie normale de l'application a bien arrêté workers et Request Agent avant
+remplacement. Les deux installations ont ensuite relancé un worker Skippy et
+un Request Agent depuis l'application produit. Les anciennes applications
+0.1.11 sont conservées comme rollback sous un nom `Fabi.app.pre-0.1.13-*`.
+
+Un premier vrai tour Electron/OpenCode sur le Mac local a répondu exactement
+`FABI_RC65_E2E_OK` sous Agent + YOLO sans demande de permission. La requête
+`07bd3323-cd8e-45c2-8dab-88b8e13b7bce` contenait 15 256 tokens d'entrée;
+le Request Agent a mesuré un TTFT de 49 331 ms, 9,93 tokens/s et 284 tokens de
+sortie. Le tour UI complet a duré 79,819 s, puis l'interface et le cluster sont
+revenus à l'état libre sans route active ni échec récent. Cela qualifie le
+chemin produit local rc65, mais pas encore Goal multi-continuation, les outils,
+les permissions Ask edits, Stop, le changement de modèle ou Windows visible.
+
+La FIFO globale a ensuite été testée avec deux vraies pages Electron et deux
+workspaces distincts, `fabi-ide` et `fabi-cli`. Le premier espace a lancé un
+tour long; le second a envoyé son message 1,034 s plus tard. L'interface du
+second a affiché l'attente globale à 2,257 s. Le premier a terminé avec
+`FABI_QUEUE_FIRST_DONE` à 145,931 s; le second n'a démarré qu'à cet instant
+exact, puis a terminé avec `FABI_QUEUE_SECOND_DONE` à 219,377 s. Aucun tour
+n'a remplacé l'autre et aucun fragment SSE ne s'est mélangé. Cette preuve
+qualifie la sérialisation entre espaces sur une installation réelle. Il reste
+à compléter le même E2E par l'annulation du ticket actif.
+
+L'annulation isolée d'un ticket en attente est elle aussi qualifiée en vrai
+Electron. Le second message a affiché sa position à 1,604 s et a été annulé à
+1,609 s; son espace est revenu disponible à 1,813 s. Le tour propriétaire a
+continué sans interruption jusqu'à `FABI_ABORT_OWNER_DONE` à 111,618 s, et le
+marqueur du message annulé n'a jamais été généré. Le backend n'a donc envoyé
+aucun `/abort` à la session active et n'a pas consommé le ticket supprimé.
+
+La RTX était encore sous rc63 et une ancienne tâche headless de laboratoire;
+celle-ci a été arrêtée proprement. L'installateur public rc65 a sélectionné le
+package natif CUDA. Le téléchargement direct GitHub depuis la RTX étant trop
+lent, les archives officielles et leurs sidecars SHA ont été transférées via
+le VPS puis fournies à `install.ps1` par ses options produit
+`FABI_TARBALL_PATH`/`FABI_ZSTD_PATH`; aucune vérification d'intégrité n'a été
+contournée. L'installateur a revérifié l'archive et le décompresseur, relocalisé
+le runtime Python puis commis la transaction. Le manifeste RTX porte rc65,
+CUDA, le CLI et le moteur exacts, Skippy/Mesh `0.75.1` et ABI `0.1.35`; aucun
+processus runtime n'est resté actif après installation. Le candidat desktop
+0.1.13 est en cours de transfert pour un smoke install silencieux. Aucun E2E UI
+Windows n'est revendiqué : aucune session desktop Windows interactive n'est
+actuellement connectée.
+
+Le scénario suivant, « annuler le tour actif puis laisser partir le ticket
+suivant », a trouvé une race réelle et n'est **pas** vert sous rc65. La FIFO a
+bien observé le second ticket à 1,636 s, l'abort du propriétaire à 3,270 s,
+son retour idle à 3,474 s et le démarrage du suivant seulement à 3,474 s. Le
+marqueur du tour annulé n'est jamais apparu. En revanche, le second tour est
+resté en préparation puis a échoué à réserver : le worker CUDA avait encore
+3 212 312 576 octets KV disponibles localement alors que la nouvelle requête
+en demandait 5 250 744 320, malgré l'absence de route active côté coordinateur.
+
+La cause est l'intervalle avant création du `StreamingResponse`.
+`get_routing_table()` s'exécute dans `asyncio.to_thread()` et peut committer une
+route. Annuler la coroutine qui l'attend n'arrête pas le thread OS; celui-ci
+peut donc terminer sa réservation après la disparition du propriétaire HTTP.
+Le `finally` du générateur SSE ne peut pas la libérer, puisque ce générateur
+n'existe pas encore. La documentation Python confirme que `to_thread` exécute
+le callable dans un thread séparé et que `CancelledError` dérive directement
+de `BaseException`; la documentation AnyIO recommande une finalisation sous
+cancel scope shieldé.
+
+Un correctif candidat est implémenté dans le worktree moteur V3. L'admission
+est portée par une Task explicitement protégée de la cancellation de son
+attente. Si le propriétaire disparaît, une tâche de compensation, conservée
+par référence forte, attend la fin réelle du thread puis appelle la libération
+idempotente sous shield. Une cancellation qui arrive après admission mais
+avant transfert de propriété au générateur déclenche la même compensation.
+Le test de régression force précisément l'ordre dangereux : thread bloqué,
+annulation HTTP, commit tardif, puis preuve que la route est libérée sans
+attendre son TTL. Les 32 tests du handler et 44 tests Request Agent,
+coordinateur et réservations sont verts. La suite moteur complète passe avec
+1 058 tests réussis et 8 ignorés; Ruff et `git diff --check` passent également.
+Le correctif moteur est désormais poussé sur la branche produit au commit
+`f577ce5e19b63144d588b9d6c5730d85cc50d7b7`. Le CLI `dev` a été aligné au
+commit `29f14572c4cc1902813e0a639ffd15958bea4473`; ses trois tests d'installation
+et son typecheck passent. Le méta-runtime a été verrouillé sur ces deux SHA,
+ses tests de cohérence, de bundling Skippy, de neutralisation des chemins et
+de transaction d'upgrade passent, puis le commit `7603905` et le tag public
+`v2.7.0-rc66` ont été poussés. Le workflow de release `31599537315` est
+entièrement vert : cohérence du lock, transactions d'installation, macOS arm64
+MLX, Linux x64 CPU/CUDA, Linux arm64 CPU et Windows x64 DirectML/CUDA. La
+release publique non draft contient 27 assets non vides, dont tous les
+tarballs, sidecars, décompresseurs et trois installateurs. Cela qualifie le
+packaging rc66; l'installation et le rejeu Electron restent des gates séparés.
+
+Le desktop candidat `0.1.14` est préparé localement avec rc66, le CLI
+`29f14572...` et le moteur `f577ce5e...`. Les 98 tests `fabi-swarm`, dont les
+preuves FIFO multi-espace, passent et le bundle Electron complet compile sans
+erreur. Ces pins ne constituent pas encore une release desktop : il faut
+d'abord obtenir la release runtime entièrement verte, committer le candidat,
+construire macOS et Windows, installer sans override puis rejouer exactement
+« abort du propriétaire -> démarrage du ticket suivant -> réponse complète ».
