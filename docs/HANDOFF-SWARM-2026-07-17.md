@@ -10019,9 +10019,20 @@ sans erreur; `git diff --check` et la syntaxe du harness E2E sont verts. Il
 reste à faire la preuve Electron visuelle sur plusieurs espaces avec un vrai
 tour long, puis abort d'un ticket en attente et du ticket actif.
 
-Le runtime Goal candidat est `v2.7.0-rc65`, runtime commit `d812cab`, CLI
-`6a6c9b420` et moteur `f3ac200e2`. À cette entrée, le rerun GitHub
-`31588865445` est toujours en cours : lock, installateurs, macOS arm64 et Linux
-arm64 sont verts; les autres archives, dont Windows CUDA/DirectML, ne sont pas
-encore toutes terminées. Ne pas qualifier ni installer rc65 avant la conclusion
-verte et la vérification des assets de release.
+Le runtime Goal qualifié est `v2.7.0-rc65`, runtime commit `d812cab`, CLI
+`6a6c9b420` et moteur `f3ac200e2`. Le rerun GitHub `31588865445` est
+entièrement vert : cohérence du lock, transactions d'installation, macOS arm64
+MLX, Linux x64 CPU/CUDA, Linux arm64 CPU et Windows x64 DirectML/CUDA. La
+release publique non draft contient les 27 assets attendus; aucun n'est vide,
+les douze manifestes SHA-256 ont un format valide et les trois installateurs
+`install.sh`, `install.ps1` et `install.cmd` sont présents. Cette preuve
+qualifie le packaging runtime; elle ne remplace pas l'installation et l'E2E
+sur les machines du labo.
+
+Le desktop `0.1.13` épinglé sur ces trois révisions est en cours de packaging
+au commit IDE `ede58f99e16e93d6d827c1a9d6a6a655e2a1b00a`, workflow candidat
+`31591575868`. Ce candidat doit encore passer ses jobs macOS/Windows, puis être
+installé sans override sur le Mac local, le Mac mini et la RTX. Le système de
+mise à jour stable signé reste séparément non qualifié tant qu'il n'existe pas
+de publication durable sous `/fabi-updates/stable/` et de signature/notarisation
+produit.
