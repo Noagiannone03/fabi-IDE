@@ -14,13 +14,14 @@ const [
     abortAfterArg,
     permissionModeArg = 'keep',
     permissionExpectationArg = 'ignore',
+    workModeArg = 'keep',
 ] = process.argv.slice(2);
 if (!automationPath || !port || !prompt || !marker) {
     throw new Error(
         'usage: lab-electron-chat-e2e.mjs <puppeteer-core> <port> <prompt> <marker> '
         + '[timeout-ms] [none|abort-after-ms|route-active:<cluster-status-url>|request-active:<cluster-status-url>'
         + '|contribution-active:<contribution-status-url>] [keep|ask|auto] '
-        + '[ignore|allow|reject|none]'
+        + '[ignore|allow|reject|none] [keep|agent|ask|goal]'
     );
 }
 
@@ -31,6 +32,10 @@ if (!permissionModes.has(permissionModeArg)) {
 const permissionExpectations = new Set(['ignore', 'allow', 'reject', 'none']);
 if (!permissionExpectations.has(permissionExpectationArg)) {
     throw new Error(`invalid permission expectation: ${permissionExpectationArg}`);
+}
+const workModes = new Set(['keep', 'agent', 'ask', 'goal']);
+if (!workModes.has(workModeArg)) {
+    throw new Error(`invalid work mode: ${workModeArg}`);
 }
 
 const timeoutMs = Number.parseInt(timeoutArg, 10);
@@ -157,6 +162,111 @@ try {
         `${request.url()} ${request.failure()?.errorText ?? ''}`
     ));
 
+    const modeControlAudit = await page.evaluate(() => {
+        const visible = element => {
+            const rect = element.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        };
+        return {
+            nativeVisibleCount: Array.from(document.querySelectorAll(
+                '.theia-ChatInput-ModeSelector'
+            )).filter(visible).length,
+            workTriggerCount: Array.from(document.querySelectorAll(
+                'button[aria-label="Mode de travail"]'
+            )).filter(visible).length,
+            permissionTriggerCount: Array.from(document.querySelectorAll(
+                'button[aria-label="Politique des outils"]'
+            )).filter(visible).length,
+        };
+    });
+    if (modeControlAudit.nativeVisibleCount !== 0) {
+        throw new Error(`native Theia mode selector is still visible (${modeControlAudit.nativeVisibleCount})`);
+    }
+    if (modeControlAudit.workTriggerCount !== 1 || modeControlAudit.permissionTriggerCount !== 1) {
+        throw new Error(`unexpected Fabi mode controls: ${JSON.stringify(modeControlAudit)}`);
+    }
+    record('mode-controls-audited', JSON.stringify(modeControlAudit));
+
+    const selectMode = async (ariaLabel, expectedLabel, eventType) => {
+        const triggerOpened = await page.evaluate(label => {
+            const isVisible = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const trigger = Array.from(document.querySelectorAll(
+                `button[aria-label="${label}"]`
+            )).find(isVisible);
+            if (!trigger) {
+                return false;
+            }
+            trigger.click();
+            return true;
+        }, ariaLabel);
+        if (!triggerOpened) {
+            throw new Error(`${ariaLabel} trigger is not visible`);
+        }
+        await page.waitForFunction(({ label, option }) => {
+            const isVisible = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const menu = Array.from(document.querySelectorAll(
+                `.fabi-mode-menu[aria-label="${label}"]`
+            )).find(isVisible);
+            return !!menu && Array.from(menu.querySelectorAll('[role="option"]')).some(element =>
+                isVisible(element) && (element.textContent ?? '').trim().startsWith(option)
+            );
+        }, { timeout: 2_000 }, { label: ariaLabel, option: expectedLabel });
+        const selected = await page.evaluate(({ label, option }) => {
+            const isVisible = element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            };
+            const trigger = Array.from(document.querySelectorAll(
+                `button[aria-label="${label}"]`
+            )).find(isVisible);
+            const menu = Array.from(document.querySelectorAll(
+                `.fabi-mode-menu[aria-label="${label}"]`
+            )).find(isVisible);
+            const choice = menu && Array.from(menu.querySelectorAll('[role="option"]')).find(element =>
+                isVisible(element) && (element.textContent ?? '').trim().startsWith(option)
+            );
+            if (!trigger || !menu || !choice) {
+                return undefined;
+            }
+            const triggerRect = trigger.getBoundingClientRect();
+            const menuRect = menu.getBoundingClientRect();
+            const geometry = {
+                menuAboveTrigger: menuRect.bottom <= triggerRect.top + 1,
+                menuInsideViewport: menuRect.left >= 0 && menuRect.top >= 0
+                    && menuRect.right <= window.innerWidth && menuRect.bottom <= window.innerHeight,
+                menu: { left: menuRect.left, top: menuRect.top, right: menuRect.right, bottom: menuRect.bottom },
+                trigger: {
+                    left: triggerRect.left,
+                    top: triggerRect.top,
+                    right: triggerRect.right,
+                    bottom: triggerRect.bottom,
+                },
+            };
+            choice.click();
+            return geometry;
+        }, { label: ariaLabel, option: expectedLabel });
+        if (!selected?.menuAboveTrigger || !selected.menuInsideViewport) {
+            throw new Error(`${ariaLabel} menu geometry is invalid: ${JSON.stringify(selected)}`);
+        }
+        await page.waitForFunction(({ label, option }) => {
+            const trigger = Array.from(document.querySelectorAll(
+                `button[aria-label="${label}"]`
+            )).find(element => {
+                const rect = element.getBoundingClientRect();
+                return rect.width > 0 && rect.height > 0;
+            });
+            return (trigger?.textContent ?? '').trim().startsWith(option);
+        }, { timeout: 2_000 }, { label: ariaLabel, option: expectedLabel });
+        record(eventType, `${expectedLabel}:${JSON.stringify(selected)}`);
+        await pause(100);
+    };
+
     const textboxSelector = '[role="textbox"][aria-label="Type your message here"]';
     await page.waitForFunction(selector => Array.from(document.querySelectorAll(selector)).some(element => {
         const rect = element.getBoundingClientRect();
@@ -164,55 +274,14 @@ try {
     }), {
         timeout: 30_000,
     }, textboxSelector);
+    if (workModeArg !== 'keep') {
+        const expectedLabel = workModeArg === 'agent' ? 'Agent'
+            : workModeArg === 'ask' ? 'Ask' : 'Goal';
+        await selectMode('Mode de travail', expectedLabel, 'work-mode-selected');
+    }
     if (permissionModeArg !== 'keep') {
-        const triggerOpened = await page.evaluate(() => {
-            const isVisible = element => {
-                const rect = element.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            };
-            const trigger = Array.from(document.querySelectorAll(
-                'button[aria-label="Politique des outils"]'
-            )).find(isVisible);
-            if (!trigger) {
-                return false;
-            }
-            trigger.click();
-            return true;
-        });
-        if (!triggerOpened) {
-            throw new Error('permission mode trigger is not visible');
-        }
         const expectedLabel = permissionModeArg === 'auto' ? 'YOLO' : 'Ask edits';
-        await page.waitForFunction(label => {
-            const isVisible = element => {
-                const rect = element.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            };
-            return Array.from(document.querySelectorAll(
-                '.fabi-permission-mode [role="option"], .fabi-permission-mode .fabi-mode-option'
-            )).some(element => isVisible(element)
-                && (element.textContent ?? '').trim().startsWith(label));
-        }, { timeout: 2_000 }, expectedLabel);
-        const selectedMode = await page.evaluate(label => {
-            const isVisible = element => {
-                const rect = element.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            };
-            const option = Array.from(document.querySelectorAll(
-                '.fabi-permission-mode [role="option"], .fabi-permission-mode .fabi-mode-option'
-            )).find(element => isVisible(element)
-                && (element.textContent ?? '').trim().startsWith(label));
-            if (!option) {
-                return false;
-            }
-            option.click();
-            return true;
-        }, expectedLabel);
-        if (!selectedMode) {
-            throw new Error(`${expectedLabel} option is not visible`);
-        }
-        record('permission-mode-selected', `${permissionModeArg}:${expectedLabel}`);
-        await pause(100);
+        await selectMode('Politique des outils', expectedLabel, 'permission-mode-selected');
     }
     const baseline = await page.evaluate(({ markerText }) => ({
         body: document.body?.innerText ?? '',
@@ -450,6 +519,7 @@ try {
         ok: exitCode === 0,
         prompt,
         marker,
+        workMode: workModeArg,
         permissionMode: permissionModeArg,
         permissionExpectation: permissionExpectationArg,
         mode: abortRouteStatusUrl !== undefined
