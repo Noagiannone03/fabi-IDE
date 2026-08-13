@@ -71,6 +71,8 @@ export class SpaceManager {
     protected modalView: WebContentsView | undefined;
     /** Vues matérialisées (frontends vivants), par id de Space. */
     protected readonly views = new Map<string, WebContentsView>();
+    /** Chargement + validation du viewport natif de chaque vue. */
+    protected readonly viewReady = new WeakMap<WebContentsView, Promise<void>>();
     protected activeId: string | undefined;
     /** Space affiché à droite de Maestro comme un iframe natif. */
     protected maestroPreviewId: string | undefined;
@@ -91,7 +93,7 @@ export class SpaceManager {
         this.store.ensureMaestro();
         this.createHost();
         console.log('[fabi-spaces] boot: host créé');
-        this.createChrome();
+        const chromeReady = this.createChrome();
         console.log('[fabi-spaces] boot: chrome créé →', this.opts.railHtmlPath);
         this.registerIpc();
 
@@ -106,6 +108,11 @@ export class SpaceManager {
             console.log('[fabi-spaces] boot: ouverture du Space', first);
             await this.open(first);
         }
+        await chromeReady;
+        // La fenêtre reste cachée jusqu'à ce que Chromium confirme que chaque
+        // surface initiale possède le même viewport que sa View native. Cela évite
+        // d'exposer la texture implicite 800x600 pendant le premier frame macOS.
+        this.layout();
         this.host.show();
         console.log('[fabi-spaces] boot: fenêtre-hôte affichée ✅');
     }
@@ -153,7 +160,7 @@ export class SpaceManager {
     }
 
     /** Crée une WebContentsView de chrome (topbar/rail) avec le preload partagé. */
-    protected chromeView(htmlPath: string): WebContentsView {
+    protected chromeView(): WebContentsView {
         const view = new WebContentsView({
             webPreferences: {
                 preload: this.opts.railPreloadPath,
@@ -164,18 +171,86 @@ export class SpaceManager {
             }
         });
         view.setBackgroundColor('#00000000');
-        this.host.contentView.addChildView(view);
-        view.webContents.loadFile(htmlPath);
         return view;
     }
 
-    protected createChrome(): void {
+    protected createChrome(): Promise<void> {
         // Sidebar d'espaces (gauche) + barre de titre (haut) : deux vues de chrome.
-        this.railView = this.chromeView(this.opts.railHtmlPath);
+        this.railView = this.chromeView();
         this.railView.setBackgroundColor('#22262d');
-        this.topbarView = this.chromeView(this.opts.topbarHtmlPath);
+        this.topbarView = this.chromeView();
         this.topbarView.setBackgroundColor('#22262d');
-        this.layout();
+
+        const { width: W, height: H } = this.contentBounds();
+        const railReady = this.loadView(
+            this.railView,
+            this.railBounds(W, H),
+            'rail',
+            () => this.railView.webContents.loadFile(this.opts.railHtmlPath)
+        );
+        const topbarReady = this.loadView(
+            this.topbarView,
+            this.topbarBounds(W),
+            'topbar',
+            () => this.topbarView.webContents.loadFile(this.opts.topbarHtmlPath)
+        );
+        return Promise.all([railReady, topbarReady]).then(() => undefined);
+    }
+
+    /**
+     * Attache et charge une WebContentsView, puis vérifie le contrat entre les
+     * bounds Views et le viewport Chromium avant que la fenêtre soit montrée.
+     *
+     * Electron expose officiellement removeChildView/addChildView pour déplacer ou
+     * réordonner une vue existante. Sur macOS, une création pendant le démarrage du
+     * backend peut exceptionnellement conserver la surface initiale 800x600 alors
+     * que getBounds() est déjà correct. Le détachement/rattachement n'est effectué
+     * que si cette divergence est effectivement mesurée, à la fin du chargement —
+     * aucun timer ni resize artificiel.
+     */
+    protected loadView(
+        view: WebContentsView,
+        bounds: Rectangle,
+        name: string,
+        load: () => Promise<void>
+    ): Promise<void> {
+        view.setBounds(bounds);
+        this.host.contentView.addChildView(view);
+        const ready = load().then(() => this.ensureViewport(view, bounds, name));
+        this.viewReady.set(view, ready);
+        return ready;
+    }
+
+    protected async ensureViewport(view: WebContentsView, bounds: Rectangle, name: string): Promise<void> {
+        if (this.disposed || view.webContents.isDestroyed()) {
+            return;
+        }
+        const viewport = await view.webContents.executeJavaScript(
+            '({ width: window.innerWidth, height: window.innerHeight })',
+            true
+        ) as { width: number; height: number };
+        if (viewport.width === bounds.width && viewport.height === bounds.height) {
+            return;
+        }
+        console.warn(
+            `[fabi-spaces] viewport ${name} désynchronisé ` +
+            `${viewport.width}x${viewport.height} (attendu ${bounds.width}x${bounds.height}) — rattachement natif`
+        );
+        this.host.contentView.removeChildView(view);
+        view.setBounds(bounds);
+        this.host.contentView.addChildView(view);
+        view.webContents.invalidate();
+
+        const repaired = await view.webContents.executeJavaScript(
+            '({ width: window.innerWidth, height: window.innerHeight })',
+            true
+        ) as { width: number; height: number };
+        if (repaired.width !== bounds.width || repaired.height !== bounds.height) {
+            throw new Error(
+                `viewport ${name} invalide après rattachement: ` +
+                `${repaired.width}x${repaired.height}, attendu ${bounds.width}x${bounds.height}`
+            );
+        }
     }
 
     // ----------------------------------------------------------------------
@@ -185,6 +260,30 @@ export class SpaceManager {
     protected contentBounds(): Rectangle {
         const [w, h] = this.host.getContentSize();
         return { x: 0, y: 0, width: w, height: h };
+    }
+
+    protected spaceBounds(W: number, H: number): Rectangle {
+        const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
+        return {
+            x: Math.max(0, railW - CHROME_OVERLAP),
+            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
+            width: Math.max(0, W - railW + CHROME_OVERLAP),
+            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
+        };
+    }
+
+    protected railBounds(W: number, H: number): Rectangle {
+        const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
+        return {
+            x: 0,
+            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
+            width: Math.min(W, railW),
+            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
+        };
+    }
+
+    protected topbarBounds(W: number): Rectangle {
+        return { x: 0, y: 0, width: W, height: TOPBAR_HEIGHT };
     }
 
     /**
@@ -200,17 +299,11 @@ export class SpaceManager {
             return;
         }
         const { width: W, height: H } = this.contentBounds();
-        const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
 
         // L'IDE passe d'un pixel sous le chrome. Ce recouvrement est volontaire :
         // il évite les coutures de compositing entre WebContentsView sans introduire
         // de marge visuelle ni modifier la largeur utile du contenu.
-        const spaceRect: Rectangle = {
-            x: Math.max(0, railW - CHROME_OVERLAP),
-            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
-            width: Math.max(0, W - railW + CHROME_OVERLAP),
-            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
-        };
+        const spaceRect = this.spaceBounds(W, H);
         for (const view of this.views.values()) {
             view.setBounds(spaceRect);
         }
@@ -233,16 +326,11 @@ export class SpaceManager {
         }
 
         // Rail (sidebar) : au-dessus de l'IDE pour pouvoir l'overlay quand déplié.
-        this.railView.setBounds({
-            x: 0,
-            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
-            width: railW,
-            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
-        });
+        this.railView.setBounds(this.railBounds(W, H));
         this.host.contentView.addChildView(this.railView);
 
         // Topbar : pleine largeur, tout en haut, au sommet.
-        this.topbarView.setBounds({ x: 0, y: 0, width: W, height: TOPBAR_HEIGHT });
+        this.topbarView.setBounds(this.topbarBounds(W));
         this.host.contentView.addChildView(this.topbarView);
 
         // Modal de création : plein écran, AU-DESSUS de tout.
@@ -265,13 +353,21 @@ export class SpaceManager {
         const space = this.store.get(id)!;
         const view = new WebContentsView({ webPreferences: spaceWebPreferences(this.opts) });
         view.setBackgroundColor('#22262d');
+        const { width, height } = this.contentBounds();
+        // Même invariant que le chrome : dimensionner avant l'attachement afin que
+        // le renderer soit créé avec le viewport réellement visible.
+        view.setBounds(this.spaceBounds(width, height));
         this.views.set(id, view);
-        this.host.contentView.addChildView(view);
         this.wireSpaceWebContents(id, view);
         // Maestro charge le MÊME frontend Theia mais en « mode maestro » (?maestro=1) :
         // aucun workspace, aucun éditeur — uniquement le tableau de bord (cf. fabi-swarm).
         const maestro = space.kind === 'maestro';
-        view.webContents.loadURL(buildFrontendUrl(this.opts, space.workspacePath, { maestro }));
+        this.loadView(
+            view,
+            this.spaceBounds(width, height),
+            `space:${id}`,
+            () => view.webContents.loadURL(buildFrontendUrl(this.opts, space.workspacePath, { maestro }))
+        );
         return view;
     }
 
@@ -319,6 +415,8 @@ export class SpaceManager {
             return;
         }
         this.ensureView(id);
+        const activeView = this.views.get(id)!;
+        await this.viewReady.get(activeView);
         if (id !== 'maestro') {
             this.maestroPreviewId = undefined;
         }
@@ -388,6 +486,8 @@ export class SpaceManager {
                 }
             });
             view.setBackgroundColor('#00000000');
+            const { width, height } = this.contentBounds();
+            view.setBounds({ x: 0, y: 0, width, height });
             this.modalView = view;
             const wc = view.webContents;
 

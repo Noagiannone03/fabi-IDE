@@ -10151,3 +10151,66 @@ erreur. Ces pins ne constituent pas encore une release desktop : il faut
 d'abord obtenir la release runtime entièrement verte, committer le candidat,
 construire macOS et Windows, installer sans override puis rejouer exactement
 « abort du propriétaire -> démarrage du ticket suivant -> réponse complète ».
+
+## Surfaces Electron et vérité Swarm multi-espace (13 août 2026, suite 6)
+
+Le candidat desktop `0.1.14` a finalement été poussé au commit IDE exact
+`7b78f9c6825e070e832bfd892901ef37f5164e04`. Son workflow
+`31602588630` est entièrement vert sur macOS arm64 et Windows x64. Le DMG
+macOS vérifié porte le SHA-256
+`c3ab71776232b9b47b37a34d1b61a694326591056e49f7fb1511f67b8526f9bd`;
+les checksums du paquet Windows sont également verts. Le runtime public rc66
+et le desktop 0.1.14 ont été installés sans override sur le Mac local et sur
+`mac-mini-projet-ia`. Les deux manifestes portent rc66, CLI `29f14572...`,
+moteur `f577ce5e...`, Mesh `0.75.1`, ABI `0.1.35` et Metal. L'installation
+RTX rc66/0.1.14 n'est pas encore revendiquée : ses archives CUDA officielles
+ont été téléchargées et vérifiées localement, mais le transfert/commit distant
+a été interrompu avant exécution.
+
+Deux défauts desktop distincts ont ensuite été isolés sans masquer l'état du
+cluster par un nouveau worker RunPod.
+
+Le premier était un défaut de cycle de vie `BaseWindow`/`WebContentsView` sur
+macOS. Les bounds natives étaient correctes (`rail=52x780`,
+`topbar=1380x36`, `IDE=1329x780`), mais Chromium pouvait afficher son backing
+store initial `800x600` pendant le premier frame. Le résultat visible était un
+rail étalé sur environ 800 pixels et un IDE réduit à une bande. Le nouveau
+chemin dimensionne chaque View avant attachement, attend la vraie fin de son
+chargement et vérifie `window.innerWidth/innerHeight` contre les bounds avant
+de montrer la fenêtre. Une divergence mesurée déclenche une seule opération
+officielle `removeChildView`/`addChildView`, suivie d'une invalidation; il n'y a
+ni délai arbitraire, ni faux resize. Si le contrat reste faux, le boot échoue
+fermement au lieu d'afficher une surface corrompue. Le lancement Electron réel
+a confirmé les trois couples de dimensions exacts ci-dessus. Les fenêtres
+`hidden-probe`/`prefs-probe` aperçues pendant l'enquête étaient uniquement des
+probes diagnostiques; elles ont été fermées et aucun probe n'est embarqué.
+
+Le second défaut expliquait l'IDE « Prêt » après l'arrêt du dernier worker
+RunPod. `FabiCodeServiceImpl` diffusait déjà à tous les renderers, mais
+`FabiSwarmServiceImpl` ne conservait qu'un unique `FabiSwarmClient` : ouvrir un
+deuxième Space évincait silencieusement le premier du flux registry/SSE. Un
+Space recevait donc `routingReady=false` tandis qu'un autre gardait son ancien
+snapshot `ready=true`. Le service Swarm possède maintenant un Set de clients,
+envoie le snapshot initial à chacun, diffuse toutes les transitions
+swarms/worker/Request Agent/runtime/connexion/métriques/stockage à tous et ne
+retire que le proxy dont la connexion RPC vient réellement de fermer.
+
+La preuve locale a été faite avec RunPod toujours arrêté. Le scheduler 32B
+annonçait `structural_pipeline_ready=false`, `admission_ready=false`,
+`need_more_nodes=true` et aucun contexte routable. Deux vrais frontends Theia,
+ouverts dans deux Spaces différents du même backend, ont reçu simultanément
+« En attente de peers »; tous deux avaient la carte verrouillée et aucun
+`.theia-ChatInput` monté. Ils ont aussi fermé proprement leur RPC et le worker
+local lors de `app.quit()`. Deux nouveaux tests prouvent le fan-out de la perte
+de readiness et la désinscription isolée d'un renderer. La suite
+`fabi-swarm` compte désormais 100 tests verts; les builds TypeScript et
+Electron ainsi que `git diff --check` passent.
+
+Ces deux correctifs sont encore sur la branche de travail et doivent être
+commit/push puis packagés dans le prochain candidat desktop. Le prochain gate
+live reste : installer ce candidat sur les trois machines, rétablir une route
+complète (RunPod ou RTX), vérifier que les deux Spaces passent ensemble de
+verrouillé à prêt, couper un composant de la route et vérifier la transition
+inverse en direct, puis rejouer « abort actif -> ticket suivant -> réponse
+complète ». Aucun succès de génération ou failover natif n'est revendiqué dans
+la présente suite.

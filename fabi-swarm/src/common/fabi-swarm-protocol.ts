@@ -317,7 +317,10 @@ export interface ModelStorageSettings {
  * l'appelle via RPC et reçoit les pushs via le FabiSwarmClient.
  */
 export interface FabiSwarmService {
-    /** Enregistre le client (appelé par le handler RPC à la connexion). */
+    /**
+     * Enregistre un client. Le backend conserve tous les renderers Spaces ;
+     * cette méthode reste dans le contrat pour compatibilité RPC.
+     */
     setClient(client: FabiSwarmClient | undefined): void;
 
     /** Liste des swarms dispos (cache alimenté par le registry + SSE). */

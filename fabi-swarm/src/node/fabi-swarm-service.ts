@@ -80,7 +80,8 @@ function contributionRetryDelay(attempt: number): number {
 @injectable()
 export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicationContribution {
 
-    protected client: FabiSwarmClient | undefined;
+    /** Tous les renderers Spaces connectés au backend partagé. */
+    protected readonly clients = new Set<FabiSwarmClient>();
     protected readonly runtime = new FabiRuntimeManager();
     protected readonly modelStorage = new FabiModelStorage();
     protected feed: RegistryFeed | undefined;
@@ -113,23 +114,45 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     protected metrics: FabiMetricsCollector | undefined;
 
     setClient(client: FabiSwarmClient | undefined): void {
-        this.client = client;
-        if (client) {
-            this.ensureFeed();
-            this.ensureMetrics();
-            client.onSwarmsChanged(this.feed?.snapshot() ?? []);
-            client.onWorkerStateChanged(this.workerState);
-            client.onRequestAgentStateChanged(this.requestAgentState);
-            client.onRequestAgentActivityChanged(this.requestAgentActivity);
-            client.onActiveSwarmChanged(this.activeSwarm);
-            client.onRuntimeStatusChanged(this.runtime.status());
-            client.onConnectionChanged(this.connection);
-            const m = this.metrics?.getLatest();
-            if (m) {
-                client.onMetricsChanged(m);
+        if (!client) {
+            this.clients.clear();
+            return;
+        }
+        this.addClient(client);
+    }
+
+    /** Enregistre un Space sans évincer les autres vues du même desktop. */
+    addClient(client: FabiSwarmClient): void {
+        this.clients.add(client);
+        this.ensureFeed();
+        this.ensureMetrics();
+        client.onSwarmsChanged(this.feed?.snapshot() ?? []);
+        client.onWorkerStateChanged(this.workerState);
+        client.onRequestAgentStateChanged(this.requestAgentState);
+        client.onRequestAgentActivityChanged(this.requestAgentActivity);
+        client.onActiveSwarmChanged(this.activeSwarm);
+        client.onRuntimeStatusChanged(this.runtime.status());
+        client.onConnectionChanged(this.connection);
+        const m = this.metrics?.getLatest();
+        if (m) {
+            client.onMetricsChanged(m);
+        }
+        void this.publishModelStorage();
+        this.tryAutoReconnect(this.feed?.snapshot() ?? []);
+    }
+
+    removeClient(client: FabiSwarmClient): void {
+        this.clients.delete(client);
+    }
+
+    protected broadcast(send: (client: FabiSwarmClient) => void): void {
+        for (const client of this.clients) {
+            try {
+                send(client);
+            } catch {
+                // Le hook de fermeture retire le proxy. Un renderer disparu ne
+                // doit jamais empêcher les autres Spaces de recevoir l'état live.
             }
-            void this.publishModelStorage();
-            this.tryAutoReconnect(this.feed?.snapshot() ?? []);
         }
     }
 
@@ -141,7 +164,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             return;
         }
         this.metrics = new FabiMetricsCollector(
-            m => this.client?.onMetricsChanged(m),
+            m => this.broadcast(client => client.onMetricsChanged(m)),
             () => this.workerState.kind === 'running'
         );
         this.metrics.start();
@@ -179,7 +202,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
 
     protected async publishModelStorage(): Promise<ModelStorageSettings> {
         const snapshot = await this.modelStorage.snapshot();
-        this.client?.onModelStorageChanged(snapshot);
+        this.broadcast(client => client.onModelStorageChanged(snapshot));
         return snapshot;
     }
 
@@ -262,7 +285,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             return;
         }
         this.feed = new RegistryFeed(FABI_REGISTRY_URL, swarms => {
-            this.client?.onSwarmsChanged(swarms);
+            this.broadcast(client => client.onSwarmsChanged(swarms));
             // L'entrée du swarm actif a peut-être bougé (peers, statut, capacité)
             // → on rafraîchit la copie et on recalcule l'état de connexion. C'est
             // CE flux SSE qui remplace le polling du scheduler.
@@ -271,7 +294,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 const updated = swarms.find(s => s.id === this.activeSwarm!.id);
                 if (updated) {
                     this.activeSwarm = updated;
-                    this.client?.onActiveSwarmChanged(updated);
+                    this.broadcast(client => client.onActiveSwarmChanged(updated));
                     this.recomputeConnection();
                     this.reconcileRequestAgentContract(previous, updated);
                 }
@@ -357,7 +380,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     }
 
     async installRuntime(): Promise<RuntimeStatus> {
-        return this.runtime.ensureRuntime(s => this.client?.onRuntimeStatusChanged(s));
+        return this.runtime.ensureRuntime(s => this.broadcast(client => client.onRuntimeStatusChanged(s)));
     }
 
     // ----- dérivation + push de l'état de connexion (worker + SSE) -----
@@ -376,7 +399,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
                 this.cancelContributionCheck();
             }
         }
-        this.client?.onConnectionChanged(this.connection);
+        this.broadcast(client => client.onConnectionChanged(this.connection));
         if (this.connection.ready) {
             this.resolveReadyWaiters();
         }
@@ -494,18 +517,18 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         if (identityChanged) {
             this.cancelContributionCheck(true);
         }
-        this.client?.onWorkerStateChanged(state);
+        this.broadcast(client => client.onWorkerStateChanged(state));
         this.recomputeConnection();
     }
 
     protected setRequestAgentState(state: RequestAgentState): void {
         this.requestAgentState = state;
-        this.client?.onRequestAgentStateChanged(state);
+        this.broadcast(client => client.onRequestAgentStateChanged(state));
     }
 
     protected setRequestAgentActivity(activity: RequestAgentActivity): void {
         this.requestAgentActivity = activity;
-        this.client?.onRequestAgentActivityChanged(activity);
+        this.broadcast(client => client.onRequestAgentActivityChanged(activity));
         if (activity.activeRequests.length === 0) {
             void this.tryApplyModelStorageRestart();
         }
@@ -680,7 +703,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             this.cancelContributionCheck(true);
         }
         this.activeSwarm = swarm;
-        this.client?.onActiveSwarmChanged(swarm);
+        this.broadcast(client => client.onActiveSwarmChanged(swarm));
         this.recomputeConnection();
     }
 
@@ -909,6 +932,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
             waiter.reject(new Error('Fabi IDE est en cours de fermeture.'));
         }
         this.readyWaiters.clear();
+        this.clients.clear();
         await this.stopRequestAgent();
         if (this.handle) {
             try {

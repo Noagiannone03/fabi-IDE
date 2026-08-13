@@ -26,7 +26,8 @@ export default new ContainerModule(bind => {
     bind(ConnectionHandler).toDynamicValue(ctx =>
         new RpcConnectionHandler<FabiSwarmClient>(FABI_SWARM_SERVICE_PATH, client => {
             const service = ctx.container.get<FabiSwarmServiceImpl>(FabiSwarmService);
-            service.setClient(client);
+            service.addClient(client);
+            client.onDidCloseConnection(() => service.removeClient(client));
             return service;
         })
     ).inSingletonScope();
