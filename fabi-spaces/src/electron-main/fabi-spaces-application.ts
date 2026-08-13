@@ -16,6 +16,7 @@ import { join } from 'path';
 import { FabiElectronMainApplication } from 'fabi-swarm/lib/electron-main/fabi-electron-main-application';
 import { ElectronMainCommandOptions } from '@theia/core/lib/electron-main/electron-main-application';
 import { SpaceManager } from './space-manager';
+import { ensureSpacesTitleBarPreference } from './title-bar-preference';
 
 type SpacesOutcome = 'active' | 'failed';
 
@@ -36,6 +37,12 @@ export class FabiSpacesApplication extends FabiElectronMainApplication {
             return super.openInitialSurface(urlToOpen);
         }
         try {
+            const titleBarMigration = await ensureSpacesTitleBarPreference();
+            if (titleBarMigration === 'invalid') {
+                console.warn('[fabi-spaces] préférence de barre de titre non migrée : settings.json invalide');
+            } else if (titleBarMigration !== 'unchanged') {
+                console.info(`[fabi-spaces] barre de titre Spaces préparée (${titleBarMigration})`);
+            }
             const port = await this.backendPort;
             // Garantit le cookie de security token sur localhost:port AVANT de charger
             // les frontends embarqués (sinon ils ne peuvent pas joindre le backend).

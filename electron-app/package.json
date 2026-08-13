@@ -3,7 +3,7 @@
   "name": "fabi",
   "description": "Fabi — peer-to-peer AI IDE for code",
   "author": "undefined studio",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "main": "lib/backend/electron-main.js",
   "dependencies": {
     "@theia/ai-anthropic": "1.72.2",
@@ -162,6 +162,7 @@
         "preferences": {
           "workbench.colorTheme": "fabi-islands",
           "workbench.iconTheme": "material-icon-theme",
+          "window.titleBarStyle": "custom",
           "window.menuBarVisibility": "compact",
           "editor.fontFamily": "'JetBrains Mono', 'SF Mono', ui-monospace, monospace",
           "editor.fontSize": 13,
