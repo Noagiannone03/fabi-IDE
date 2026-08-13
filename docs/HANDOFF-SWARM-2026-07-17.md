@@ -10214,3 +10214,88 @@ verrouillé à prêt, couper un composant de la route et vérifier la transition
 inverse en direct, puis rejouer « abort actif -> ticket suivant -> réponse
 complète ». Aucun succès de génération ou failover natif n'est revendiqué dans
 la présente suite.
+
+## Candidat desktop 0.1.15 et récupération du catalogue Windows (13 août 2026, suite 7)
+
+Les deux correctifs de la suite précédente ont été commités et poussés sur
+`codex/rc49-product-e2e` : `e09cc97` pour le compositor et le fan-out Swarm,
+puis `0592224` pour le candidat desktop `0.1.15`. Le workflow exact
+`31676485798` est entièrement vert sur macOS arm64 et Windows x64. Les artefacts
+ont été téléchargés et vérifiés contre leurs `SHA256SUMS` : le DMG macOS porte
+`5e10c53fb705cb5eb0bb13eb54adfc68f3f789a409a94840ff793b31f9b4d5d2` et
+l'installateur Windows
+`f6be9fb4b855aaf4e512e1275033c8c0cc6644ea0a23d57a544e82846cd6ba82`.
+
+Une fenêtre blanche `hidden-probe` encore visible sur le Mac local n'était pas
+créée par 0.1.15 : un processus de diagnostic `electron --help` était resté
+orphelin. Il a été terminé de façon ciblée. Le bundle précédent dans
+`/Applications/Fabi.app` contenait également des fichiers de plugins hérités
+d'une ancienne copie par-dessus, ce qui invalidait sa signature. Il a été
+déplacé dans la Corbeille puis remplacé comme un bundle complet. Le candidat
+0.1.15 vérifie alors `codesign --deep --strict`, ouvre une seule fenêtre
+`1380x815`, sans probe, et lance rc66/Skippy/Metal par le chemin produit. Le
+Mac mini a reçu le même DMG vérifié, a quitté 0.1.14 normalement puis a ouvert
+0.1.15 depuis `~/Applications/Fabi.app`; sa signature et sa version sont
+correctes. Aucun succès de génération n'est déduit de ce seul smoke UI.
+
+Windows a été libéré de ses processus Ollama/`llama-server` sans supprimer
+leurs données. Les archives CUDA rc66 et leurs sidecars ont transité par le
+VPS; l'installateur a revérifié les SHA, utilisé son décompresseur autonome,
+relocalisé Python et sauvegardé rc65 avant le commit transactionnel. Le
+manifeste porte rc66, CLI `29f14572...`, moteur `f577ce5e...`, CUDA,
+Skippy/Mesh `0.75.1` et ABI `0.1.35`. Le desktop 0.1.15 a ensuite été installé
+silencieusement depuis l'artefact CI vérifié. Aucune session desktop utilisateur
+n'était ouverte : l'UI Windows n'est donc pas revendiquée comme qualifiée.
+
+Le worker CUDA lancé depuis une session WMI détachée a mesuré `2.24 GiB`
+utilisables, puis a révélé un défaut de démarrage réseau précis :
+`catalog_bootstrap()` expirait après 25 s, faisait fermer l'endpoint Iroh et
+entraînait un redémarrage complet toutes les 30 s. Skippy n'était pas en cause.
+Les sources et la documentation officielles rust-libp2p indiquent que
+`add_address` déclenche déjà le bootstrap et que le bootstrap périodique
+configuré maintient/répare la table. L'essai initial est donc conservé comme
+fast path, mais son timeout réseau transitoire ne détruit plus la DHT : le
+worker garde son endpoint et laisse les tentatives automatiques/périodiques
+converger. Les adresses, identités, signatures, erreurs de configuration et
+publications restent fail-closed.
+
+Le correctif moteur est poussé en
+`797f93fa716619730003d4264490f25c4f658d79` sur
+`codex/swarm-protocol-v3`; le CLI épingle cette révision en
+`f72d1118c5fa7b59b695de8f1b1adb85f946d817` sur `dev`. Validation :
+`1059 passed, 8 skipped` côté Python, 29/29 tests natifs Rust, Ruff et
+`git diff --check` verts. Un premier run complet sous contention Fabi avait
+refusé proprement un exécuteur MLX à zéro bloc KV; après fermeture normale de
+Fabi, ce test isolé puis la suite complète repassent. Le runtime rc67 a été
+commit/tag/push depuis `fabi/main` au commit `612f1bd`; ses workflows
+multi-OS sont en cours et aucun artefact rc67 n'est encore qualifié dans cette
+section.
+
+Enfin, le launcher desktop écrivait ses logs worker dans le chemin macOS
+littéral sur Windows. Le candidat suivant utilise désormais les répertoires
+natifs : `~/Library/Logs/Fabi` sur macOS, `%LOCALAPPDATA%\\Fabi\\logs` sur
+Windows et `$XDG_STATE_HOME/fabi/logs` (ou `~/.local/state/fabi/logs`) sur
+Linux. Les tests `fabi-swarm` passent à 102/102 et le build Electron complet
+est vert. Le desktop est préparé en `0.1.16` avec les pins rc67 exacts, mais
+ne doit être poussé/packagé qu'après la réussite de la release rc67.
+
+Le défaut d'affichage rapporté simultanément est désormais séparé en deux
+causes. La fenêtre blanche `hidden-probe`/`prefs-probe` provenait uniquement
+d'une commande Electron de diagnostic restée vivante et ne fait pas partie du
+bundle Fabi. Après terminaison ciblée, aucun processus probe ne subsiste. La
+vue IDE réduite à une bande était en revanche une course réelle du compositor :
+les bornes natives pouvaient être appliquées avant que le renderer ait adopté
+son viewport. Le correctif `e09cc97` pose les bornes avant l'attachement, attend
+le chargement réel, compare le viewport aux bornes natives puis effectue au
+plus une réinsertion officielle de la `WebContentsView`. Le smoke du bundle
+signé 0.1.15 observe une unique fenêtre Fabi `1380x815`.
+
+Au moment du dernier contrôle, `pc-windows-projet-ia` a disparu du tailnet
+(`Online=false`, dernier handshake `07:49:45Z`) et SSH ne répond plus. Cela
+empêche de prouver la récupération périodique et de former une route complète
+à trois workers. Les deux Macs restent des workers sains mais le scheduler
+annonce honnêtement `structural_pipeline_ready=false`,
+`admission_ready=false`, contexte routable zéro. Prochain gate : rc67 vert,
+installation 0.1.16/rc67, retour réseau de la RTX ou worker RunPod temporaire,
+puis transitions verrouillé↔prêt, génération OpenCode, abort actif/FIFO et
+kill/replan froid.

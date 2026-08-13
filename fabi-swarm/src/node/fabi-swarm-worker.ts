@@ -5,7 +5,6 @@
 // process group (SIGINT, puis SIGTERM/SIGKILL après les délais de grâce).
 
 import { createWriteStream, mkdirSync, type WriteStream } from 'fs';
-import { homedir } from 'os';
 import { join } from 'path';
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
 import { WorkerConnectionProfile, WorkerState, WorkerStage } from '../common/fabi-swarm-protocol';
@@ -13,6 +12,7 @@ import { PreparedWorkerBootstrap } from './fabi-worker-bootstrap';
 import type { RuntimeCommand } from './fabi-runtime-install';
 import { buildJoinArgs, buildWorkerEnv, killOrphanedWorkers } from './fabi-worker-tuning';
 import { ModelStorageEnvironment } from './fabi-model-storage';
+import { workerLogDirectory } from './fabi-worker-log';
 
 // Parallax intercepte SIGINT et accorde ensuite 5 s à SIGINT puis 5 s à SIGTERM
 // avant son propre SIGKILL. Fabi attend cette séquence amont avant d'escalader.
@@ -21,7 +21,7 @@ const TERMINATE_GRACE_MS = 5_000;
 /** Délai avant re-spawn après un crash inattendu (aligné sur le CLI). */
 const RESTART_DELAY_MS = 30_000;
 const EVENT_PREFIX = '[FABI] ';
-const WORKER_LOG_DIR = join(homedir(), 'Library', 'Logs', 'Fabi');
+const WORKER_LOG_DIR = workerLogDirectory();
 
 export interface WorkerHandle {
     /** PID courant (change après un auto-restart). */
