@@ -15,10 +15,12 @@
     "start:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd browser-app start",
     "start:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" --cwd electron-app start",
     "watch:browser": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run --parallel watch --ignore fabi",
-    "watch:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run --parallel watch --ignore browser-app"
+    "watch:electron": "\"$(brew --prefix node@22)/bin/node\" \"$(brew --prefix)/lib/node_modules/yarn/bin/yarn.js\" exec -- lerna run --parallel watch --ignore browser-app",
+    "test:desktop-release": "node --test tools/desktop-update-release.test.mjs tools/verify-desktop-update-config.test.mjs"
   },
   "devDependencies": {
-    "lerna": "2.4.0"
+    "lerna": "2.4.0",
+    "yaml": "^2.2.2"
   },
   "workspaces": [
     "fabi-branding", "fabi-swarm", "fabi-spaces", "browser-app", "electron-app"

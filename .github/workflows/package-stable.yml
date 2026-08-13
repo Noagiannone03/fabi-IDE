@@ -1,0 +1,251 @@
+name: Build signed desktop stable bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact electron-app/package.json version to assemble
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-stable-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos-arm64:
+    name: Sign and notarize macOS arm64
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: desktop-stable
+    env:
+      CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+    steps:
+      - name: Checkout exact release revision
+        uses: actions/checkout@v6
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable pinned Yarn Classic
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Verify protected release inputs
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          actual_version="$(node -p "require('./electron-app/package.json').version")"
+          test "$actual_version" = "$EXPECTED_VERSION"
+          for name in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            test -n "${!name:-}" || { echo "missing protected release input: $name" >&2; exit 1; }
+          done
+
+      - name: Install immutable dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Test the Fabi product contract
+        run: yarn --cwd fabi-swarm test
+
+      - name: Build, sign and notarize
+        run: yarn --cwd electron-app package:mac:release
+
+      - name: Verify Developer ID, notarization and update payload
+        run: |
+          set -euo pipefail
+          app_path="$(find electron-app/dist -type d -name 'Fabi.app' -print -quit)"
+          test -n "$app_path" || { echo 'electron-builder did not produce Fabi.app' >&2; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          signature="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
+          printf '%s\n' "$signature" | grep -q '^Authority=Developer ID Application:'
+          team="$(printf '%s\n' "$signature" | sed -n 's/^TeamIdentifier=//p')"
+          test "$team" = "$APPLE_TEAM_ID" || { echo "unexpected Apple team: $team" >&2; exit 1; }
+          spctl --assess --type execute --verbose=4 "$app_path"
+          xcrun stapler validate "$app_path"
+          node tools/verify-desktop-update-config.mjs \
+            --config "$app_path/Contents/Resources/app-update.yml" \
+            --url 'https://server.undefinedstudio.fr/fabi-updates/stable' \
+            --channel stable
+          test -f electron-app/dist/stable-mac.yml
+          find electron-app/dist -maxdepth 1 -type f -name '*.zip' -print -quit | grep -q .
+          find electron-app/dist -maxdepth 1 -type f -name '*.dmg' -print -quit | grep -q .
+
+      - name: Upload signed macOS inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: fabi-macos-arm64-stable-input
+          path: |
+            electron-app/dist/*.dmg
+            electron-app/dist/*.zip
+            electron-app/dist/*.blockmap
+            electron-app/dist/stable-mac.yml
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  windows-x64:
+    name: Sign and smoke-install Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 75
+    environment: desktop-stable
+    env:
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      FABI_WINDOWS_PUBLISHER_NAME: ${{ vars.FABI_WINDOWS_PUBLISHER_NAME }}
+    steps:
+      - name: Checkout exact release revision
+        uses: actions/checkout@v6
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable pinned Yarn Classic
+        shell: bash
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Verify protected release inputs
+        shell: bash
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          actual_version="$(node -p "require('./electron-app/package.json').version")"
+          test "$actual_version" = "$EXPECTED_VERSION"
+          for name in WIN_CSC_LINK WIN_CSC_KEY_PASSWORD FABI_WINDOWS_PUBLISHER_NAME; do
+            test -n "${!name:-}" || { echo "missing protected release input: $name" >&2; exit 1; }
+          done
+
+      - name: Install immutable dependencies
+        shell: bash
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Test the Fabi product contract
+        shell: bash
+        run: yarn --cwd fabi-swarm test
+
+      - name: Build Authenticode-signed NSIS installer
+        shell: bash
+        run: yarn --cwd electron-app package:win:release
+
+      - name: Verify signatures, publisher contract and silent install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Get-ChildItem electron-app/dist -File |
+            Where-Object Extension -eq '.exe' |
+            Select-Object -First 1
+          if (-not $installer) { throw 'electron-builder did not produce a Windows installer' }
+
+          function Assert-FabiSignature([string] $Path) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $Path
+            if ($signature.Status -ne 'Valid') {
+              throw "invalid Authenticode signature for ${Path}: $($signature.Status) $($signature.StatusMessage)"
+            }
+            $publisher = $signature.SignerCertificate.GetNameInfo(
+              [System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName,
+              $false
+            )
+            if ($publisher -ne $env:FABI_WINDOWS_PUBLISHER_NAME) {
+              throw "unexpected Authenticode publisher for ${Path}: ${publisher}"
+            }
+          }
+
+          Assert-FabiSignature $installer.FullName
+          $process = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "silent NSIS installation failed: $($process.ExitCode)" }
+          $installedApp = Join-Path $env:LOCALAPPDATA 'Programs\Fabi\Fabi.exe'
+          $installedUpdateConfig = Join-Path $env:LOCALAPPDATA 'Programs\Fabi\resources\app-update.yml'
+          if (-not (Test-Path -LiteralPath $installedApp -PathType Leaf)) { throw "missing installed app: $installedApp" }
+          if (-not (Test-Path -LiteralPath $installedUpdateConfig -PathType Leaf)) { throw "missing updater config: $installedUpdateConfig" }
+          Assert-FabiSignature $installedApp
+          node tools/verify-desktop-update-config.mjs `
+            --config "$installedUpdateConfig" `
+            --url 'https://server.undefinedstudio.fr/fabi-updates/stable' `
+            --channel stable `
+            --publisher "$env:FABI_WINDOWS_PUBLISHER_NAME"
+          if ($LASTEXITCODE -ne 0) { throw 'installed updater configuration is not qualified' }
+          if (-not (Test-Path electron-app/dist/stable.yml -PathType Leaf)) { throw 'missing stable.yml' }
+
+      - name: Upload signed Windows inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: fabi-windows-x64-stable-input
+          path: |
+            electron-app/dist/*.exe
+            electron-app/dist/*.blockmap
+            electron-app/dist/stable.yml
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  assemble:
+    name: Verify and assemble immutable stable directory
+    needs: [macos-arm64, windows-x64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact release revision
+        uses: actions/checkout@v6
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: yarn
+          cache-dependency-path: yarn.lock
+
+      - name: Enable pinned Yarn Classic
+        run: |
+          corepack enable
+          corepack prepare yarn@1.22.22 --activate
+
+      - name: Install immutable dependencies
+        run: yarn install --frozen-lockfile --network-timeout 600000
+
+      - name: Test the release assembler
+        run: yarn test:desktop-release
+
+      - name: Download signed platform inputs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: fabi-*-stable-input
+          path: stable-inputs
+
+      - name: Assemble only matching payloads and metadata
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          node tools/desktop-update-release.mjs \
+            --mac stable-inputs/fabi-macos-arm64-stable-input \
+            --windows stable-inputs/fabi-windows-x64-stable-input \
+            --output stable-release \
+            --version "$EXPECTED_VERSION" \
+            --channel stable
+
+      - name: Upload deployment-ready stable directory
+        uses: actions/upload-artifact@v7
+        with:
+          name: fabi-desktop-${{ inputs.version }}-stable
+          path: stable-release/
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

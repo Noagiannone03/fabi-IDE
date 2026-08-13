@@ -1,0 +1,9 @@
+extends: ./electron-builder.yml
+
+# The publisher name is deliberately supplied by the protected CI environment:
+# it must be the exact certificate subject that electron-updater will accept on
+# every later update. Rotating it is a product migration, not a build default.
+win:
+  forceCodeSigning: true
+  signtoolOptions:
+    publisherName: ${env.FABI_WINDOWS_PUBLISHER_NAME}

@@ -1,0 +1,9 @@
+extends: ./electron-builder.yml
+
+# A stable macOS artifact is not allowed to silently fall back to an ad-hoc or
+# unsigned bundle. electron-builder reads the Developer ID and Apple
+# notarization credentials from the CI environment; no credential belongs in
+# this repository.
+mac:
+  forceCodeSigning: true
+  notarize: true
