@@ -10413,3 +10413,70 @@ nul, sans IP ni mapping actif, au tarif configuré de 0,44 USD/h. Il n'a pas ét
 redémarré. P1 reprendra lorsque les deux machines physiques seront allumées :
 inspection avant mutation, puis installation rc67 et du candidat desktop
 qualifié sur chacune.
+
+## Qualification CUDA rc68 en préparation (13 août 2026, suite 11)
+
+Les deux machines physiques étant toujours hors ligne, le démarrage de l'ancien
+pod `j44wb04s5bi6rq` a été tenté deux fois par l'API REST RunPod officielle. Le
+provider a refusé les deux tentatives avec `not enough free GPUs on host`; le pod
+est resté `EXITED` et n'a pas été facturé. Un pod Secure A40 temporaire sans
+volume persistant, `ufhr69yag6nnip` (`fabi-rc67-e2e-temp`), a donc été créé au
+tarif réel de 0,44 USD/h. L'installateur officiel rc67 y a produit le manifeste
+attendu : CLI `f72d1118...`, moteur `797f93fa...`, Mesh `0.75.1`, ABI `0.1.35`
+et device CUDA. Aucun worker n'a été lancé et aucun token de compte du Mac n'a
+été copié sur ce pod.
+
+Le preflight natif a trouvé un défaut produit précis avant le téléchargement du
+modèle. Skippy voyait 47 708 110 848 octets CUDA sur le bus PCI
+`0000:ce:00.0`, tandis que NVML v2 annonçait 48 305 799 168 octets physiques et
+597 688 320 octets `reserved`. La différence était donc exactement la réserve
+système/pilote, mais rc67 ne comparait que les deux totaux avec une tolérance de
+1 % et rejetait à tort le même GPU. La documentation NVIDIA de
+[`nvmlMemory_v2_t`](https://docs.nvidia.com/deploy/nvml-api/structnvmlMemory__v2__t.html)
+confirme que `reserved` représente la mémoire réservée au système, au pilote ou
+au firmware.
+
+Le moteur V3 compare désormais le total Skippy soit au total physique NVML,
+soit à `total - reserved`, tout en continuant à résoudre le handle NVML par bus
+PCI et à mesurer la mémoire libre globale avec NVML. Il n'élargit donc pas
+arbitrairement la tolérance et continue à rejeter un autre adaptateur. Le test
+de régression reproduit les 570 Mio réservés de l'A40. Ruff, le formatage et
+`git diff --check` passent; la suite moteur complète donne `1060 passed,
+8 skipped`. Le module corrigé chargé temporairement sur le vrai pod résout
+`cuda:0`, le même bus PCI, 44,99 Gio physiques et 46 892 122 112 octets
+utilisables après réserve.
+
+Le correctif moteur est poussé sur `codex/swarm-protocol-v3` au commit
+`1c922f399d07bf1568bbaa4fcf75a4b8602a957d`. Le CLI `dev` épingle ce commit au
+SHA `694ed898af40169d25340eac912b97d6694e1316`; son test d'installation ciblé et
+son typecheck passent. Le méta-runtime `main` verrouille les deux révisions au
+commit `4d5a763812e2c77b24b13e2df9fcccf53ac116a6`; la cohérence du lock, les tests
+de bundling et les scripts d'installation passent localement. Le workflow de
+qualification manuelle multi-OS `31690557895` est entièrement vert sur ce SHA
+exact : transactions Linux/Windows, cohérence du lock et six archives macOS,
+Linux et Windows. L'archive candidate Linux CUDA porte le SHA-256
+`1b51887efc31176dfed50b326cc1de9d8f5227142d2c9525a56a556d222ee829`;
+son manifeste et sa source embarquent les pins et le correctif NVML exacts.
+Le tag `v2.7.0-rc68` pointe donc sur `4d5a763...`; son workflow de publication
+`31693125713` est en cours et doit encore être entièrement vert avant toute
+qualification officielle.
+
+Le micro-benchmark livré avec le runtime CUDA rc67 a séparément renvoyé
+`the provided PTX was compiled with an unsupported toolchain` sous le pilote
+570.195.03/CUDA 12.8. Ce signal ne doit être ni ignoré ni confondu avec le
+défaut NVML : l'initialisation réelle Skippy et l'énumération CUDA passent après
+le correctif, mais l'exécution de couches reste à qualifier avec le runtime
+officiel rc68 avant de revendiquer une route.
+
+Le pod temporaire a été arrêté dès la fin du diagnostic : `desiredStatus` est
+`EXITED`, sans IP, ports ni runtime actif. Le Mac local reste le seul worker du
+catalogue, sain sur le span autonome `[0,17)`, avec 32 768 tokens KV; le
+scheduler reste honnêtement à `structural_pipeline_ready=false`,
+`admission_ready=false` et contexte routable zéro. Le Mac mini et la RTX sont
+toujours `Online=false`, vus pour la dernière fois vers 07:51Z.
+
+Le candidat desktop suivant est `0.1.17`. Il épingle rc68, le CLI `694ed898...`
+et le moteur V3 `1c922f3...`. Avant push, les 102 tests `fabi-swarm`, les trois
+typechecks d'extensions, le build Electron et `git diff --check` passent. Cette
+préparation ne qualifie encore ni son packaging macOS/Windows, ni
+l'installation rc68, ni l'exécution CUDA de couches.
