@@ -10336,3 +10336,48 @@ arrêté (`EXITED`) et n'a jamais lancé de worker ; le swarm 32B ne possédait
 qu'un worker local `[0,11]` et aucune route admissible. Le premier travail est
 le correctif de chemins Windows et la CI desktop, suivi de la mise à niveau
 cohérente des trois machines et du vrai E2E distribué Qwen3-32B.
+
+## Desktop 0.1.16 qualifié sur macOS et Windows (13 août 2026, suite 9)
+
+Le défaut de chemins de logs décrit dans la passation est corrigé à la source,
+sans modifier ni normaliser les attentes des tests. La fonction reçoit une
+plateforme explicite : Darwin et Linux utilisent désormais `path.posix`, tandis
+que Windows utilise `path.win32`, y compris pour son fallback
+`%USERPROFILE%\\AppData\\Local`. Le correctif atomique est poussé sur
+`codex/rc49-product-e2e` au commit
+`2607758b289d062d09f7768ff9f2441a7e2fa8fd`.
+
+Preuves locales sur ce commit :
+
+- `yarn --cwd fabi-swarm test` avec Node 22 : 102 tests réussis, zéro échec ;
+- `yarn build:fabi-ext` : typecheck des trois extensions vert ;
+- `yarn build:electron` : bundles browser, node et Electron sans erreur ;
+- `git diff --check` vert ;
+- `docs/instruct.md` est resté vide, non suivi et non commité.
+
+Le workflow candidat exact `31687954089`, sur le même commit, est entièrement
+vert. Le job macOS arm64 a exécuté les 102 tests, construit le candidat signé
+ad hoc, vérifié le contrat natif et publié ses checksums. Le job Windows x64 a
+exécuté les mêmes 102 tests sur Windows, construit le NSIS, effectué
+l'installation silencieuse sans bureau, vérifié `Fabi.exe` et `app.asar`, puis
+publié ses checksums. Le défaut du run `31682951034` est donc réellement couvert
+sur l'OS qui l'avait révélé.
+
+Les deux artefacts du run ont été téléchargés séparément et tous les fichiers
+de chaque lot correspondent à leur `SHA256SUMS` :
+
+- DMG `Fabi-0.1.16-arm64.dmg`, 221 819 831 octets, SHA-256
+  `8d0bceecf8b00bd1c62e738adafd41f4e410890febb0945b2ee752560c0fdf8a` ;
+- installateur `Fabi-Setup-0.1.16-x64.exe`, 189 238 071 octets, SHA-256
+  `2ce800ba72f5afea811ee385bbbf36666e6aa87b2072fe04cc405d04d14310b3`.
+
+Cette preuve qualifie le packaging desktop 0.1.16 macOS/Windows et clôt le P0.
+Elle ne prétend pas qualifier l'interface Windows visible : ce gate exige
+toujours une vraie session utilisateur sur la RTX. Au contrôle suivant, le Mac
+local porte bien desktop 0.1.16 et runtime rc67/Metal avec les pins V3 exacts.
+Le scheduler public reste honnêtement non admissible avec un seul worker :
+`structural_pipeline_ready=false`, `admission_ready=false`, contexte routable
+zéro et `need_more_nodes=true`. Le Tailscale local est en `NeedsLogin`, la RTX
+est hors ligne et le Mac mini n'apparaît plus dans le tailnet du VPS. La suite
+reste donc P1 : retrouver et inspecter ces machines avant toute mutation, puis
+les aligner sur ce candidat et rc67 sans override.
