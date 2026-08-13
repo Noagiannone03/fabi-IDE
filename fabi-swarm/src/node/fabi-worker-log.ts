@@ -1,5 +1,5 @@
 import { homedir } from 'os';
-import { join, win32 as windowsPath } from 'path';
+import { posix as posixPath, win32 as windowsPath } from 'path';
 
 /** Resolve the worker log directory according to each platform's state layout. */
 export function workerLogDirectory(
@@ -8,7 +8,7 @@ export function workerLogDirectory(
     home: string = homedir()
 ): string {
     if (platform === 'darwin') {
-        return join(home, 'Library', 'Logs', 'Fabi');
+        return posixPath.join(home, 'Library', 'Logs', 'Fabi');
     }
     if (platform === 'win32') {
         return windowsPath.join(
@@ -17,5 +17,9 @@ export function workerLogDirectory(
             'logs'
         );
     }
-    return join(environment.XDG_STATE_HOME || join(home, '.local', 'state'), 'fabi', 'logs');
+    return posixPath.join(
+        environment.XDG_STATE_HOME || posixPath.join(home, '.local', 'state'),
+        'fabi',
+        'logs'
+    );
 }
