@@ -3,12 +3,13 @@
 Statut au 13 août 2026 : fondations implémentées mais dormantes, chemin produit
 non intégré, fonctionnalité désactivée et non qualifiée.
 
-Les commits moteur `f2d4a6b`, `70ae89d` et `0252247` exposent la vérification
-transactionnelle multi-token jusqu'au runner Python, rendent le nettoyage d'une
-route différée atomique et définissent les contrats V3 bornés/fenced. Ces
-fondations ne calculent pas encore le préfixe accepté dans le Request Agent, ne
-font aucun `commit-before-publish` et ne sont épinglées par aucun runtime public.
-La release qualifiée rc68 reste donc strictement en `target-only`.
+Les commits moteur `f2d4a6b`, `70ae89d`, `0252247` et `66a3e6d` exposent la
+vérification transactionnelle multi-token jusqu'au runner Python, rendent le
+nettoyage d'une route différée atomique, définissent les contrats V3
+bornés/fenced et produisent un plan exact du préfixe accepté/correctif. Ces
+fondations ne raccordent pas encore ce plan au journal durable du Request Agent
+et aux événements SSE ; elles ne sont épinglées par aucun runtime public. La
+release qualifiée rc68 reste donc strictement en `target-only`.
 
 Ce document définit l'accélération spéculative de Fabi V3. Elle ne doit pas
 modifier la distribution produite par le modèle cible, publier un token avant
@@ -221,7 +222,10 @@ avant une campagne reproductible sur les topologies produit.
    bornées, le fencing de route/epoch/digest et le rejet des réponses
    périmées/dupliquées ; le settlement du préfixe accepté reste au Request Agent ;
 3. intégrer `ngram-suffix` request-local, d'abord en shadow puis en opt-in ;
-4. implémenter journal commit-before-publish, stale drain et abort ;
+4. **partiel** — le plan de settlement calcule le préfixe accepté, le token
+   correctif/bonus, les stops et la frontière pipelinée, puis ne consomme la
+   réponse qu'après un callback durable réussi ; raccorder le journal du Request
+   Agent avant SSE, le stale drain et l'abort reste à faire ;
 5. ajouter télémétrie et contrôleur adaptatif avec baseline intercalée ;
 6. qualifier exactement output, panne et coût E2E ;
 7. activer progressivement le suffixe pour les modèles certifiés ;

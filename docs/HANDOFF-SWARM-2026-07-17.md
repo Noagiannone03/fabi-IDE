@@ -10622,12 +10622,15 @@ correctement verrouillée sur `En attente de peers`. La fermeture normale a
 arrêté les deux connexions frontend et tous les descendants sans kill. Le
 profil de test a été déplacé dans la Corbeille.
 
-L'updater stable reste séparé sur le worktree
-`/Users/noagiannone/Documents/fabi-ide-desktop-stable`, commit `a51304d...`.
-Il n'est pas fusionné dans 0.1.19 : aucun environnement GitHub
-`desktop-stable`, secret de signature de production ou feed signé servi par le
-VPS n'existe encore. Le 404 actuel du feed est fail-open et ne bloque pas le
-démarrage. P8 ne doit pas être déclaré terminé avant la chaîne signée complète.
+La chaîne stable préparée initialement dans le worktree
+`/Users/noagiannone/Documents/fabi-ide-desktop-stable` au commit `a51304d...`
+est portée sur la branche 0.1.19 au commit IDE `433cfa4...`. Ses 8 tests
+d'assembleur/configuration passent, l'installation Yarn figée hors-ligne passe
+et le workflow YAML est valide. Elle reste dormante : aucun environnement
+GitHub `desktop-stable`, secret de signature de production ou feed signé servi
+par le VPS n'existe encore. Le 404 actuel du feed est fail-open et ne bloque pas
+le démarrage. P8 ne doit pas être déclaré terminé avant la chaîne signée
+complète et un vrai saut depuis une version signée précédente.
 
 En parallèle, trois commits du moteur de développement ont avancé le décodage
 spéculatif sans l'activer : `f2d4a6b11b6115939dc0e19131b3b0ce77013055`
@@ -10639,6 +10642,13 @@ V3 bornés et fenced, avec identités request/route/epoch/digest/window, fenêtr
 monotones et rejet des réponses périmées ou dupliquées. MTP reste interdit dans
 ce chemin et une réponse terminale incomplète échoue fermée.
 
+Le commit moteur `66a3e6dc0312ff9990c38f703497f56c6a39471d` ajoute le
+settlement exact mais toujours non publié : acceptation complète avec bonus,
+rejet avec token correctif cible, stop/limite de sortie et chaînage des fenêtres
+par la prédiction de frontière Mesh 0.75.1. Une réponse n'est consommée qu'après
+réussite du callback durable ; un échec la laisse retentable et le verrouillage
+est isolé par requête.
+
 Le workflow moteur `31704963314` est entièrement vert sur macOS 15, Ubuntu et
 Windows : format/clippy, bindings Python, roue ABI3, bridge Skippy vérifié,
 contrats protocol V3, trust, discovery et intégration shadow. Il qualifie la
@@ -10646,7 +10656,7 @@ portabilité de ces fondations, pas leur activation E2E.
 
 Ces commits ne sont pas épinglés par le CLI, le méta-runtime, rc68 ou desktop
 0.1.19. Ils ne font encore ni settlement du préfixe accepté dans le Request
-Agent, ni transport inter-spans, ni proposer N-gram shadow, ni
+Agent/SQLite, ni transport inter-spans, ni proposer N-gram shadow, ni
 `commit-before-publish`, ni activation. La fonction publique reste donc
 strictement `target-only`, désactivée et non qualifiée. Les prochaines étapes
 sont le settlement durable avant SSE, stale drain/abort/replan, proposer

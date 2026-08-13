@@ -41,7 +41,7 @@ les anciennes applications l'utilisent pour refuser un installateur signé par
 une autre identité.
 
 Déclencher ensuite le workflow sur le SHA qualifié et fournir exactement la
-version de `electron-app/package.json`, par exemple `0.1.11`. Le workflow
+version de `electron-app/package.json`, par exemple `0.1.19`. Le workflow
 échoue avant le build si un secret, le publisher ou la version manque.
 
 ## Déploiement Caddy proposé
@@ -52,16 +52,16 @@ Conserver les versions sous un même bind mount, par exemple :
 
 ```text
 /home/debian/fabi-updates/stable/
-  releases/0.1.11/...
-  current -> releases/0.1.11
+  releases/0.1.19/...
+  current -> releases/0.1.19
 ```
 
-1. Télécharger le seul artefact `fabi-desktop-0.1.11-stable` du workflow.
-2. Copier son contenu dans `releases/.0.1.11.tmp`.
+1. Télécharger le seul artefact `fabi-desktop-0.1.19-stable` du workflow.
+2. Copier son contenu dans `releases/.0.1.19.tmp`.
 3. Exécuter `sha256sum --check SHA256SUMS` dans ce répertoire.
 4. Vérifier que `release-manifest.json` annonce la version attendue et que le
    répertoire ne contient aucun autre fichier.
-5. Renommer le répertoire temporaire en `releases/0.1.11`.
+5. Renommer le répertoire temporaire en `releases/0.1.19`.
 6. Créer un lien `.current-next`, puis remplacer `current` par renommage
    atomique. Tous les payloads et les deux métadonnées basculent ainsi dans la
    même opération.
@@ -89,7 +89,7 @@ Contrôles après bascule :
 curl -fsS https://server.undefinedstudio.fr/fabi-updates/stable/stable.yml
 curl -fsS https://server.undefinedstudio.fr/fabi-updates/stable/stable-mac.yml
 curl -fsSI -H 'Range: bytes=0-1023' \
-  https://server.undefinedstudio.fr/fabi-updates/stable/Fabi-0.1.11-arm64-mac.zip
+  https://server.undefinedstudio.fr/fabi-updates/stable/Fabi-0.1.19-arm64-mac.zip
 ```
 
 Enfin, qualifier un vrai saut depuis une version signée précédente : détection,
