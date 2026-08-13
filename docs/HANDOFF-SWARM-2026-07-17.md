@@ -10267,17 +10267,29 @@ Le correctif moteur est poussé en
 `git diff --check` verts. Un premier run complet sous contention Fabi avait
 refusé proprement un exécuteur MLX à zéro bloc KV; après fermeture normale de
 Fabi, ce test isolé puis la suite complète repassent. Le runtime rc67 a été
-commit/tag/push depuis `fabi/main` au commit `612f1bd`; ses workflows
-multi-OS sont en cours et aucun artefact rc67 n'est encore qualifié dans cette
-section.
+commit/tag/push depuis `fabi/main` au commit `612f1bd`. Le workflow tag exact
+`31680445896` est entièrement vert : lock et installateurs transactionnels,
+macOS arm64 MLX, Linux x64 CPU/CUDA, Linux arm64 CPU et Windows x64
+DirectML/CUDA. La release publique non draft `v2.7.0-rc67` contient les 27
+assets attendus, dont chaque archive, son sidecar, les décompresseurs autonomes
+et `install.sh`/`install.ps1`/`install.cmd`.
 
 Enfin, le launcher desktop écrivait ses logs worker dans le chemin macOS
 littéral sur Windows. Le candidat suivant utilise désormais les répertoires
 natifs : `~/Library/Logs/Fabi` sur macOS, `%LOCALAPPDATA%\\Fabi\\logs` sur
 Windows et `$XDG_STATE_HOME/fabi/logs` (ou `~/.local/state/fabi/logs`) sur
 Linux. Les tests `fabi-swarm` passent à 102/102 et le build Electron complet
-est vert. Le desktop est préparé en `0.1.16` avec les pins rc67 exacts, mais
-ne doit être poussé/packagé qu'après la réussite de la release rc67.
+est vert. Le desktop `0.1.16` avec les pins rc67 exacts est poussé au commit
+`ce3af0f04b426954b1c6f8fc703b42cec6926c8b`; son workflow candidat
+macOS/Windows `31682951034` est terminé en échec. Le job macOS arm64 est vert,
+mais Windows s'arrête avant le packaging : 100 tests sur 102 passent et deux
+assertions de `worker-log.test.js` montrent que la simulation Darwin/Linux
+utilise le séparateur natif Windows. Le contrat produit doit utiliser
+`path.posix` pour Darwin/Linux et `path.win32` pour Windows, sans affaiblir les
+assertions, puis les deux jobs doivent être rejoués. Le DMG macOS candidat a
+été vérifié séparément au SHA-256
+`582d30aa0fe190edf2c9c9b5ad3b0fa8214ff47295169cf7f4c9450cfb55b391`;
+aucun installateur Windows 0.1.16 n'a été produit par ce run.
 
 Le défaut d'affichage rapporté simultanément est désormais séparé en deux
 causes. La fenêtre blanche `hidden-probe`/`prefs-probe` provenait uniquement
@@ -10299,3 +10311,28 @@ annonce honnêtement `structural_pipeline_ready=false`,
 installation 0.1.16/rc67, retour réseau de la RTX ou worker RunPod temporaire,
 puis transitions verrouillé↔prêt, génération OpenCode, abort actif/FIFO et
 kill/replan froid.
+
+## Point de reprise complet et TODO ordonnée (13 août 2026, suite 8)
+
+Le contexte opérationnel complet a été figé dans
+`docs/CONTINUATION-FABI-V3-2026-08-13.md`. Il contient les révisions des quatre
+dépôts, l'architecture V3 à préserver, les accès au labo sans secrets en clair,
+l'état connu ou inconnu de chaque machine, les identifiants root3, les pièges
+des helpers de labo et une TODO P0 à P11 avec critères de réussite. Le prompt
+prêt à coller dans une nouvelle conversation se trouve dans
+`docs/NEXT-CONVERSATION-PROMPT-2026-08-13.md`.
+
+La conversation source complète reste uniquement en local dans
+`/Users/noagiannone/.codex/sessions/2026/07/20/rollout-2026-07-20T09-36-43-019f7e74-ac4e-7b52-b15b-9e0e3647a19e.jsonl`.
+Elle dépasse 350 Mo, contient des secrets et ne doit jamais être copiée dans
+Git. Une reprise doit l'interroger avec `rg` ou `tail` seulement si les docs ne
+suffisent pas.
+
+État final de cette passation : rc67 est une release runtime publique et
+entièrement verte ; le Mac local exécute rc67 avec le candidat macOS 0.1.16 et
+son smoke simple est vert ; le Mac mini et la RTX étaient hors ligne et leur
+état d'installation rc67 est inconnu ; le pod RunPod `j44wb04s5bi6rq` est
+arrêté (`EXITED`) et n'a jamais lancé de worker ; le swarm 32B ne possédait
+qu'un worker local `[0,11]` et aucune route admissible. Le premier travail est
+le correctif de chemins Windows et la CI desktop, suivi de la mise à niveau
+cohérente des trois machines et du vrai E2E distribué Qwen3-32B.
