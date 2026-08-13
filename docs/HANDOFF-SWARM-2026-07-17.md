@@ -10492,3 +10492,96 @@ checksums. Tous les fichiers téléchargés correspondent à leurs
 
 Ce gate qualifie le packaging 0.1.17, pas encore son installation avec rc68,
 une UI Windows interactive ni l'exécution CUDA de couches.
+
+## Runtime rc68, desktop 0.1.17 et exécution CUDA A40 qualifiés (13 août 2026, suite 12)
+
+Le workflow tag exact `31693125713` est entièrement vert. La release publique
+non draft et marquée prerelease
+[`v2.7.0-rc68`](https://github.com/Noagiannone03/fabi/releases/tag/v2.7.0-rc68)
+contient 27 assets non vides : les six archives de runtime et leurs sidecars,
+les décompresseurs autonomes et les trois installateurs. Le tag annoté pointe
+sur le commit runtime `4d5a763812e2c77b24b13e2df9fcccf53ac116a6` et embarque
+le CLI `694ed898af40169d25340eac912b97d6694e1316` ainsi que le moteur V3
+`1c922f399d07bf1568bbaa4fcf75a4b8602a957d`.
+
+Le Mac local a quitté normalement desktop 0.1.16 : Electron, le worker et le
+Request Agent ont tous terminé sans signal forcé. L'installateur public rc68 a
+vérifié son archive, sauvegardé rc67 sous
+`~/.local/share/fabi.backup-1786621178-20675`, puis installé le manifeste
+Metal exact : Mesh `0.75.1`, ABI `0.1.35`, CLI `694ed898...` et moteur
+`1c922f3...`. Le DMG qualifié 0.1.17 a été revérifié au SHA-256
+`c8e65185e0934564ca7af1951a79983098367cbb139d808815213e91b4177066`.
+L'ancien bundle reste récupérable sous
+`~/.Trash/Fabi-0.1.16-20260813-134008.app`; le nouveau bundle a été copié
+entièrement, jamais fusionné. Après relance, la version est 0.1.17,
+`codesign --deep --strict` passe, une seule fenêtre `1380x815` est visible et
+il existe exactement un worker Metal et un Request Agent descendants du
+backend.
+
+L'exécution CUDA officielle a été qualifiée sur un pod RunPod Secure A40
+éphémère sans volume persistant, `fxlsc5stofevtr`, au tarif réel de 0,44
+USD/h. Un premier choix A40/A6000 à 0,53 USD/h avait été refusé par le
+garde-fou puis immédiatement arrêté avant usage. Le pod retenu a installé
+`v2.7.0-rc68` depuis la release publique; son manifeste portait les mêmes pins,
+Skippy/Mesh `0.75.1`, ABI `0.1.35` et CUDA. L'initialisation produit a résolu
+`cuda:0`, le bus PCI `0000:57:00.0`, 47 428 993 024 octets disponibles NVML
+et 46 892 122 112 octets utilisables après réserve. Le défaut NVML de rc67 est
+donc fermé sur le vrai matériel.
+
+Le worker temporaire a utilisé le profil public root3 exact : racine TUF
+`322767d6...` revérifiée, transport Iroh, relay public, DHT client,
+coordination client, placement autonome et aucun span manuel. Son EndpointId
+stable `9dc30164...` a été accepté au premier essai, avec environ 36 à 39 ms de
+RTT relay. Le coordinateur a choisi seul `[0,64)` à 32 768 tokens, car l'A40
+peut porter une réplique quantifiée complète. Le téléchargement a ciblé
+exclusivement le dépôt de couches
+`meshllm/Qwen3-32B-UD-Q4_K_XL-layers`, jamais les poids Safetensors/FP16 du
+modèle logique.
+
+Pour réduire la location, 48 couches déjà présentes dans le cache sélectif du
+Mac ont été préchauffées sur le pod. Deux interruptions `rsync --partial`
+avaient toutefois laissé `layer-010` et `layer-047` tronquées sous leur nom de
+blob final. Le moteur les a refusées avant chargement avec un
+`artifact size mismatch`; ce rejet fail-closed est conservé comme preuve et
+n'a pas été attribué à CUDA. Les deux sources locales ont été vérifiées par
+taille et SHA-256, retransférées atomiquement, puis les 67 objets LFS signés
+(64 couches et trois objets partagés) ont été relus intégralement sur le pod :
+`67/67`, zéro taille ou hash invalide. Les couches 048 à 063 téléchargées en
+parallèle ont également été vérifiées individuellement avant renommage dans le
+cache.
+
+Sur ce cache entièrement audité, le même join autonome a résolu les 68 fichiers
+en quelques millisecondes. Skippy a chargé 18 671,19 Mio de poids et 8 192 Mio
+de KV sur `CUDA0`, offloadé les 65 couches natives, publié 65 536 tokens KV
+pour deux requêtes puis annoncé :
+
+- exécuteur prêt sur les couches `[0,64)`, device `cuda:0` ;
+- plan `skippy-ud-q4-k-xl-v1`, contexte 32 768 et prefill local 512 tokens ;
+- aucune erreur PTX pendant le vrai chargement ou l'inférence.
+
+Le micro-benchmark rc67 qui signalait un PTX produit par une toolchain non
+supportée n'est donc pas représentatif du chemin produit rc68 sur ce pilote.
+Une vraie requête OpenAI non-streaming a été envoyée au Request Agent loopback
+0.1.17 avec le token persistant du compte local contributeur. La seule route
+complète était l'A40 `[0,64)`; le Mac local ne portait que `[0,12)`. Résultat :
+HTTP 200 en 2 s, 28 tokens prompt, 12 tokens de sortie et contenu
+`FABI RC68 CUDA OK`. Après la réponse, `active_routes=[]`, aucun échec récent,
+les réservations KV étaient revenues à zéro et le scheduler publiait
+`structural_pipeline_ready=true`, `admission_ready=true`, contexte 32 768.
+
+Le worker CUDA a ensuite été arrêté proprement, puis le pod. Les trois pods
+temporaires `fxlsc5stofevtr`, `u1tnygxi1gijpm` et `ufhr69yag6nnip` sont tous
+confirmés `EXITED`, `runtime=null`, sans IP ni ports actifs. La disparition de
+la route a suivi la soft-state DHT : le Request Agent local a d'abord vu le
+contexte tomber à zéro, puis le scheduler et le Registry ont convergé après
+l'expiration de la lease signée. L'état public final est honnête : un seul
+peer Mac `[0,12)`, `schedulerStatus=waiting`, `pipelineReady=false`,
+`routingReady=false`, `needMoreNodes=true` et contexte zéro. Une requête après
+retrait échoue proprement en HTTP 503 `server_not_ready` en une seconde.
+
+Ce jalon qualifie la publication rc68, l'installation locale 0.1.17/rc68, le
+paquet sélectif, le backend CUDA et une génération OpenAI réelle. Il ne
+qualifie toujours pas P1 : le Mac mini et la RTX physique restent hors ligne,
+leur installation 0.1.17/rc68 est inconnue et aucune UI Windows interactive
+n'est revendiquée. Les gates distribués à plusieurs machines physiques,
+OpenCode/outils, abort/FIFO, churn et `replan_cold` restent à exécuter.
