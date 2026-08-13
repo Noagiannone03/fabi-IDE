@@ -10478,5 +10478,17 @@ toujours `Online=false`, vus pour la dernière fois vers 07:51Z.
 Le candidat desktop suivant est `0.1.17`. Il épingle rc68, le CLI `694ed898...`
 et le moteur V3 `1c922f3...`. Avant push, les 102 tests `fabi-swarm`, les trois
 typechecks d'extensions, le build Electron et `git diff --check` passent. Cette
-préparation ne qualifie encore ni son packaging macOS/Windows, ni
-l'installation rc68, ni l'exécution CUDA de couches.
+préparation est poussée au commit exact
+`386154b14b8009e82d559edc479b424292e0c3b4`. Son workflow candidat
+`31693302588` est entièrement vert : tests produit, DMG macOS arm64 signé ad
+hoc, NSIS Windows x64, installation silencieuse Windows, contrats natifs et
+checksums. Tous les fichiers téléchargés correspondent à leurs
+`SHA256SUMS` :
+
+- `Fabi-0.1.17-arm64.dmg`, 221 819 493 octets, SHA-256
+  `c8e65185e0934564ca7af1951a79983098367cbb139d808815213e91b4177066` ;
+- `Fabi-Setup-0.1.17-x64.exe`, 189 238 314 octets, SHA-256
+  `fe91d89d7c9f43fb7e348caadc8e0b15bdc7b1d6012903fe07631cafb6c2b4e5`.
+
+Ce gate qualifie le packaging 0.1.17, pas encore son installation avec rc68,
+une UI Windows interactive ni l'exécution CUDA de couches.
