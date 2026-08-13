@@ -33,7 +33,9 @@ jobs:
         run: yarn install --frozen-lockfile --network-timeout 600000
 
       - name: Test the Fabi product contract
-        run: yarn --cwd fabi-swarm test
+        run: |
+          yarn --cwd fabi-swarm test
+          yarn --cwd fabi-spaces test
 
       - name: Build the ad-hoc signed Apple Silicon candidate
         run: yarn --cwd electron-app package:mac
@@ -141,7 +143,9 @@ jobs:
 
       - name: Test the Fabi product contract
         shell: bash
-        run: yarn --cwd fabi-swarm test
+        run: |
+          yarn --cwd fabi-swarm test
+          yarn --cwd fabi-spaces test
 
       - name: Build the NSIS installer
         shell: bash

@@ -21,6 +21,7 @@ import {
 import { MaestroHostIpc } from 'fabi-swarm/lib/common/fabi-maestro-protocol';
 import { SpaceStore } from './space-store';
 import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './frontend-url';
+import { attachNativeView, reattachNativeView } from './native-view-layout';
 
 /** Largeur du rail au repos (colonne d'icônes d'espaces), en px CSS. */
 const RAIL_COLLAPSED = 52;   // = largeur réelle de la colonne de tuiles (8+5+34+5) → l'explorateur est COLLÉ au rail, plus de vide à droite
@@ -214,8 +215,7 @@ export class SpaceManager {
         name: string,
         load: () => Promise<void>
     ): Promise<void> {
-        view.setBounds(bounds);
-        this.host.contentView.addChildView(view);
+        attachNativeView(this.host.contentView, view, bounds);
         const ready = load().then(() => this.ensureViewport(view, bounds, name));
         this.viewReady.set(view, ready);
         return ready;
@@ -236,9 +236,7 @@ export class SpaceManager {
             `[fabi-spaces] viewport ${name} désynchronisé ` +
             `${viewport.width}x${viewport.height} (attendu ${bounds.width}x${bounds.height}) — rattachement natif`
         );
-        this.host.contentView.removeChildView(view);
-        view.setBounds(bounds);
-        this.host.contentView.addChildView(view);
+        reattachNativeView(this.host.contentView, view, bounds);
         view.webContents.invalidate();
 
         const repaired = await view.webContents.executeJavaScript(
