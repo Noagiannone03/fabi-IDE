@@ -10381,3 +10381,35 @@ zéro et `need_more_nodes=true`. Le Tailscale local est en `NeedsLogin`, la RTX
 est hors ligne et le Mac mini n'apparaît plus dans le tailnet du VPS. La suite
 reste donc P1 : retrouver et inspecter ces machines avant toute mutation, puis
 les aligner sur ce candidat et rc67 sans override.
+
+## P1 partiel : Mac local aligné, machines distantes hors ligne (13 août 2026, suite 10)
+
+Le DMG qualifié du workflow `31687954089` a été installé sur le Mac local après
+une fermeture normale de Fabi. Le processus Electron principal est sorti le
+premier ; le backend, le worker et le Request Agent ont ensuite tous terminé
+sur leur cycle de vie propre avant la copie. Aucun processus n'a été tué. Le
+bundle précédent a été déplacé de manière récupérable vers
+`~/.Trash/Fabi-0.1.16-before-qualified-2607758-20260813T120207.app`, puis le
+nouveau bundle a été copié intégralement, jamais fusionné par-dessus.
+
+Après relance normale, les preuves locales sont : version 0.1.16, signature ad
+hoc valide sous `codesign --deep --strict`, une seule fenêtre Fabi de
+`1380x815`, exactement un worker et un Request Agent descendants du backend,
+runtime rc67/Metal et pins V3 exacts. L'`app.asar` installé contient bien le
+contrat qualifié : `path.posix.join` pour Darwin/Linux et `path.win32.join`
+pour Windows. Les logs du worker restent dans `~/Library/Logs/Fabi`.
+
+L'authentification Tailscale locale a été restaurée avec la configuration SSH
+existante ; le Mac local est revenu `Running` à l'adresse `100.87.41.91`.
+Cette restauration administrative n'a pas changé le résultat matériel :
+`mac-mini-projet-ia` (`100.76.201.20`) et `pc-windows-projet-ia`
+(`100.105.234.82`) sont tous deux `Online=false`, vus pour la dernière fois
+vers 07:51Z. Les probes SSH depuis le Mac local et depuis le VPS expirent. Aucun
+état d'installation distant et aucune UI Windows ne sont donc revendiqués.
+
+Le pod de secours `j44wb04s5bi6rq` a été interrogé en lecture seule via l'API
+REST RunPod officielle et le token du Trousseau : il reste `EXITED`, runtime
+nul, sans IP ni mapping actif, au tarif configuré de 0,44 USD/h. Il n'a pas été
+redémarré. P1 reprendra lorsque les deux machines physiques seront allumées :
+inspection avant mutation, puis installation rc67 et du candidat desktop
+qualifié sur chacune.
