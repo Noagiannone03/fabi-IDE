@@ -10649,18 +10649,66 @@ par la prédiction de frontière Mesh 0.75.1. Une réponse n'est consommée qu'a
 réussite du callback durable ; un échec la laisse retentable et le verrouillage
 est isolé par requête.
 
+Le commit `42ea774c82e218770738a7a86dec5d0dfbccfa83` conserve le digest
+du payload de plan signé dans chaque `CommittedRoute`, y compris après renewal,
+et ajoute un bridge durable greedy-only : position exacte avant/après le lot,
+commit atomique avant retour et rejet du sampling non greedy tant que les
+positions RNG ne sont pas fenced. Son workflow `31706854054` est vert sur les
+trois OS. Le commit `9ca081302974f967b8a4698c83da5087fbdbed78` ajoute un
+RPC Iroh de vérification non enregistré, borné et authentifié par
+request/route/epoch/digest ; son workflow `31707557957` est également vert sur
+macOS, Linux et Windows.
+
+Le commit `e744d9efb5cb4645a24bbb83cac16a61feca5977` ajoute enfin l'opt-in
+registre : un plan Skippy n'annonce aucune spéculation par défaut. Une opération
+opérateur explicite peut certifier le suffix proposer Mesh, uniquement greedy,
+avec ABI, version du proposer, taille maximale et primitives
+verify/checkpoint/trim signées. Cette certification change l'identité du swarm
+sans reconstruire les artefacts et se compose avec la certification warm-state.
+Aucun bundle public n'utilise ce champ. Son workflow `31708263526` est vert sur
+les trois OS.
+
+Le commit `736a7616ae56f59b0521f171fa1ce037a5b10521` branche le fence
+request-local au lifecycle : replan froid, expiration de lease et release
+suppriment les fenêtres en vol avant le changement d'autorité, puis une requête
+retirée refuse tout travail tardif. Son workflow `31708965034` est vert sur les
+trois OS. Le commit `00e69bdbf0d61b4213f92e105bc1759d4c9c2c0e` raccorde un
+plan vérifié au journal SQLite du frontend Request Agent : commit atomique à la
+position de base signée, observation checkpoint après commit et retour du plan
+encore non publié seulement après durabilité. Son workflow `31709676319` est
+également vert sur macOS, Linux et Windows.
+
+Le commit `72de6071338d5f313d921a587ab6cc3e38c1ff99` ajoute les contrats de
+télémétrie sans prompt, token brut ou sortie, ainsi qu'un contrôleur dormant à
+agrégats bornés. Il compare le coût E2E par token committé à une baseline
+`target-only`, exige une borne prudente meilleure, respecte la taille signée,
+applique un cooldown en commits, retombe immédiatement en target-only lors
+d'une régression et oublie les mesures lors d'un changement de
+route/epoch/modèle/sampling. Son workflow `31710379960` est vert sur les trois
+OS.
+
+L'audit de la révision Mesh épinglée `3295c902d4c4f859aaadf9240042ffdaf06dd07e`
+confirme que `NgramProposalConfig` et `NgramProposerKind` sont publics, mais que
+`SuffixNgramProposer`, `HistoryNgramProposer` et le wrapper standalone restent
+respectivement `pub(super)` ou `pub(in crate::frontend)`. Le runner Fabi sait
+vérifier/rollback sur un span, mais une vérification de route complète doit
+transporter les activations à travers tous les spans et conserver un seul
+arbitre de publication. Il ne faut donc ni recopier le proposer en Python, ni
+enregistrer le RPC sur un seul worker : exposer le proposer Mesh maintenu, puis
+ajouter l'orchestrateur multi-span et son shadow request-local.
+
 Le workflow moteur `31704963314` est entièrement vert sur macOS 15, Ubuntu et
 Windows : format/clippy, bindings Python, roue ABI3, bridge Skippy vérifié,
 contrats protocol V3, trust, discovery et intégration shadow. Il qualifie la
 portabilité de ces fondations, pas leur activation E2E.
 
 Ces commits ne sont pas épinglés par le CLI, le méta-runtime, rc68 ou desktop
-0.1.19. Ils ne font encore ni settlement du préfixe accepté dans le Request
-Agent/SQLite, ni transport inter-spans, ni proposer N-gram shadow, ni
-`commit-before-publish`, ni activation. La fonction publique reste donc
-strictement `target-only`, désactivée et non qualifiée. Les prochaines étapes
-sont le settlement durable avant SSE, stale drain/abort/replan, proposer
-request-local, manifeste signé, télémétrie/contrôleur, parité greedy et
-statistique, puis benchmarks Mac mini + RTX + seconde route. Les deux machines
-physiques étant toujours hors ligne, ces gates matériels restent à reprendre à
-leur retour ; aucun pod payant n'est actif.
+0.1.19. Ils ne fournissent encore ni exécuteur derrière le RPC, ni proposer
+N-gram shadow, ni encodage SSE depuis le plan durable, ni drainage réseau borné,
+ni mesures réelles alimentant le contrôleur, ni activation. La fonction
+publique reste donc strictement `target-only`, désactivée et non qualifiée. Les
+prochaines étapes sont l'exécuteur RPC, le proposer request-local, le chemin
+commit→SSE, la télémétrie réelle/baseline intercalée, la parité greedy et
+statistique, puis les benchmarks Mac mini + RTX + seconde route. Les deux
+machines physiques étant toujours hors ligne, ces gates matériels restent à
+reprendre à leur retour ; aucun pod payant n'est actif.
