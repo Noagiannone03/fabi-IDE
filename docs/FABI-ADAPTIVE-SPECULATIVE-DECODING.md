@@ -1,6 +1,14 @@
 # Fabi Adaptive Speculative Decoding
 
-Statut : design candidat, non implémenté et non qualifié.
+Statut au 13 août 2026 : fondations implémentées mais dormantes, chemin produit
+non intégré, fonctionnalité désactivée et non qualifiée.
+
+Les commits moteur `f2d4a6b`, `70ae89d` et `0252247` exposent la vérification
+transactionnelle multi-token jusqu'au runner Python, rendent le nettoyage d'une
+route différée atomique et définissent les contrats V3 bornés/fenced. Ces
+fondations ne calculent pas encore le préfixe accepté dans le Request Agent, ne
+font aucun `commit-before-publish` et ne sont épinglées par aucun runtime public.
+La release qualifiée rc68 reste donc strictement en `target-only`.
 
 Ce document définit l'accélération spéculative de Fabi V3. Elle ne doit pas
 modifier la distribution produite par le modèle cible, publier un token avant
@@ -27,7 +35,8 @@ Le runtime Mesh/Skippy piné expose déjà :
 - `verify_tokens_frame_sampled`, qui vérifie plusieurs tokens dans une seule
   passe et renvoie les prédictions du modèle cible ;
 - `VerifySpan`, `PredictedTokens` et les identifiants de fenêtre ;
-- le rewind positionnel des sessions et la purge du travail pipeliné périmé ;
+- le trim positionnel des sessions, la retraite explicite des checkpoints et la
+  purge du travail pipeliné périmé ;
 - MTP natif lorsque le package signé du modèle le déclare ;
 - un cache N-gram llama.cpp et un proposer longest-suffix request-local ;
 - les métriques de fenêtre, acceptation, attente, compute et stale execution.
@@ -43,7 +52,8 @@ Références primaires :
   <https://gradient.network/blog/turning-latency-into-throughput-speculative-decoding-for-the-decentralized-inference>
 - documentation et code vLLM maintenus :
   <https://github.com/vllm-project/vllm/blob/main/docs/features/speculative_decoding/README.md>
-- code Mesh/Skippy exact piné par Fabi : commit `e60b2fe…`, notamment
+- code Mesh/Skippy exact piné par le moteur de développement : Mesh `0.75.1`,
+  ABI `0.1.35`, commit `3295c902…`, notamment
   `crates/skippy-runtime/src/activation.rs` et
   `crates/skippy-server/src/frontend/embedded_generation.rs`.
 
@@ -116,7 +126,7 @@ Le contrôleur est request-local et route-aware. Il observe en continu :
 - tokens committés par seconde et inter-token latency E2E ;
 - sampling, famille du modèle, longueur de contexte et répétitivité locale.
 
-Skippy `0.74.0` fournit déjà un ajustement local de fenêtre : il démarre à
+Skippy `0.75.1` fournit déjà un ajustement local de fenêtre : il démarre à
 `min(4, maximum)`, grandit d'un token après une fenêtre entièrement acceptée
 ou un rejet en queue, et rétrécit après un rejet précoce. Fabi conserve cette
 primitive dans l'exécuteur, mais ne la traite pas comme une politique produit
@@ -204,9 +214,12 @@ avant une campagne reproductible sur les topologies produit.
 
 ## Ordre d'implémentation
 
-1. exposer `verify_tokens_frame_sampled` et le résultat multi-token dans
+1. **fait, dormant** — exposer `verify_tokens_frame_sampled`, le résultat
+   multi-token, la retraite du checkpoint et le rollback KV dans
    `fabi-skippy-runtime`, PyO3 et les tests ABI tri-OS ;
-2. ajouter la fenêtre V3 fenced et ses limites de sérialisation ;
+2. **fondation faite** — ajouter les requêtes/réponses de vérification V3
+   bornées, le fencing de route/epoch/digest et le rejet des réponses
+   périmées/dupliquées ; le settlement du préfixe accepté reste au Request Agent ;
 3. intégrer `ngram-suffix` request-local, d'abord en shadow puis en opt-in ;
 4. implémenter journal commit-before-publish, stale drain et abort ;
 5. ajouter télémétrie et contrôleur adaptatif avec baseline intercalée ;

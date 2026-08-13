@@ -10585,3 +10585,72 @@ qualifie toujours pas P1 : le Mac mini et la RTX physique restent hors ligne,
 leur installation 0.1.17/rc68 est inconnue et aucune UI Windows interactive
 n'est revendiquée. Les gates distribués à plusieurs machines physiques,
 OpenCode/outils, abort/FIFO, churn et `replan_cold` restent à exécuter.
+
+## Desktop 0.1.19 et fondations spéculatives dormantes (13 août 2026, suite 13)
+
+Le test multi-Space du paquet 0.1.17 a révélé que l'attachement initial d'une
+`WebContentsView` pouvait masquer la surface active. L'ordre d'attachement a
+été corrigé au commit IDE `6249e872ca36fff617d3b4b8d43c00212cb62e2c` et le
+candidat 0.1.18 a validé un parcours réel A→B→A. Un second défaut, visible sous
+la forme d'une boîte Theia « Restart » au démarrage, a ensuite été reproduit
+avec un profil isolé portant `"window.titleBarStyle": "native"`. Ce n'était
+ni un crash, ni le moteur IA, ni l'updater : Fabi migrait ce réglage vers
+`custom` après le branchement du listener frontend, alors que les Spaces ont
+besoin de la barre personnalisée pour leurs vues Electron.
+
+Le commit IDE `b20cf0bd9721f2912cda14943a1374e4a177a6ea` effectue désormais la
+migration JSONC avant le frontend, préserve commentaires et autres préférences,
+laisse un fichier invalide intact et définit `custom` comme valeur Electron par
+défaut. Les 102 tests `fabi-swarm`, les 7 tests `fabi-spaces` et le build
+Electron passent. Le workflow officiel `31704075488` est entièrement vert sur
+macOS et Windows, installation NSIS silencieuse incluse. Les artefacts vérifiés
+sont :
+
+- `Fabi-0.1.19-arm64.dmg`, 221 841 356 octets, SHA-256
+  `ea80dfd759afd58747588f485dced6f87d4393aa3fe779d58bd7537c10aad2e9` ;
+- `Fabi-Setup-0.1.19-x64.exe`, 189 254 031 octets, SHA-256
+  `015a7ba8fc7937b5be0a9066e6c258b9a57c618ab5d122201fcd09c677d922aa`.
+
+Le DMG arm64 porte le bundle `fr.undefinedstudio.fabi`, passe
+`codesign --deep --strict` et a remplacé localement 0.1.18, conservé de manière
+récupérable sous
+`~/.Trash/Fabi-0.1.18-before-0.1.19-20260813.app`. Un démarrage du paquet
+installé avec un `THEIA_CONFIG_DIR` isolé et volontairement ancien a prouvé que
+la migration se produit avant le boot frontend. CDP a trouvé zéro boîte de
+dialogue au démarrage et pendant A→B→A, les deux shells chargés et l'IA
+correctement verrouillée sur `En attente de peers`. La fermeture normale a
+arrêté les deux connexions frontend et tous les descendants sans kill. Le
+profil de test a été déplacé dans la Corbeille.
+
+L'updater stable reste séparé sur le worktree
+`/Users/noagiannone/Documents/fabi-ide-desktop-stable`, commit `a51304d...`.
+Il n'est pas fusionné dans 0.1.19 : aucun environnement GitHub
+`desktop-stable`, secret de signature de production ou feed signé servi par le
+VPS n'existe encore. Le 404 actuel du feed est fail-open et ne bloque pas le
+démarrage. P8 ne doit pas être déclaré terminé avant la chaîne signée complète.
+
+En parallèle, trois commits du moteur de développement ont avancé le décodage
+spéculatif sans l'activer : `f2d4a6b11b6115939dc0e19131b3b0ce77013055`
+expose la vérification transactionnelle multi-token, la retraite explicite du
+checkpoint et le trim KV via Rust, PyO3 et le runner Python ;
+`70ae89deabfc2cd08b71ef0a05f6e3f461607305` rend atomique le nettoyage d'une
+route différée ; `02522473ef73470d44486915eca9963f2b179411` ajoute les contrats
+V3 bornés et fenced, avec identités request/route/epoch/digest/window, fenêtres
+monotones et rejet des réponses périmées ou dupliquées. MTP reste interdit dans
+ce chemin et une réponse terminale incomplète échoue fermée.
+
+Le workflow moteur `31704963314` est entièrement vert sur macOS 15, Ubuntu et
+Windows : format/clippy, bindings Python, roue ABI3, bridge Skippy vérifié,
+contrats protocol V3, trust, discovery et intégration shadow. Il qualifie la
+portabilité de ces fondations, pas leur activation E2E.
+
+Ces commits ne sont pas épinglés par le CLI, le méta-runtime, rc68 ou desktop
+0.1.19. Ils ne font encore ni settlement du préfixe accepté dans le Request
+Agent, ni transport inter-spans, ni proposer N-gram shadow, ni
+`commit-before-publish`, ni activation. La fonction publique reste donc
+strictement `target-only`, désactivée et non qualifiée. Les prochaines étapes
+sont le settlement durable avant SSE, stale drain/abort/replan, proposer
+request-local, manifeste signé, télémétrie/contrôleur, parité greedy et
+statistique, puis benchmarks Mac mini + RTX + seconde route. Les deux machines
+physiques étant toujours hors ligne, ces gates matériels restent à reprendre à
+leur retour ; aucun pod payant n'est actif.
