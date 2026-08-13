@@ -6,6 +6,8 @@ lib
 !*-app/package.json
 !electron-app/product.json
 !electron-app/electron-builder.yml
+!electron-app/electron-builder.mac-release.yml
+!electron-app/electron-builder.win-release.yml
 !electron-app/resources/
 !electron-app/resources/**
 
