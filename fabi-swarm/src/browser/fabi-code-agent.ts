@@ -36,7 +36,7 @@ import { FABI_CODE_MODES, normalizeFabiCodeMode } from '../common/fabi-code-mode
 import {
     FABI_CODE_PERMISSION_MODE_SETTING, normalizeFabiCodePermissionMode
 } from '../common/fabi-code-permission-mode';
-import { FabiChatTurnQueue } from '../common/fabi-chat-turn-queue';
+import { FabiCodeTurnEventGate } from '../common/fabi-code-turn-event-gate';
 
 /** Id stable du provider/agent Fabi (référencé par DefaultChatAgentId). */
 export const FABI_CODE_AGENT_ID = 'fabi-code';
@@ -79,13 +79,6 @@ export class FabiCodeAgent implements ChatAgent {
     protected readonly sessions = new Map<string, string>();
     /** Créations en cours (évite les doublons sur invocations concurrentes). */
     protected readonly creating = new Map<string, Promise<string>>();
-    /**
-     * Portes de rendu par session : deux réponses d'une même session OpenCode
-     * ne montent jamais leurs abonnements SSE simultanément. Les autres chats
-     * s'inscrivent immédiatement dans la FIFO backend afin de conserver leur
-     * véritable ordre d'arrivée global, y compris entre plusieurs renderers.
-     */
-    protected readonly sessionTurnQueues = new Map<string, FabiChatTurnQueue>();
     /** Session OpenCode déjà créée pour une session Theia ouverte. */
     getOpenCodeSessionId(theiaSessionId: string): string | undefined {
         return this.sessions.get(theiaSessionId);
@@ -212,46 +205,10 @@ export class FabiCodeAgent implements ChatAgent {
     }
 
     async invoke(request: MutableChatRequestModel): Promise<void> {
-        const progressId = `fabi-queued:${request.id}`;
-        const sessionId = request.session.id;
-        const turnQueue = this.sessionTurnQueues.get(sessionId) ?? new FabiChatTurnQueue();
-        this.sessionTurnQueues.set(sessionId, turnQueue);
-        const ticket = turnQueue.enqueue(request.id, position => {
-            if (position > 0) {
-                request.response.addProgressMessage({
-                    id: progressId,
-                    content: `En attente · position ${position}`,
-                    status: 'inProgress',
-                    show: 'untilFirstContent'
-                });
-            }
-        });
-        const waitCancellation = request.response.cancellationToken.onCancellationRequested(() => {
-            if (!ticket.active) {
-                ticket.cancel();
-            }
-        });
-
-        const admitted = await ticket.ready;
-        waitCancellation.dispose();
-        if (!admitted || request.response.cancellationToken.isCancellationRequested) {
-            ticket.finish();
-            if (turnQueue.size === 0) {
-                this.sessionTurnQueues.delete(sessionId);
-            }
-            return;
-        }
-        try {
-            await this.invokeActive(request);
-        } finally {
-            ticket.finish();
-            if (turnQueue.size === 0) {
-                this.sessionTurnQueues.delete(sessionId);
-            }
-        }
+        await this.invokeActive(request);
     }
 
-    /** Exécute le seul tour admis de cette conversation. */
+    /** Inscrit immédiatement ce tour dans l'unique FIFO backend de l'installation. */
     protected async invokeActive(request: MutableChatRequestModel): Promise<void> {
         const response = request.response;
         // Le contenu se pousse sur le ChatResponseImpl interne (response.response) ;
@@ -259,6 +216,11 @@ export class FabiCodeAgent implements ChatAgent {
         const out = response.response;
         const dir = this.workspaceDir();
         const userText = (request.request.text ?? '') + this.contextNote(request);
+
+        if (response.cancellationToken.isCancellationRequested) {
+            response.complete();
+            return;
+        }
 
         // Sauvegarde les buffers modifiés AVANT le tour : les outils d'OpenCode
         // lisent les fichiers sur le disque → ils doivent voir l'état courant.
@@ -277,6 +239,10 @@ export class FabiCodeAgent implements ChatAgent {
         }
 
         const token = response.cancellationToken;
+        if (token.isCancellationRequested) {
+            response.complete();
+            return;
+        }
 
         return new Promise<void>(resolve => {
             // Texte/raisonnement cumulatif par part → on n'ajoute que le delta
@@ -286,6 +252,7 @@ export class FabiCodeAgent implements ChatAgent {
             // terminer toute carte encore animée lors d'une vraie fin/erreur.
             const activeCards = new Map<string, ToolCallChatResponseContentImpl>();
             let settled = false;
+            const turnGate = new FabiCodeTurnEventGate(request.id, ocSession);
             let goalSub: { dispose(): void } = { dispose: () => undefined };
             const queueProgressId = `fabi-queued:${request.id}`;
             const mode = normalizeFabiCodeMode(request.request.modeId);
@@ -396,7 +363,7 @@ export class FabiCodeAgent implements ChatAgent {
             };
 
             const partSub = this.engine.onPartEvent(part => {
-                if (part.sessionId !== ocSession || settled) {
+                if (!turnGate.accepts(part.sessionId) || settled) {
                     return;
                 }
                 // Ne pas réafficher l'écho du message utilisateur dans la réponse.
@@ -421,13 +388,13 @@ export class FabiCodeAgent implements ChatAgent {
             });
 
             const doneSub = this.engine.onTurnDoneEvent(e => {
-                if (e.sessionId === ocSession) {
+                if (turnGate.accepts(e.sessionId)) {
                     finish(e.error);
                 }
             });
 
             const queueSub = this.engine.onTurnQueueChangedEvent(state => {
-                if (state.turnId !== request.id || settled || state.state === 'released') {
+                if (!turnGate.update(state) || settled || state.state === 'released') {
                     return;
                 }
                 response.addProgressMessage({
@@ -454,7 +421,7 @@ export class FabiCodeAgent implements ChatAgent {
             // confirmation native de la carte ToolCall de Theia : on attend le
             // choix de l'utilisateur, puis on répond à OpenCode.
             const permSub = this.engine.onPermissionAskedEvent(async p => {
-                if ((p.rootSessionId ?? p.sessionId) !== ocSession || settled) {
+                if (!turnGate.accepts(p.rootSessionId ?? p.sessionId) || settled) {
                     return;
                 }
                 const card = new ToolCallChatResponseContentImpl(
@@ -485,7 +452,7 @@ export class FabiCodeAgent implements ChatAgent {
             });
 
             const questionSub = this.engine.onQuestionAskedEvent(async question => {
-                if ((question.rootSessionId ?? question.sessionId) !== ocSession || settled) {
+                if (!turnGate.accepts(question.rootSessionId ?? question.sessionId) || settled) {
                     return;
                 }
                 const card = new ToolCallChatResponseContentImpl(
@@ -517,7 +484,7 @@ export class FabiCodeAgent implements ChatAgent {
             // Capte l'id du message utilisateur de CE tour (1er message.updated
             // role:user) → stocké sur la requête pour les checkpoints (revert/delete).
             const userMsgSub = this.engine.onUserMessageEvent(e => {
-                if (e.sessionId !== ocSession) {
+                if (!turnGate.accepts(e.sessionId)) {
                     return;
                 }
                 // Mémorise l'id du message utilisateur → on filtre son écho (cf. partSub).
@@ -529,7 +496,7 @@ export class FabiCodeAgent implements ChatAgent {
             });
 
             goalSub = this.engine.onEngineEventEvent(event => {
-                if (mode !== 'goal' || event.sessionId !== ocSession || event.type !== 'fabi.goal.status') {
+                if (mode !== 'goal' || !turnGate.accepts(event.sessionId) || event.type !== 'fabi.goal.status') {
                     return;
                 }
                 const status = typeof event.properties.status === 'string' ? event.properties.status : null;

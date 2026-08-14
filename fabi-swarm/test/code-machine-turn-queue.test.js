@@ -55,6 +55,28 @@ test('the backend admits exactly one turn across workspaces and advances FIFO', 
     await second;
 });
 
+test('preserves arrival order across a repeated chat turn and another workspace', async () => {
+    const { service, starts, controls } = createHarness();
+    const first = service.prompt('session-a', 'one', '/workspace/a', 'build', 'ask', 'turn-a1');
+    const sameChat = service.prompt('session-a', 'two', '/workspace/a', 'build', 'ask', 'turn-a2');
+    const otherSpace = service.prompt('session-b', 'three', '/workspace/b', 'build', 'ask', 'turn-b1');
+    await nextTask();
+
+    assert.deepEqual(starts.map(start => start.turnId), ['turn-a1']);
+    controls.get('turn-a1').resolve();
+    await first;
+    await nextTask();
+    assert.deepEqual(starts.map(start => start.turnId), ['turn-a1', 'turn-a2']);
+
+    controls.get('turn-a2').resolve();
+    await sameChat;
+    await nextTask();
+    assert.deepEqual(starts.map(start => start.turnId), ['turn-a1', 'turn-a2', 'turn-b1']);
+
+    controls.get('turn-b1').resolve();
+    await otherSpace;
+});
+
 test('cancelling a queued message cannot abort the active turn in the same chat', async () => {
     const { service, starts, controls } = createHarness();
     const first = service.prompt('session-a', 'one', '/workspace/a', 'build', 'ask', 'turn-1');
