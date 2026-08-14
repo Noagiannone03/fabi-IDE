@@ -10712,3 +10712,54 @@ commit→SSE, la télémétrie réelle/baseline intercalée, la parité greedy e
 statistique, puis les benchmarks Mac mini + RTX + seconde route. Les deux
 machines physiques étant toujours hors ligne, ces gates matériels restent à
 reprendre à leur retour ; aucun pod payant n'est actif.
+
+## Audit live et banc P4 reproductible (14 août 2026)
+
+Les quatre worktrees autoritatifs ont été resynchronisés sans écraser de
+modification locale. L'IDE est passé de `db28a6a` à `7907124` sur
+`codex/rc49-product-e2e`; le moteur V3 reste propre et synchronisé à
+`72de6071338d5f313d921a587ab6cc3e38c1ff99` sur
+`codex/swarm-protocol-v3`, le CLI à
+`694ed898af40169d25340eac912b97d6694e1316` sur `dev` et le méta-runtime à
+`4d5a763812e2c77b24b13e2df9fcccf53ac116a6` sur `main`. Le fichier utilisateur
+non suivi `docs/instruct.md` est toujours vide et a été préservé hors commit.
+
+Le workflow moteur autoritatif `31710379960` est vert sur macOS, Linux et
+Windows au SHA `72de607`; le dernier candidat desktop reste le workflow
+`31704075488`, vert sur macOS et Windows au SHA `b20cf0b`. L'installation
+locale porte Fabi.app `0.1.19` et le runtime public `v2.7.0-rc68`, CLI
+`694ed898...`, moteur qualifié `1c922f399...`, Mesh `0.75.1`, ABI `0.1.35` et
+device Metal. Aucun processus Fabi/Request Agent/worker n'était actif pendant
+l'inspection.
+
+Le registre public `/fabi-registry/v1/swarms`, la racine TUF root3 et le
+scheduler `qwen3-32b-v3` répondent en HTTP 200. Le scheduler est honnêtement en
+`waiting` avec zéro worker, `structural_pipeline_ready=false`,
+`admission_ready=false` et aucun contexte routable. L'ancien endpoint RunPod
+historique `qwen3-coder-30b` répond 502 et ne constitue plus la cible V3. Le
+feed desktop stable répond encore 404, conformément à son statut dormant. Le
+VPS Tailscale est en ligne; `mac-mini-noa` et la RTX Windows restent hors ligne,
+dernières vues respectivement le 13 août à 07:51:25 et 07:51:33 UTC. Aucun test
+P1/P2 ou E2E distribué n'est donc revendiqué dans cette entrée.
+
+Pendant cette indisponibilité matérielle, le commit IDE
+`7907124` (`test(e2e): harden OpenCode product scenarios`) rend le prochain gate
+P4 reproductible sans affaiblir ses critères. Le harness mono-Space peut
+désormais exiger la présence ou l'absence d'une vraie carte outil, enregistrer
+son passage à un état terminal et vérifier sur disque qu'un fichier attendu
+existe et contient le marqueur demandé, sans imprimer son contenu. Un nouveau
+harness multi-Space exige deux frontends/workspaces distincts et mesure le
+scénario complet : propriétaire actif, second ticket visible à une position
+FIFO positive, abort ou fin du propriétaire, libération, démarrage strictement
+postérieur du second ticket, puis réponse finale portant son marqueur. Le mode
+abort refuse aussi tout marqueur assistant produit tardivement par le tour
+annulé et sérialise un diagnostic JSON plus une capture en cas d'échec.
+
+Preuves locales avant push : les deux scripts passent `node --check`,
+`git diff --check` est vert, les 102 tests `fabi-swarm` et les 7 tests
+`fabi-spaces` passent, puis le bundle Electron complet compile avec zéro erreur.
+Ce commit prépare et durcit le test; il ne prétend pas que le scénario live a
+été rejoué sans route. À la réapparition des machines, l'ordre immédiat reste
+P1/P2, puis transitions de readiness sur les deux Spaces et exécution de ces
+harnesses pour Ask/Agent/Goal, Ask edits/YOLO, outils/édition réelle, abort et
+FIFO globale.
