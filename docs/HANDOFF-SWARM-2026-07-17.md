@@ -10781,3 +10781,13 @@ reçoit exactement `once`; aucune règle `always` cachée n'est créée et le ch
 Ask voisin conserve sa propre invite. La suite atteint 105 tests verts. Les
 cartes Electron et l'édition de fichier réelle restent à vérifier avec le
 harness live; ces tests ne les remplacent pas.
+
+Le commit IDE `cbbd5e1` complète la preuve locale du flux d'événements
+OpenCode vers l'interface : un raisonnement initial puis incrémental est relayé
+sous forme cumulative, une carte outil `edit` traverse réellement les états
+`running` puis `completed`, l'événement `file.edited` conserve son chemin, et
+le tour passe de `preparing` à `generating` tout en diffusant les événements
+moteur bruts. La suite `fabi-swarm` atteint 106 tests verts. Cette régression
+valide le broker backend; elle ne revendique ni exécution réelle de l'outil sur
+le système de fichiers, ni rendu Electron, qui restent couverts par le harness
+live à exécuter lorsque la route distribuée sera disponible.
