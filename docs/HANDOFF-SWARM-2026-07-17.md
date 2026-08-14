@@ -10791,3 +10791,16 @@ moteur bruts. La suite `fabi-swarm` atteint 106 tests verts. Cette régression
 valide le broker backend; elle ne revendique ni exécution réelle de l'outil sur
 le système de fichiers, ni rendu Electron, qui restent couverts par le harness
 live à exécuter lorsque la route distribuée sera disponible.
+
+Le commit IDE `a995720` verrouille la fin de vie d'une requête surdimensionnée
+à la jonction OpenCode/desktop. Les tests moteur ciblés du Request Agent et du
+handler OpenAI prouvent séparément que le budget exact est calculé avant le
+placement, que `context_length_exceeded` contient le besoin prompt + sortie et
+la capacité de la route, qu'aucun routeur n'est appelé, et que l'erreur demeure
+indépendante de l'observateur de demande adaptative. La régression IDE injecte
+ensuite cet événement réel : le message détaillé est transmis, le tour finit
+exactement une fois, son ticket FIFO est libéré, puis les compteurs reviennent
+à zéro avec l'activité `idle`; un edge `idle` tardif ne recrée aucune fin. Les
+trois tests Python ciblés passent et la suite `fabi-swarm` atteint 107 tests
+verts. Le calibrage réel d'environ 12 220 + 4 096 tokens reste un gate P4 live,
+pas une preuve déduite de ces tests locaux.
