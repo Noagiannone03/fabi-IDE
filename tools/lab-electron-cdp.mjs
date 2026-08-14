@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
+import { isFabiFrontendUrl } from './fabi-electron-page.mjs';
 
 const [automationPath, port, action = 'inspect', timeoutArg = '120000'] = process.argv.slice(2);
 if (!automationPath || !port) {
@@ -45,13 +46,13 @@ try {
     let pages = playwright
         ? browser.contexts().flatMap(context => context.pages())
         : await browser.pages();
-    let mainPage = pages.find(page => page.url().includes('app.asar/lib/frontend'));
+    let mainPage = pages.find(page => isFabiFrontendUrl(page.url()));
     while (waitAction && !mainPage && Date.now() - startedAt < timeoutMs) {
         await pause(100);
         pages = playwright
             ? browser.contexts().flatMap(context => context.pages())
             : await browser.pages();
-        mainPage = pages.find(page => page.url().includes('app.asar/lib/frontend'));
+        mainPage = pages.find(page => isFabiFrontendUrl(page.url()));
     }
     // Electron launched from an SSH-controlled macOS session can be visible to
     // CDP while its animation frames remain throttled until the page is brought

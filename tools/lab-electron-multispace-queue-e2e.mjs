@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
+import { isFabiFrontendUrl } from './fabi-electron-page.mjs';
 
 const [
     automationPath,
@@ -47,7 +48,7 @@ const browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}`
 let exitCode = 0;
 
 const frontendPages = async () => (await browser.pages())
-    .filter(page => page.url().includes('app.asar/lib/frontend'));
+    .filter(page => isFabiFrontendUrl(page.url()));
 
 const waitForFrontends = async count => {
     while (elapsed() < timeoutMs) {

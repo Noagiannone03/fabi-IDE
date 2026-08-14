@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isFabiFrontendUrl } from './fabi-electron-page.mjs';
 
 const [
     automationPath,
@@ -158,7 +159,7 @@ const readContributionState = async () => {
 
 try {
     const pages = await browser.pages();
-    const page = pages.find(candidate => candidate.url().includes('app.asar/lib/frontend'));
+    const page = pages.find(candidate => isFabiFrontendUrl(candidate.url()));
     if (!page) {
         throw new Error('Fabi frontend page not found');
     }
