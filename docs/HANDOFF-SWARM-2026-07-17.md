@@ -10843,3 +10843,21 @@ selon la préférence système. Les 112 tests `fabi-swarm`, le typecheck complet
 des extensions et les trois bundles Electron passent avec zéro erreur. Le
 scénario live deux Spaces — envoi concurrent, positions FIFO, annulation isolée
 et reprise — reste obligatoire avant de déclarer P4 vert.
+
+Un lancement Electron du bundle courant avec profil temporaire neuf a ensuite
+vérifié le bord opposé : scheduler sans route, aucune admission antérieure et
+UI affichant `En attente de peers`. Aucun contrôle Send ou FIFO n'était rendu,
+aucun dialogue parasite n'était présent; l'ouverture de la saisie pendant une
+génération ne contourne donc pas le verrou initial. L'instance avait rejoint
+brièvement comme premier worker sur trois sans former de route, puis a été
+fermée proprement. Son profil temporaire de 1,3 Mio a été déplacé de `/tmp`
+vers la Corbeille sous `fabi-lock-audit-20260814-1127` et reste récupérable.
+
+Ce test a aussi exposé que les harnesses CDP ne reconnaissaient que l'URL
+packagée `app.asar`, donc déclaraient à tort le frontend absent avec le bundle
+de développement fraîchement compilé. Le commit IDE `edd4e16` centralise une
+détection stricte des frontends Fabi packagés macOS/Windows et de
+`electron-app`, sans confondre les pages Spaces ou un frontend navigateur.
+Les trois clients CDP/chat/multi-Space l'utilisent désormais. Leurs contrôles
+syntaxiques et les 11 tests outils desktop sont verts; les prochains E2E live
+peuvent ainsi qualifier le code courant avant packaging.
