@@ -15,13 +15,17 @@ const [
     permissionModeArg = 'keep',
     permissionExpectationArg = 'ignore',
     workModeArg = 'keep',
+    toolExpectationArg = 'ignore',
+    expectedFilePathArg = 'none',
+    expectedFileContentArg = '',
 ] = process.argv.slice(2);
 if (!automationPath || !port || !prompt || !marker) {
     throw new Error(
         'usage: lab-electron-chat-e2e.mjs <puppeteer-core> <port> <prompt> <marker> '
         + '[timeout-ms] [none|abort-after-ms|route-active:<cluster-status-url>|request-active:<cluster-status-url>'
         + '|contribution-active:<contribution-status-url>] [keep|ask|auto] '
-        + '[ignore|allow|reject|none] [keep|agent|ask|goal]'
+        + '[ignore|allow|reject|none] [keep|agent|ask|goal] [ignore|seen|none] '
+        + '[none|expected-file-path] [expected-file-substring]'
     );
 }
 
@@ -37,6 +41,11 @@ const workModes = new Set(['keep', 'agent', 'ask', 'goal']);
 if (!workModes.has(workModeArg)) {
     throw new Error(`invalid work mode: ${workModeArg}`);
 }
+const toolExpectations = new Set(['ignore', 'seen', 'none']);
+if (!toolExpectations.has(toolExpectationArg)) {
+    throw new Error(`invalid tool expectation: ${toolExpectationArg}`);
+}
+const expectedFilePath = expectedFilePathArg === 'none' ? undefined : expectedFilePathArg;
 
 const timeoutMs = Number.parseInt(timeoutArg, 10);
 if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
@@ -340,6 +349,8 @@ try {
     let abortedAtMs;
     let permissionObservedAtMs;
     let permissionRepliedAtMs;
+    let toolObservedAtMs;
+    let toolCompletedAtMs;
     let finalSnapshot;
 
     while (Date.now() - startedAt < timeoutMs) {
@@ -353,6 +364,12 @@ try {
             const cancel = visible('[aria-label*="Cancel"], [aria-label*="Stop"], [aria-label*="Abort"]');
             const permissionAllow = visible('.fabi-tc-allow');
             const permissionDeny = visible('.fabi-tc-deny');
+            const toolCards = Array.from(document.querySelectorAll('.fabi-tc')).filter(visible).map(card => ({
+                className: card.className,
+                label: (card.querySelector('.fabi-tc-label')?.textContent ?? '').trim(),
+                detail: (card.querySelector('.fabi-tc-sub')?.textContent ?? '').trim(),
+                activity: (card.querySelector('.fabi-tc-activity')?.textContent ?? '').trim(),
+            }));
             const articles = Array.from(document.querySelectorAll('[role="article"]')).filter(article => {
                 const rect = article.getBoundingClientRect();
                 return rect.width > 0 && rect.height > 0;
@@ -387,6 +404,7 @@ try {
                     const rect = permissionDeny.getBoundingClientRect();
                     return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
                 })() : undefined,
+                toolCards,
                 interestingLines: lines.filter(line => /prépar|génér|réflé|outil|fichier|permission|prêt|failed|timeout|problème|erreur/i.test(line)).slice(-20),
             };
         }, { markerText: marker });
@@ -410,6 +428,7 @@ try {
             sendAriaLabel: snapshot.sendAriaLabel,
             cancelVisible: snapshot.cancelVisible,
             permissionVisible: !!(snapshot.permissionAllowRect || snapshot.permissionDenyRect),
+            toolCards: snapshot.toolCards,
             interestingLines: snapshot.interestingLines,
         });
         if (signature !== lastSignature) {
@@ -434,6 +453,17 @@ try {
             );
             permissionRepliedAtMs = Date.now() - startedAt;
             record('permission-replied', permissionExpectationArg);
+        }
+        if (toolObservedAtMs === undefined && snapshot.toolCards.length > 0) {
+            toolObservedAtMs = Date.now() - startedAt;
+            record('tool-observed', JSON.stringify(snapshot.toolCards));
+        }
+        if (
+            toolCompletedAtMs === undefined
+            && snapshot.toolCards.some(card => /fabi-tc-(done|error)/.test(card.className))
+        ) {
+            toolCompletedAtMs = Date.now() - startedAt;
+            record('tool-settled', JSON.stringify(snapshot.toolCards));
         }
 
         let abortReason;
@@ -513,6 +543,36 @@ try {
         exitCode = 6;
         record('unexpected-permission', permissionModeArg);
     }
+    if (exitCode === 0 && toolExpectationArg === 'seen' && toolObservedAtMs === undefined) {
+        exitCode = 7;
+        record('tool-expectation-missed', toolExpectationArg);
+    }
+    if (exitCode === 0 && toolExpectationArg === 'none' && toolObservedAtMs !== undefined) {
+        exitCode = 8;
+        record('unexpected-tool', JSON.stringify(finalSnapshot?.toolCards ?? []));
+    }
+
+    let expectedFile;
+    if (exitCode === 0 && expectedFilePath) {
+        try {
+            const content = await readFile(expectedFilePath, 'utf8');
+            expectedFile = {
+                path: expectedFilePath,
+                bytes: Buffer.byteLength(content),
+                containsExpectedText: expectedFileContentArg === '' || content.includes(expectedFileContentArg),
+            };
+            if (!expectedFile.containsExpectedText) {
+                exitCode = 9;
+                record('expected-file-content-missed', expectedFilePath);
+            } else {
+                record('expected-file-verified', JSON.stringify(expectedFile));
+            }
+        } catch (error) {
+            exitCode = 9;
+            expectedFile = { path: expectedFilePath, error: String(error) };
+            record('expected-file-missed', String(error));
+        }
+    }
 
     await page.screenshot({ path: '/tmp/fabi-chat-e2e-final.png', fullPage: true }).catch(() => undefined);
     process.stdout.write(`${JSON.stringify({
@@ -533,6 +593,10 @@ try {
         abortedAtMs,
         permissionObservedAtMs,
         permissionRepliedAtMs,
+        toolExpectation: toolExpectationArg,
+        toolObservedAtMs,
+        toolCompletedAtMs,
+        expectedFile,
         completedAtMs,
         totalAfterSubmitMs: completedAtMs === undefined ? undefined : completedAtMs - submittedAtMs,
         baselineMarkerCount: baseline.markerCount,
@@ -546,6 +610,7 @@ try {
             sendClass: finalSnapshot.sendClass,
             sendAriaLabel: finalSnapshot.sendAriaLabel,
             cancelVisible: finalSnapshot.cancelVisible,
+            toolCards: finalSnapshot.toolCards,
             interestingLines: finalSnapshot.interestingLines,
             bodyTail: finalSnapshot.body.slice(-8_000),
         },
