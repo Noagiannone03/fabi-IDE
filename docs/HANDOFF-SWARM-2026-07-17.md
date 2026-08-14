@@ -10772,3 +10772,12 @@ workspace passe à la position zéro et démarre. La fin du second tour ne produ
 aucun abort supplémentaire. La suite `fabi-swarm` compte désormais 103 tests
 verts. Cette preuve ferme le contrat local du backend; le harness Electron
 `7907124` reste l'autorité pour la preuve visuelle/live dès qu'une route revient.
+
+Le commit IDE `656b76b` traverse aussi le vrai broker de permissions backend.
+En Ask edits, une demande OpenCode conserve session racine, type, motif,
+`callID`, workspace et n'est acquittée qu'après la réponse utilisateur. En
+YOLO, une permission provenant d'une sous-tâche est reliée au chat racine et
+reçoit exactement `once`; aucune règle `always` cachée n'est créée et le chat
+Ask voisin conserve sa propre invite. La suite atteint 105 tests verts. Les
+cartes Electron et l'édition de fichier réelle restent à vérifier avec le
+harness live; ces tests ne les remplacent pas.
