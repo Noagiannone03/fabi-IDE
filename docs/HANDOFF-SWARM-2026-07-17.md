@@ -10819,3 +10819,27 @@ entre chat répété et autre workspace. Les 110 tests `fabi-swarm`, le typechec
 complet des trois extensions et le bundle Electron passent avec zéro erreur.
 Le parcours live multi-Space reste nécessaire pour qualifier l'ordre RPC et le
 rendu utilisateur réels.
+
+L'audit P4 a enfin trouvé que cette FIFO globale restait inaccessible depuis
+l'interface : Theia rendait son bouton Stop natif et Fabi passait l'éditeur en
+lecture seule dès qu'une requête du chat était en cours. Un second message du
+même Space ne pouvait donc jamais atteindre le backend, et un autre Space
+devenait lui aussi verrouillé dès que l'unique route était occupée. Le commit
+IDE `c756843` conserve désormais l'éditeur disponible pendant un tour actif,
+uniquement après une première admission réelle de ce Space. Entrée et une
+action explicite ajoutent le brouillon à la FIFO; le nombre de tickets en
+attente est visible. Le Stop Theia continue de cibler le dernier ticket du
+chat, tandis qu'une action séparée permet d'interrompre le véritable
+propriétaire lorsque le dernier ticket est déjà en attente. Les modes et
+permissions du nouveau ticket restent sélectionnables et sont capturés à sa
+soumission.
+
+Le garde-fou ne simule aucune capacité : il dépend de `activeTurns`, vérité
+machine-wide du backend, et refuse toujours l'entrée avant la première
+admission ou après la libération du dernier tour si la route n'est pas prête.
+L'intégration visuelle reste volontairement native Theia/Fabi, avec boutons
+sémantiques, libellés accessibles, focus visible et réduction des transitions
+selon la préférence système. Les 112 tests `fabi-swarm`, le typecheck complet
+des extensions et les trois bundles Electron passent avec zéro erreur. Le
+scénario live deux Spaces — envoi concurrent, positions FIFO, annulation isolée
+et reprise — reste obligatoire avant de déclarer P4 vert.
