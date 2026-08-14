@@ -10804,3 +10804,18 @@ exactement une fois, son ticket FIFO est libéré, puis les compteurs reviennent
 trois tests Python ciblés passent et la suite `fabi-swarm` atteint 107 tests
 verts. Le calibrage réel d'environ 12 220 + 4 096 tokens reste un gate P4 live,
 pas une preuve déduite de ces tests locaux.
+
+L'audit du chemin frontend a ensuite trouvé une seconde FIFO locale par chat
+devant la FIFO backend autoritative. Elle empêchait le mélange visuel de deux
+réponses portant la même session OpenCode, mais pouvait réordonner globalement
+`A1, A2, B1` en `A1, B1, A2` lorsque `A2` attendait localement tandis que `B1`
+entrait déjà dans le backend. Le commit IDE `980fb21` supprime ce pré-ordonnancement :
+toutes les requêtes sont remises immédiatement à la FIFO machine-wide, et une
+porte liée au `turnId` n'autorise texte, raisonnement, outils, permissions,
+questions, checkpoints, Goal et fin de tour que pour le ticket réellement
+`active`. Un ticket `queued` ou `released` ne peut consommer aucun événement de
+la session partagée. La régression conserve exactement l'ordre `A1, A2, B1`
+entre chat répété et autre workspace. Les 110 tests `fabi-swarm`, le typecheck
+complet des trois extensions et le bundle Electron passent avec zéro erreur.
+Le parcours live multi-Space reste nécessaire pour qualifier l'ordre RPC et le
+rendu utilisateur réels.
