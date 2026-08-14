@@ -10763,3 +10763,12 @@ Ce commit prépare et durcit le test; il ne prétend pas que le scénario live a
 P1/P2, puis transitions de readiness sur les deux Spaces et exécution de ces
 harnesses pour Ask/Agent/Goal, Ask edits/YOLO, outils/édition réelle, abort et
 FIFO globale.
+
+Le commit IDE suivant `930c900` ajoute la régression backend qui manquait au
+scénario live : deux workspaces entrent dans la FIFO autoritative, seul le
+propriétaire atteint OpenCode, son abort cible exactement sa session et son
+répertoire, le tour émet `released`, puis et seulement puis le ticket du second
+workspace passe à la position zéro et démarre. La fin du second tour ne produit
+aucun abort supplémentaire. La suite `fabi-swarm` compte désormais 103 tests
+verts. Cette preuve ferme le contrat local du backend; le harness Electron
+`7907124` reste l'autorité pour la preuve visuelle/live dès qu'une route revient.
