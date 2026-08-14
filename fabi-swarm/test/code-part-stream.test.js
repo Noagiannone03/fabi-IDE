@@ -104,3 +104,69 @@ test('relays reasoning, live tool states and real file edits from OpenCode event
     assert.equal(service.turnPhases.get('ses_1'), 'generating');
     assert.equal(statuses.at(-1).activity, 'generating');
 });
+
+test('surfaces exact context rejection and clears the active turn without a phantom loader', async () => {
+    const service = new FabiCodeServiceImpl();
+    const statuses = [];
+    const completions = [];
+    const queueEvents = [];
+    const requests = [];
+    service.addClient({
+        onServerStatus: status => statuses.push(status),
+        onTurnDone: (sessionId, error) => completions.push({ sessionId, error }),
+        onTurnQueueChanged: state => queueEvents.push(state),
+        onPart() {}, onFileEdited() {}, onPermissionAsked() {}, onQuestionAsked() {},
+        onUserMessage() {}, onEngineEvent() {}
+    });
+    service.ensureCurrentServer = async () => {};
+    service.snapshotAssistantIds = async () => new Set();
+    service.http = async (method, path, body, directory) => {
+        requests.push({ method, path, body, directory });
+        if (path === '/session/status') {
+            return JSON.stringify({ ses_oversized: { type: 'busy' } });
+        }
+        return '';
+    };
+
+    const turn = service.prompt(
+        'ses_oversized',
+        'large prompt',
+        '/workspace/context',
+        'build',
+        'ask',
+        'turn-oversized'
+    );
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.ok(requests.some(request => request.path === '/session/ses_oversized/prompt_async'));
+    assert.deepEqual({
+        activeTurns: statuses.at(-1).activeTurns,
+        queuedTurns: statuses.at(-1).queuedTurns,
+        activity: statuses.at(-1).activity
+    }, { activeTurns: 1, queuedTurns: 0, activity: 'preparing' });
+
+    const error = 'This request requires 36864 tokens (32768 prompt + 4096 maximum output), '
+        + 'but the largest available pipeline supports 32768 tokens.';
+    service.handleEvent(JSON.stringify({
+        type: 'session.error',
+        properties: {
+            sessionID: 'ses_oversized',
+            error: { name: 'ContextOverflowError', data: { message: error } }
+        }
+    }));
+    await turn;
+
+    assert.deepEqual(completions, [{ sessionId: 'ses_oversized', error }]);
+    assert.deepEqual({
+        activeTurns: statuses.at(-1).activeTurns,
+        queuedTurns: statuses.at(-1).queuedTurns,
+        activity: statuses.at(-1).activity
+    }, { activeTurns: 0, queuedTurns: 0, activity: 'idle' });
+    assert.ok(queueEvents.some(event => event.turnId === 'turn-oversized' && event.state === 'released'));
+
+    service.handleEvent(JSON.stringify({
+        type: 'session.status',
+        properties: { sessionID: 'ses_oversized', status: { type: 'idle' } }
+    }));
+    assert.equal(completions.length, 1, 'the trailing idle edge must not complete the failed turn twice');
+});
