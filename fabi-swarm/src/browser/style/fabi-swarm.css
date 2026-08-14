@@ -942,6 +942,49 @@
     font: 400 10.5px/1.25 var(--theia-ui-font-family);
 }
 .fabi-mode-check { justify-self: end; color: #EC5B2B; }
+
+/* Actions de file pendant qu'un tour conserve le bouton Stop natif. */
+.fabi-queue-controls-host,
+.fabi-queue-controls {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.fabi-queue-controls-host { margin-left: 5px; }
+.fabi-queue-count {
+    color: var(--theia-descriptionForeground);
+    font: 500 10.5px/1 var(--theia-ui-font-family);
+    white-space: nowrap;
+}
+.fabi-queue-action {
+    width: 25px;
+    height: 25px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--theia-foreground);
+    cursor: pointer;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 100ms ease;
+}
+.fabi-queue-action:hover:not(:disabled) {
+    background: var(--theia-toolbar-hoverBackground);
+    border-color: var(--fabi-hairline, rgba(255, 255, 255, 0.08));
+}
+.fabi-queue-action:active:not(:disabled) { transform: translateY(1px); }
+.fabi-queue-action:focus-visible {
+    outline: 1px solid var(--theia-focusBorder, #EC5B2B);
+    outline-offset: 1px;
+}
+.fabi-queue-action:disabled { opacity: 0.38; cursor: default; }
+.fabi-enqueue-draft:not(:disabled) { color: #EC5B2B; }
+.fabi-abort-owner { color: var(--theia-errorForeground, #f85149); }
+@media (prefers-reduced-motion: reduce) {
+    .fabi-queue-action { transition: none; }
+}
 .fabi-perm-dock { padding: 6px 12px; display: flex; flex-direction: column; gap: 8px; }
 .fabi-perm {
     border: 1px solid #EC5B2B;

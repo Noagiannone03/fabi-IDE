@@ -2,14 +2,16 @@ import * as React from '@theia/core/shared/react';
 import * as ReactDOM from '@theia/core/shared/react-dom';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { URI } from '@theia/core';
-import { Bot, Check, ChevronDown, Hand, MessageCircleQuestion, Target, WandSparkles } from 'lucide-react';
+import { Bot, Check, ChevronDown, Hand, ListPlus, MessageCircleQuestion, Square, Target, WandSparkles } from 'lucide-react';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
 import { CHAT_VIEW_LANGUAGE_EXTENSION } from '@theia/ai-chat-ui/lib/browser/chat-view-language-contribution';
 import { ChatRequestModel, MutableChatModel } from '@theia/ai-chat/lib/common/chat-model';
+import { GenericCapabilitySelections } from '@theia/ai-core';
+import type { SimpleMonacoEditor } from '@theia/monaco/lib/browser/simple-monaco-editor';
 import { FabiSwarmFrontend } from './fabi-swarm-frontend';
 import { FabiSwarmSelector } from './fabi-swarm-selector';
 import { FabiCodeFrontend } from './fabi-code-frontend';
-import { shouldRenderChatInput } from '../common/fabi-chat-input-visibility';
+import { canAcceptChatInput, shouldRenderChatInput } from '../common/fabi-chat-input-visibility';
 import {
     FABI_CODE_PERMISSION_MODE_SETTING, FabiCodePermissionMode,
     normalizeFabiCodePermissionMode
@@ -31,6 +33,15 @@ interface FabiModeOption<Value extends string> {
     label: string;
     detail: string;
     icon: React.ReactNode;
+}
+
+interface FabiQueueControlsPortalProps {
+    host: HTMLElement;
+    editor: SimpleMonacoEditor | undefined;
+    queuedTurns: number;
+    canAbortOwner: boolean;
+    onSubmit: () => void;
+    onAbortOwner: () => void;
 }
 
 function FabiModeMenu<Value extends string>(props: {
@@ -277,6 +288,66 @@ function FabiModeControlsPortal(props: FabiModeControlsPortalProps): React.React
     );
 }
 
+/** Adds queue actions beside Theia's native cancel button without replacing its editor. */
+function FabiQueueControlsPortal(props: FabiQueueControlsPortalProps): React.ReactPortal {
+    const mount = React.useMemo(() => document.createElement('span'), []);
+    const [hasDraft, setHasDraft] = React.useState(false);
+
+    React.useLayoutEffect(() => {
+        const target = props.host.querySelector('.theia-ChatInputOptions-right');
+        if (!target) {
+            return undefined;
+        }
+        mount.className = 'fabi-queue-controls-host';
+        target.appendChild(mount);
+        return () => mount.remove();
+    }, [mount, props.host]);
+
+    React.useEffect(() => {
+        const control = props.editor?.getControl();
+        if (!control) {
+            setHasDraft(false);
+            return undefined;
+        }
+        const update = () => setHasDraft(control.getValue().trim().length > 0);
+        update();
+        const disposable = control.onDidChangeModelContent(update);
+        return () => disposable.dispose();
+    }, [props.editor]);
+
+    return ReactDOM.createPortal(
+        <span className='fabi-queue-controls'>
+            {props.queuedTurns > 0 && (
+                <span className='fabi-queue-count' role='status' aria-live='polite'>
+                    {props.queuedTurns} en file
+                </span>
+            )}
+            {props.canAbortOwner && (
+                <button
+                    type='button'
+                    className='fabi-queue-action fabi-abort-owner'
+                    aria-label='Interrompre le tour actif'
+                    title='Interrompre le tour actif'
+                    onClick={props.onAbortOwner}
+                >
+                    <Square size={11} strokeWidth={2} fill='currentColor' aria-hidden='true' />
+                </button>
+            )}
+            <button
+                type='button'
+                className='fabi-queue-action fabi-enqueue-draft'
+                aria-label='Ajouter ce message à la file'
+                title='Ajouter à la file (Entrée)'
+                disabled={!hasDraft}
+                onClick={props.onSubmit}
+            >
+                <ListPlus size={14} strokeWidth={1.9} aria-hidden='true' />
+            </button>
+        </span>,
+        mount
+    );
+}
+
 /**
  * Sous-classe de l'input du chat IA de Theia. On NE forke PAS le paquet : on
  * étend la classe et on rebind (cf. fabi-swarm-frontend-module) → la WidgetFactory
@@ -307,6 +378,17 @@ export class FabiChatInputWidget extends AIChatInputWidget {
      * or send.
      */
     protected inputPreviouslyUnlocked = false;
+
+    /** Ticket backend actuellement propriétaire, partagé par tous les Spaces. */
+    protected activeTurnId: string | undefined;
+
+    protected get canAcceptInput(): boolean {
+        return canAcceptChatInput(
+            this.ready,
+            this.engine.server.activeTurns,
+            this.inputPreviouslyUnlocked
+        );
+    }
 
     /** Theia owns request cancellation, so mirror its exact pending predicate. */
     protected get requestInProgress(): boolean {
@@ -376,9 +458,9 @@ export class FabiChatInputWidget extends AIChatInputWidget {
      * juste au-dessus par FabiSwarmSelector.
      */
     override setEnabled(_enabled: boolean): void {
-        const ready = this.ready;
-        super.setEnabled(ready);
-        this.editor?.getControl().updateOptions({ readOnly: !ready });
+        const canAccept = this.canAcceptInput;
+        super.setEnabled(canAccept);
+        this.editor?.getControl().updateOptions({ readOnly: !canAccept });
     }
 
     /**
@@ -401,7 +483,48 @@ export class FabiChatInputWidget extends AIChatInputWidget {
             this.update();
         }));
         this.toDispose.push(this.engine.onServerStatusEvent(() => { this.setEnabled(false); this.update(); }));
+        this.toDispose.push(this.engine.onTurnQueueChangedEvent(state => {
+            if (state.state === 'active') {
+                this.activeTurnId = state.turnId;
+            } else if (state.state === 'released' && this.activeTurnId === state.turnId) {
+                this.activeTurnId = undefined;
+            }
+            this.setEnabled(false);
+            this.update();
+        }));
         this.editorReady.promise.then(() => this.setEnabled(false));
+    }
+
+    protected submitQueuedPrompt(): void {
+        const editor = this.editor;
+        const value = editor?.getControl().getValue() ?? '';
+        if (!this.canAcceptInput || value.trim().length === 0) {
+            return;
+        }
+        const capabilityOverrides: Record<string, boolean> = {};
+        for (const [key, enabled] of this.userCapabilityOverrides) {
+            capabilityOverrides[key] = enabled;
+        }
+        void this._onQuery(
+            value,
+            this.receivingAgent?.currentModeId,
+            Object.keys(capabilityOverrides).length > 0 ? capabilityOverrides : undefined,
+            GenericCapabilitySelections.hasSelections(this.genericCapabilitySelections)
+                ? this.genericCapabilitySelections
+                : undefined
+        ).catch(error => console.error('[fabi-chat] mise en file impossible :', error));
+        editor?.document.textEditorModel.setValue('');
+        editor?.focus();
+    }
+
+    protected abortActiveTurn(): void {
+        if (!this.activeTurnId) {
+            return;
+        }
+        const activeRequest = this._chatModel.getRequests().find(request => request.id === this.activeTurnId);
+        if (activeRequest && ChatRequestModel.isInProgress(activeRequest)) {
+            this._onCancel(activeRequest);
+        }
     }
 
     protected override render(): React.ReactNode {
@@ -426,7 +549,14 @@ export class FabiChatInputWidget extends AIChatInputWidget {
         );
         const planMode = this.receivingAgent?.currentModeId === 'plan';
         const visiblePermissionMode = planMode ? 'ask' : storedPermissionMode;
-        const permissionModeDisabled = this.requestInProgress || planMode || !this.ready;
+        const permissionModeDisabled = planMode || !this.canAcceptInput;
+        const branchItems = this._branch?.items;
+        const requests = this._chatModel.getRequests();
+        const currentRequest = (branchItems && branchItems.length > 0
+            ? branchItems[branchItems.length - 1].element
+            : undefined) ?? requests[requests.length - 1];
+        const canAbortOwner = !!this.activeTurnId && currentRequest?.id !== this.activeTurnId
+            && requests.some(request => request.id === this.activeTurnId);
         return (
             <React.Fragment>
                 <FabiSwarmSelector frontend={this.swarm} engine={this.engine} />
@@ -435,7 +565,7 @@ export class FabiChatInputWidget extends AIChatInputWidget {
                     host={this.node}
                     agentMode={normalizeFabiCodeMode(this.receivingAgent?.currentModeId)}
                     permissionMode={visiblePermissionMode}
-                    disabled={this.requestInProgress || !this.ready}
+                    disabled={!this.canAcceptInput}
                     permissionDisabled={permissionModeDisabled}
                     onAgentModeChange={mode => { void this.handleModeChange(mode); }}
                     onPermissionModeChange={mode => {
@@ -447,6 +577,16 @@ export class FabiChatInputWidget extends AIChatInputWidget {
                         this.update();
                     }}
                 />
+                {this.requestInProgress && (
+                    <FabiQueueControlsPortal
+                        host={this.node}
+                        editor={this.editor}
+                        queuedTurns={this.engine.server.queuedTurns}
+                        canAbortOwner={canAbortOwner}
+                        onSubmit={() => this.submitQueuedPrompt()}
+                        onAbortOwner={() => this.abortActiveTurn()}
+                    />
+                )}
             </React.Fragment>
         );
     }

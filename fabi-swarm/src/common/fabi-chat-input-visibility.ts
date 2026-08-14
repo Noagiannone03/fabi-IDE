@@ -15,3 +15,17 @@ export function shouldRenderChatInput(
 ): boolean {
     return chatModelAttached && (connectionReady || requestInProgress || inputPreviouslyUnlocked);
 }
+
+/**
+ * A busy one-slot route remains a valid place to enqueue work after this input
+ * has already crossed the contribution gate once. `activeTurns` is the
+ * machine-wide backend truth, so another Space can enqueue without pretending
+ * that the scheduler currently has spare admission capacity.
+ */
+export function canAcceptChatInput(
+    connectionReady: boolean,
+    activeTurns: number,
+    inputPreviouslyUnlocked: boolean
+): boolean {
+    return connectionReady || (inputPreviouslyUnlocked && activeTurns > 0);
+}
