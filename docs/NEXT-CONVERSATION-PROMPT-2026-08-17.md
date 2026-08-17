@@ -200,9 +200,10 @@ Mise à jour postérieure à ce prompt : le correctif de compteur est au moteur
 `dcb5c5f255a711df1f702904e27f0e5f21caa33a`, CI `32021830865` verte ; CLI
 `271eb46cfaf731dca12343087323e4d7f0d1ad76`; méta-runtime
 `28c3f9119c1c54dc05a96660102a1c95f541813a`, tag annoté rc71, workflow
-`32022504921` en cours ; IDE `c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7`,
+`32022504921` entièrement vert, 27 assets et 12/12 sidecars vérifiés ; IDE
+`c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7`,
 desktop 0.1.22, workflow `32022614426` vert sur macOS/Windows et artefacts
-revérifiés sur le VPS. Le RTX rc68 PID `10268` est à 19/37 fichiers signés
-exacts, jusqu'à la couche 044, sans chargement VRAM/KV. Ne rien installer avant
-la vérification complète du workflow runtime et ne pas redémarrer le RTX
-pendant son téléchargement.
+revérifiés sur le VPS. Le RTX rc68 PID `10268` est à 20/37 fichiers signés
+exacts, jusqu'à la couche 045, sans chargement VRAM/KV. Ne pas redémarrer le
+RTX pendant son téléchargement ; rc71/0.1.22 sont prêts mais ne doivent être
+installés qu'après les 37/37 et les contrôles KV/VRAM/liens de rc68.

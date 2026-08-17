@@ -586,8 +586,12 @@ Le speculative decoding n'est ni activé ni utilisé comme raccourci.
 - méta-runtime `28c3f9119c1c54dc05a96660102a1c95f541813a` : ses transactions
   Linux/Windows et la cohérence du lock sont vertes dans `32022430867`. Le tag
   annoté `v2.7.0-rc71` dereference exactement ce commit ; le workflow release
-  `32022504921` construit encore les six tarballs. Aucun asset rc71 n'est encore
-  revendiqué ni installé ;
+  `32022504921` est entièrement vert sur les six plateformes et a publié 27
+  assets. Les 12 sidecars correspondent aux digests GitHub. Les bundles Metal
+  et Windows CUDA ainsi que leurs helpers sont revérifiés sur le VPS sous
+  `/var/tmp/fabi-runtime-v2.7.0-rc71`. Leurs manifestes portent rc71, les SHA
+  CLI/moteur exacts, Python 3.12.7, Mesh 0.75.1, ABI 0.1.35 et respectivement
+  Metal/CUDA. Aucun runtime live n'est encore remplacé ;
 - IDE `b3c7db7eeec809f19e518ef3b72eddaa2d0c0b94` préserve le dernier total de
   fichiers jusqu'à `weights_load_done`, puis
   `c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7` épingle rc71/CLI/moteur et porte
@@ -608,8 +612,8 @@ Le speculative decoding n'est ni activé ni utilisé comme raccourci.
 Le contrôle Windows du même worker rc68 PID `10268` confirme une progression
 réelle : 27 blobs pour 6 544 983 277 octets apparents, cinq incomplets pour
 325 058 560 octets, 4 927 832 021 octets écrits et VRAM 73/15 975 Mio. Le
-comptage exact des chemins signés est passé de 16/37 à 19/37 ; les fichiers
-complets vont jusqu'à `layers/layer-044.gguf` et il manque 045 à 062. Le
+comptage exact des chemins signés est passé de 16/37 à 20/37 ; les fichiers
+complets vont jusqu'à `layers/layer-045.gguf` et il manque 046 à 062. Le
 scheduler reste justement non admissible et le Mac mini reste `ready`, KV
 32 768. Fabi demeure volontairement fermé sur ce Mac.
 

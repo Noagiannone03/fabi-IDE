@@ -11143,8 +11143,14 @@ tests et son typecheck sont verts.
 Le méta-runtime `28c3f9119c1c54dc05a96660102a1c95f541813a` épingle ce CLI et
 ce moteur. Le run de branche `32022430867` a validé cohérence du lock et
 transactions Linux/Windows. Le tag annoté `v2.7.0-rc71` dereference exactement
-ce commit ; le run `32022504921` construit encore les six archives, donc aucun
-asset rc71 n'est encore qualifié ni installé.
+ce commit ; le run `32022504921` est entièrement vert sur les six plateformes,
+y compris mise à jour de l'installateur. La prerelease publique contient 27
+assets et les 12 sidecars d'archives/helpers correspondent exactement aux
+digests SHA-256 de l'API GitHub. Les bundles Metal et Windows CUDA et leurs
+helpers sont revérifiés sur le VPS sous
+`/var/tmp/fabi-runtime-v2.7.0-rc71`. Le manifeste Metal et le manifeste CUDA
+portent rc71, CLI `271eb46c...`, moteur `dcb5c5f...`, Python 3.12.7, Mesh
+0.75.1 et ABI 0.1.35. Aucun runtime live n'a encore été remplacé.
 
 Côté IDE, `b3c7db7eeec809f19e518ef3b72eddaa2d0c0b94` conserve le dernier
 compteur lorsque l'événement ready omet ses champs, et
@@ -11166,7 +11172,7 @@ Le worker RTX rc68 PID `10268` n'a pas été interrompu. Son état mesuré est
 monté à 27 blobs, 6 544 983 277 octets apparents et 4 927 832 021 octets
 écrits ; cinq fichiers incomplets totalisent toujours 325 058 560 octets et la
 VRAM reste à 73/15 975 Mio. Le comptage exact des 37 chemins signés est passé à
-19 complets : package, metadata et couches 028 à 044 ; il manque 045 à 062.
+20 complets : package, metadata et couches 028 à 045 ; il manque 046 à 062.
 Le scheduler reste honnêtement `waiting`, route/admission fausses et contexte
 zéro avec le Mac local volontairement fermé. Le Mac mini reste ready/KV 32k.
 
