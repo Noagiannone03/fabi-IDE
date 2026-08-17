@@ -48,3 +48,21 @@ test('flushes the last event even without a trailing newline', () => {
     assert.equal(snapshots[0].peerId, 'worker-endpoint');
     assert.equal(snapshots[0].stage, 'handshake');
 });
+
+test('keeps measured file progress when the ready event omits counters', () => {
+    const state = { kind: 'running', pid: 68, swarmId: 'qwen3-32b-v3' };
+    const snapshots = [];
+    const stream = new FabiWorkerEventStream(state, () => snapshots.push({ ...state }));
+
+    stream.ingest('[FABI] {"event":"weights_load_start"}\n');
+    stream.ingest('[FABI] {"event":"weights_load_progress","files_done":16,"files_total":37}\n');
+    stream.ingest('[FABI] {"event":"weights_load_done"}\n');
+
+    assert.equal(snapshots.length, 3);
+    assert.equal(snapshots[1].stage, 'loading-weights');
+    assert.equal(snapshots[1].weightsFilesDone, 16);
+    assert.equal(snapshots[1].weightsFilesTotal, 37);
+    assert.equal(snapshots[2].stage, 'ready');
+    assert.equal(snapshots[2].weightsFilesDone, 37);
+    assert.equal(snapshots[2].weightsFilesTotal, 37);
+});

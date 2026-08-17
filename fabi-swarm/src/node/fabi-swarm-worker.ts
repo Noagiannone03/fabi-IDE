@@ -329,14 +329,14 @@ function handleLine(line: string, state: WorkerState, push: () => void): void {
             break;
         case 'weights_load_progress':
             setStage('loading-weights');
-            state.weightsFilesDone = num('files_done');
-            state.weightsFilesTotal = num('files_total');
-            state.weightsCurrentFile = str('file_name');
+            state.weightsFilesDone = num('files_done') ?? state.weightsFilesDone;
+            state.weightsFilesTotal = num('files_total') ?? state.weightsFilesTotal;
+            state.weightsCurrentFile = str('file_name') ?? state.weightsCurrentFile;
             break;
         case 'weights_load_done':
             setStage('ready');
-            state.weightsFilesTotal = num('files_total');
-            state.weightsFilesDone = num('files_total');
+            state.weightsFilesTotal = num('files_total') ?? state.weightsFilesTotal;
+            state.weightsFilesDone = num('files_done') ?? state.weightsFilesTotal ?? state.weightsFilesDone;
             state.weightsCurrentFile = undefined;
             break;
         default:
