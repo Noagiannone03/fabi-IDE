@@ -1,8 +1,8 @@
 # Reprise opérationnelle Fabi V3 — 17 août 2026
 
-Ce document est le point de reprise courant. Il remplace opérationnellement
-`CONTINUATION-FABI-V3-2026-08-13.md` sans effacer l'historique. Le handoff long
-`HANDOFF-SWARM-2026-07-17.md` reste la source de vérité chronologique.
+Ce document est le point de reprise courant. Il consolide l'ancienne passation
+du 13 août, supprimée à la demande de l'utilisateur. Le handoff long
+`HANDOFF-SWARM-2026-07-17.md` conserve l'historique chronologique.
 
 ## 1. Invariant absolu et méthode de reprise
 
@@ -69,7 +69,6 @@ Documents obligatoires :
 - `docs/FABI-ADAPTIVE-SPECULATIVE-DECODING.md` ;
 - `docs/SWARM-RUNPOD-VALIDATION.md` ;
 - `docs/ARCHITECTURE-swarm-runtime.md` ;
-- l'ancienne continuation du 13 août pour l'historique P0–P11.
 
 ## 3. Dépôts autoritatifs au moment de la passation
 
@@ -306,7 +305,7 @@ Dernier état certain avant finalisation du document :
 - aucune route active ;
 - `structural_pipeline_ready=false`, `admission_ready=false`, contexte
   routable zéro ;
-- blocker : aucune route complète ne couvre encore `[0,64)` ;
+- blocker : aucune route complète du modèle n'est encore admissible ;
 - le RTX est désormais le troisième worker accepté : node
   `c4a8c5206a56248429fe1a6b32898bfdca98723ab3bd1583c26d4e67ffb53714`,
   capacité publiée 14,86 Gio, choix autonome des couches `[28,63]` à 32 768
@@ -367,10 +366,11 @@ dormantes pour accélérer artificiellement le gate produit courant.
 
 ### P2 — route physique complète
 
-- Laisser le RTX choisir la tranche complémentaire, attendue autour de
-  `[28,64)`, sans override de span.
-- Prouver couverture `[0,64)`, liens directionnels nécessaires, packages de
-  couches seulement, mémoire/VRAM/KV et contexte 32 768.
+- Le RTX a choisi `[28,63]` dans le catalogue et le log de rechargement indique
+  `[28,63)` ; vérifier la convention de borne et la couverture de la dernière
+  couche dans l'état final, sans override de span.
+- Prouver la couverture complète du modèle, les liens directionnels requis,
+  les packages de couches seulement, mémoire/VRAM/KV et contexte 32 768.
 - Exiger `structural_pipeline_ready=true` et `admission_ready=true`.
 - Faire une première requête OpenAI réelle et vérifier tokens, TTFT, débit,
   réservations et libération.
@@ -398,13 +398,87 @@ dormantes pour accélérer artificiellement le gate produit courant.
 - Exécuter les harnesses de `tools/` préparés par `7907124`/`edd4e16` et
   conserver diagnostics/captures en cas d'échec.
 
-### P5 à P11
+### P5 — mesures et placement adaptatif gros contexte
 
-Conserver la TODO exhaustive du document du 13 août : placement actif et
-mesures, failover natif prefill/decode, NAT indépendants sans Tailscale pour le
-trafic produit, updater réellement signé, pairing, stockage multi-disque,
-portabilité, multi-modèle, charge, optimisations spéculatives, puis clôture et
-merge produit. Aucun de ces blocs n'est déclaré terminé.
+- Publier/observer un résumé anonyme et signé de la demande de contexte, sans
+  prompt, token brut ni sortie, et vérifier l'autorité de publication.
+- Qualifier le placement actif : moins de couches et plus de contexte lorsque
+  les longues demandes dominent, davantage de couverture si la chaîne est
+  incomplète.
+- Mesurer TTFT, tokens/s, RAM/VRAM, KV, réservations, téléchargements et réseau.
+- Prouver hystérésis et stabilité fondées sur le bénéfice, sans oscillation ni
+  timer arbitraire.
+- Inverser l'ordre d'arrivée RTX/Mac/Mac mini et simuler workers hétérogènes,
+  churn et contextes variés. Un petit worker ne doit pas abaisser tout le swarm.
+
+### P6 — failover natif
+
+- Former une deuxième route complète, éventuellement avec RunPod, sans faire
+  passer un test d'intégration isolé pour une preuve live.
+- Tuer un worker pendant prefill puis pendant decode ; détecter via protocole et
+  santé, pas via un délai arbitraire.
+- Replanifier avec nouvel epoch, fencing et replay prompt + tokens commités,
+  sans doublon SSE ; tuer aussi le premier remplaçant.
+- Rejeter un ancien worker revenu tard.
+- Sans remplaçant : erreur propre, loaders terminés et réservations libérées.
+- Mesurer le replay froid avant de concevoir un snapshot KV compatible,
+  versionné et vérifié.
+
+### P7 — réseau réel sans Tailscale produit
+
+- Deux NAT indépendants ; Tailscale uniquement pour l'administration SSH.
+- Prouver qu'aucun trafic d'inférence n'utilise une adresse 100.x.
+- Mesurer direct/relay, RTT, pertes, reconnexions, TTFT et débit.
+- Tester hole punching direct, CGNAT/symétrique via relay, puis coupure/retour
+  réseau pendant prefill et decode.
+
+### P8 — mises à jour signées
+
+- Auditer l'ancien worktree `fabi-ide-desktop-stable` avant toute réutilisation.
+- Corriger le feed stable encore dormant/404 avec publication atomique,
+  checksums, signatures et rollback forward-only.
+- Obtenir Developer ID/notarisation macOS et certificat Windows ; l'ad hoc
+  actuel n'est pas une signature de production.
+- Tester ancienne version -> mise à jour obligatoire -> téléchargement ->
+  installation -> relance automatique -> nouvelle version.
+- Ne jamais montrer les SHA internes bruts comme message utilisateur.
+
+### P9 — utilisateurs, stockage, portabilité, modèles et charge
+
+- Device pairing/login multi-machine, révocation, rotation et audit.
+- Cache multi-disques : espace, choix de volume, LRU pondéré, protection disque
+  plein et UI de nettoyage. L'espace est une contrainte de téléchargement, pas
+  un remplacement du score de placement.
+- E2E AMD/Intel intégré et dédié via backends maintenus, sans promesse
+  universelle non testée.
+- Ajouter plusieurs familles de modèles par import générique source + package
+  Mesh, avec hashes/géométrie vérifiés et sans code spécial Qwen.
+- Plusieurs swarms simultanés : isolation DHT, cache, contribution, routing et
+  changement de modèle.
+- Charge de centaines de workers simulés et utilisateurs concurrents ; mesurer
+  VPS, registre, coordinateur, SQLite et SSE.
+
+### P10 — optimisations après fiabilité
+
+- Étudier l'article Gradient et la révision Mesh/Skippy épinglée avant toute
+  activation du speculative decoding.
+- Draft model/proposer maintenu, vérification distribuée, métriques
+  d'acceptation et coût stockage borné.
+- Équilibrage inspiré de Petals et Exo : débit minimal par couche, topologie,
+  réseau, backend et cache déjà présent.
+- Transfert KV seulement entre formats/backends compatibles, avec fallback
+  froid systématique.
+
+### P11 — clôture
+
+- Suites complètes, lint/typecheck/build et CI multi-OS.
+- E2E et mesures documentés avec dates et commandes.
+- Aucun secret, override de labo ou processus orphelin dans les bundles.
+- Handoff à jour, commits atomiques et pushes vérifiés par SHA distant.
+- Revue finale puis merge vers les branches produit, notamment IDE `main`,
+  uniquement après qualification.
+
+Aucun des blocs P5–P11 n'est déclaré terminé.
 
 ## 10. Accès, services et précautions
 

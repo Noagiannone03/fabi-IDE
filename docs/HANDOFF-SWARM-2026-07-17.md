@@ -10314,13 +10314,15 @@ kill/replan froid.
 
 ## Point de reprise complet et TODO ordonnée (13 août 2026, suite 8)
 
-Le contexte opérationnel complet a été figé dans
-`docs/CONTINUATION-FABI-V3-2026-08-13.md`. Il contient les révisions des quatre
+Le contexte opérationnel complet avait été figé dans une continuation datée du
+13 août. Il contient les révisions des quatre
 dépôts, l'architecture V3 à préserver, les accès au labo sans secrets en clair,
 l'état connu ou inconnu de chaque machine, les identifiants root3, les pièges
 des helpers de labo et une TODO P0 à P11 avec critères de réussite. Le prompt
-prêt à coller dans une nouvelle conversation se trouve dans
-`docs/NEXT-CONVERSATION-PROMPT-2026-08-13.md`.
+de la même date accompagnait ce snapshot. Leur contenu utile a ensuite été
+consolidé dans `docs/CONTINUATION-FABI-V3-2026-08-17.md` et
+`docs/NEXT-CONVERSATION-PROMPT-2026-08-17.md`; les deux anciens fichiers ont été
+supprimés à la demande de l'utilisateur pour éviter deux points de reprise.
 
 La conversation source complète reste uniquement en local dans
 `/Users/noagiannone/.codex/sessions/2026/07/20/rollout-2026-07-20T09-36-43-019f7e74-ac4e-7b52-b15b-9e0e3647a19e.jsonl`.
