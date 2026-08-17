@@ -10,7 +10,7 @@ Le moteur produit de référence est exclusivement :
 
 - clone : `/Users/noagiannone/Documents/swarm-engine-v3` ;
 - branche : `codex/swarm-protocol-v3` ;
-- HEAD courant : `72de6071338d5f313d921a587ab6cc3e38c1ff99`.
+- HEAD courant : `043697057cce3154090220e392d036ecd88941b8`.
 
 Ne jamais reprendre `/Users/noagiannone/Documents/swarm-engine` ni
 `/Users/noagiannone/Documents/swarm-engine-dynamic` comme base produit. Fabi
@@ -77,24 +77,25 @@ upstream.
 
 | Composant | Clone | Branche | HEAD |
 | --- | --- | --- | --- |
-| IDE/Desktop | `/Users/noagiannone/Documents/fabi-ide` | `codex/rc49-product-e2e` | `570fa925e566bca2b5abb149ab65b787ff03ec87` |
-| Moteur V3 de développement | `/Users/noagiannone/Documents/swarm-engine-v3` | `codex/swarm-protocol-v3` | `72de6071338d5f313d921a587ab6cc3e38c1ff99` |
-| CLI/OpenCode | `/Users/noagiannone/Documents/fabi-cli` | `dev` | `694ed898af40169d25340eac912b97d6694e1316` |
-| Méta-runtime | `/Users/noagiannone/Documents/fabi` | `main` | `4d5a763812e2c77b24b13e2df9fcccf53ac116a6` |
+| IDE/Desktop | `/Users/noagiannone/Documents/fabi-ide` | `codex/rc49-product-e2e` | `c6d667ce0049981597758aa41e6fc44b529a69c4` |
+| Moteur V3 de développement | `/Users/noagiannone/Documents/swarm-engine-v3` | `codex/swarm-protocol-v3` | `043697057cce3154090220e392d036ecd88941b8` |
+| CLI/OpenCode | `/Users/noagiannone/Documents/fabi-cli` | `dev` | `ed7967b8e592471b05e729b1772d4ffb54b74787` |
+| Méta-runtime | `/Users/noagiannone/Documents/fabi` | `main` | `7380ee1fbbf4f8a4a5e9c0afd1caba2a2fcbee12` |
 
 Le seul élément non suivi dans l'IDE avant cette passation était
 `docs/instruct.md`. Les nouveaux documents de reprise sont volontairement les
 seules modifications attendues.
 
-Attention à deux SHA moteur distincts :
+Attention aux états runtime distincts :
 
-- `72de607...` est le moteur V3 de développement avec les fondations
-  spéculatives dormantes ;
+- `043697057...` est le moteur V3 courant, avec les événements lifecycle et
+  les fondations spéculatives toujours dormantes ;
 - `1c922f399d07bf1568bbaa4fcf75a4b8602a957d` est le moteur qualifié et épinglé
   dans le runtime public rc68 installé sur les machines.
 
-Ne pas modifier les pins du runtime vers `72de607...` tant qu'une nouvelle RC
-complète n'est pas construite et qualifiée.
+Le runtime rc70 épinglant `043697057...` est publié et qualifié, mais n'est pas
+encore installé sur les machines live afin de ne pas interrompre le
+téléchargement rc68 du RTX.
 
 ## 4. Architecture à préserver
 
@@ -508,3 +509,56 @@ sans configuration de laboratoire ni fallback V2.
 Le prochain geste utile n'est donc pas du nouveau code spéculatif : observer et
 qualifier le worker RTX rc68, fermer P2, puis exécuter P3/P4 sur la route
 physique.
+
+## 12. Gate courant : lifecycle rc70 et desktop 0.1.21
+
+État vérifié le 17 août 2026 à 12:27 CEST :
+
+- moteur V3 `043697057cce3154090220e392d036ecd88941b8`, CI
+  `32015167077` verte sur macOS, Ubuntu et Windows ; suite locale complète
+  `1088 passed, 8 skipped` ;
+- CLI `ed7967b8e592471b05e729b1772d4ffb54b74787`, tests installateur et
+  typecheck verts ;
+- méta-runtime `7380ee1fbbf4f8a4a5e9c0afd1caba2a2fcbee12`, tag annoté
+  `v2.7.0-rc70`, workflow Release `32015802311` vert ; 27 assets et 12/12
+  sidecars SHA-256 vérifiés ;
+- manifeste macOS rc70 extrait en flux : CLI `ed7967b8...`, moteur
+  `043697057...`, Mesh 0.75.1, ABI 0.1.35, Python 3.12.7 et Metal ;
+- IDE `c6d667ce0049981597758aa41e6fc44b529a69c4`, desktop 0.1.21,
+  115 tests swarm, 7 Spaces, 11 desktop et bundle Electron verts ;
+- workflow desktop `32018598421` vert sur macOS ARM64 et Windows x64, y
+  compris contrat natif/codesign ad hoc, NSIS et installation smoke ;
+- DMG : 221 834 885 octets, SHA-256
+  `42b647c7332365e89fbe5c8ed317b2ab7ae569af001a5033cf19a810ed589c00` ;
+- EXE : 189 253 422 octets, SHA-256
+  `8f47a9943a6748c06f6638537a27df2ef13780d3fa297f4ec2eb6bfe5828d09a` ;
+- copie vérifiée des artefacts sous
+  `/var/tmp/fabi-desktop-32018598421` sur le VPS.
+
+Le correctif rc70 répond au faux bootstrap indéfini : le moteur émet maintenant
+les événements `[FABI]` sur stdout aux transitions réelles et le desktop ne
+mélange plus stderr avec le tampon de framing. Cela est couvert par tests et
+CI, mais la preuve UI live exige encore l'installation contrôlée de 0.1.21/rc70.
+
+État des machines :
+
+- Mac local : Fabi volontairement fermé par l'utilisateur ; aucun processus
+  Fabi/Parallax ; 7,3 Gio libres au relevé. Ne pas le relancer avant le gate ;
+- Mac mini : desktop/worker rc68 toujours actif, node `eac4e808...`, état V3
+  `ready`, KV 32 768 ;
+- RTX : même worker rc68 PID `10268`, 25 blobs et 5 981 789 997 octets
+  apparents, cinq incomplets pour 325 058 560 octets, VRAM 73/15 975 Mio et
+  GPU 0 %. Le téléchargement continue. Le contrat signé sélectionne exactement
+  37 fichiers et 10 513 630 797 octets : `model-package.json`,
+  `shared/metadata.gguf` et les couches 028 à 062. Cela confirme que le log
+  runtime `[28,63)` est semi-ouvert ; la couverture de la borne finale reste à
+  prouver dans l'état de route, pas à déduire du catalogue brut `[28,63]` ;
+- scheduler : seulement Mac mini + RTX visibles, `waiting`, route structurelle
+  fausse, admission fausse, contexte zéro et `need_more_nodes=true`, ce qui est
+  attendu tant que le Mac local reste fermé et le RTX non initialisé.
+
+Ne pas installer rc70 ni 0.1.21 sur le RTX pendant son téléchargement rc68.
+Après sa fin : vérifier borne `[28,63)` et fichiers exacts, KV/VRAM/liens,
+basculer proprement les trois machines, remettre le Mac local dans la route,
+exiger admission réelle et génération mesurée. P3/P4 suivent immédiatement.
+Le speculative decoding n'est ni activé ni utilisé comme raccourci.

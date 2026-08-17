@@ -11021,3 +11021,92 @@ chargé sa tranche. Le scheduler voyait toujours les trois nœuds, les deux Macs
 joignable. Il publiait honnêtement `structural_pipeline_ready=false`,
 `admission_ready=false` et contexte routable zéro. La route et la génération
 restent non qualifiées jusqu'à la convergence réelle.
+
+## Lifecycle V3 structuré, rc70 et desktop 0.1.21 qualifiés (17 août 2026, suite 2)
+
+Le long affichage « connexion / bootstrap du pipeline » observé dans le desktop
+local n'était pas la preuve que le worker était encore en bootstrap. Le log
+produit montrait au contraire une tranche chargée, un KV à 32 768 et des
+heartbeats, mais le moteur V3 courant n'émettait aucun événement structuré
+`[FABI]` attendu par le desktop (`peer_id`, `joining_scheduler`, `allocated`,
+`weights_load_start`, `weights_load_done`). En plus, le parseur desktop
+alimentait un même tampon de framing avec stdout et stderr, donc une ligne
+native stderr pouvait corrompre un événement stdout. L'utilisateur a ensuite
+précisé avoir volontairement fermé Fabi sur ce Mac parce qu'il ne contribuait
+pas pour l'instant : ne pas transformer cette fermeture en crash supposé et ne
+pas relancer le desktop local sans nécessité du gate live.
+
+Le moteur de référence exclusif `/Users/noagiannone/Documents/swarm-engine-v3`
+porte maintenant le commit
+`043697057cce3154090220e392d036ecd88941b8`, poussé sur
+`codex/swarm-protocol-v3`. Il rétablit un émetteur best-effort stable sur
+stdout, publie l'identité après construction réelle du transport, l'entrée
+scheduler, l'allocation legacy ou V3 autonome en convention semi-ouverte, le
+début de matérialisation et la fin seulement après initialisation de
+l'exécuteur et calcul exact du KV. Les 55 tests ciblés et la suite complète
+locale (`1088 passed, 8 skipped`) sont verts. Le workflow moteur
+`32015167077` est vert sur macOS 15, Ubuntu et Windows au SHA exact. Le lint
+global non utilisé par cette CI expose encore 89 erreurs historiques hors des
+fichiers touchés, dans des benchmarks et anciens backends ; elles ne sont pas
+présentées comme corrigées.
+
+Le CLI `dev` épingle ce moteur au commit
+`ed7967b8e592471b05e729b1772d4ffb54b74787`; tests installateur ciblés et
+typecheck sont verts. Le méta-runtime `main` l'épingle au commit
+`7380ee1fbbf4f8a4a5e9c0afd1caba2a2fcbee12`. Le tag annoté public
+`v2.7.0-rc70` pointe exactement sur ce commit. Son workflow Release
+`32015802311` est entièrement vert : transactions POSIX/Windows, cohérence du
+lock, six builds et provenance. Les 27 assets sont présents et les 12
+sidecars d'archives/décompresseurs correspondent tous aux digests SHA-256 de
+GitHub, en tenant compte du marqueur binaire `*` standard produit par
+`sha256sum` sous Windows. Le manifeste macOS extrait en flux sur le VPS porte
+rc70, CLI `ed7967b8...`, moteur `043697057...`, Mesh 0.75.1, ABI 0.1.35,
+Skippy/Metal et Python 3.12.7.
+
+Côté IDE, `c57b691f6a47d5ac23bb5831fc33afa951d787ff` sépare désormais
+strictement le framing stdout des logs stderr et teste les chunks fractionnés
+ainsi que la dernière ligne sans retour final. Le commit
+`c6d667ce0049981597758aa41e6fc44b529a69c4` épingle rc70/CLI/moteur et porte
+le desktop à 0.1.21. Les 115 tests `fabi-swarm`, les 7 tests `fabi-spaces`, les
+11 contrats desktop, les builds des extensions et le bundle Electron local
+sont verts. Le workflow candidat `32018598421`, au SHA exact `c6d667c`, est
+vert sur macOS ARM64 et Windows x64. Windows a construit puis installé le NSIS
+silencieusement avant de vérifier `Fabi.exe` et `app.asar`; macOS a exécuté
+`codesign --verify --deep --strict`, vérifié identifiant, architecture,
+version et entitlements avant l'upload. Les artefacts vérifiés une seconde fois
+sur le VPS sous `/var/tmp/fabi-desktop-32018598421` sont :
+
+- `Fabi-0.1.21-arm64.dmg`, 221 834 885 octets, SHA-256
+  `42b647c7332365e89fbe5c8ed317b2ab7ae569af001a5033cf19a810ed589c00` ;
+- `Fabi-Setup-0.1.21-x64.exe`, 189 253 422 octets, SHA-256
+  `8f47a9943a6748c06f6638537a27df2ef13780d3fa297f4ec2eb6bfe5828d09a`.
+
+La signature macOS reste ad hoc et non notarisée ; P8 n'est donc pas fermé.
+Un second transfert du zip macOS vers le Mac mini a été annulé parce que les
+deux chemins testés étaient anormalement lents. Seul le répertoire temporaire
+exact de cette tentative a été supprimé ; aucun processus Fabi n'a été touché.
+
+À 12:27 CEST, Fabi reste volontairement arrêté sur le Mac local et aucun
+processus Fabi/Parallax n'y tourne. Le Mac mini est toujours `ready`, KV 32 768.
+Le worker RTX rc68 est toujours le même PID `10268` : 25 blobs, 5 981 789 997
+octets apparents, 5 fichiers incomplets pour 325 058 560 octets, 4 490 466 822
+octets écrits par le processus, VRAM 73 Mio utilisée / 15 975 Mio libre et 0 %
+GPU. Il progresse donc encore mais n'a pas chargé sa tranche. Avec le Mac local
+arrêté, le scheduler ne voit logiquement que le Mac mini et la RTX ; il publie
+`structural_pipeline_ready=false`, `admission_ready=false`, contexte zéro et
+`need_more_nodes=true`. Aucun runtime ni desktop live n'a été basculé vers
+rc70/0.1.21 pendant ce téléchargement.
+
+Le manifeste signé de cette sélection contient exactement 37 fichiers pour
+10 513 630 797 octets : `model-package.json`, `shared/metadata.gguf` et les
+couches 028 à 062. Le log `[28,63)` est donc bien semi-ouvert. Cette preuve ne
+permet pas encore de déclarer la route complète : la couverture de la borne
+finale doit être lue dans la route convergée et son modèle de segments, pas
+inférée du seul affichage catalogue `[28,63]`.
+
+Ordre immédiat : laisser le PID RTX terminer sans interruption, exiger son KV,
+sa VRAM chargée et ses liens, puis faire une transition contrôlée vers
+rc70/0.1.21 et remettre ce Mac dans la route pour couvrir toutes les couches.
+Seulement alors exiger une route réellement admissible et une génération
+OpenAI mesurée, puis P3/P4. Le speculative decoding reste dormant et non
+activé dans rc70 ; il demeure postérieur aux gates de fiabilité documentés.
