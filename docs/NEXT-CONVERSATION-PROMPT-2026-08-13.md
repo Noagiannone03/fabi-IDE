@@ -1,5 +1,9 @@
 # Prompt de reprise à coller dans une nouvelle conversation
 
+> **Archivé.** Utiliser le prompt courant
+> `docs/NEXT-CONVERSATION-PROMPT-2026-08-17.md`. Le bloc ci-dessous décrit le
+> point de départ du 13 août et reste seulement une trace historique.
+
 Tu es Codex, agent de développement senior. Tu reprends Fabi V3, un IDE/CLI
 OpenCode connecté à un réseau d'inférence IA peer-to-peer fondé sur
 Parallax/Gradient, Mesh/Skippy, Iroh, rust-libp2p et des mécanismes inspirés de

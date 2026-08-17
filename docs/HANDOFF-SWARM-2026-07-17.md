@@ -10861,3 +10861,102 @@ détection stricte des frontends Fabi packagés macOS/Windows et de
 Les trois clients CDP/chat/multi-Space l'utilisent désormais. Leurs contrôles
 syntaxiques et les 11 tests outils desktop sont verts; les prochains E2E live
 peuvent ainsi qualifier le code courant avant packaging.
+
+## Retour du labo, candidat 0.1.19 et route physique en construction (17 août 2026)
+
+Les trois machines physiques sont revenues en ligne. Les quatre worktrees
+autoritaires ont été revérifiés propres et alignés avec leur upstream, hormis
+le fichier utilisateur vide et non suivi `docs/instruct.md` : IDE
+`570fa925e566bca2b5abb149ab65b787ff03ec87`, moteur V3 de développement
+`72de6071338d5f313d921a587ab6cc3e38c1ff99`, CLI
+`694ed898af40169d25340eac912b97d6694e1316` et méta-runtime
+`4d5a763812e2c77b24b13e2df9fcccf53ac116a6`.
+
+Le workflow desktop officiel `32003410782`, déclenché au HEAD IDE `570fa925`,
+est entièrement vert. Le job macOS arm64 a validé le contrat produit, le build
+ad hoc, le contrat natif et les checksums. Le job Windows x64 a validé le
+contrat produit, le build NSIS, l'installation smoke sans bureau et les
+checksums. Les artefacts exacts, vérifiés une seconde fois sur le VPS dans
+`/tmp/fabi-candidate-32003410782`, sont :
+
+- `Fabi-0.1.19-arm64.dmg`, 221 861 678 octets, SHA-256
+  `bc466b43ac39202689fb705e6f8c0ffce2d4b932877aff9d053a1682b40f9da7` ;
+- `Fabi-Setup-0.1.19-x64.exe`, 189 255 044 octets, SHA-256
+  `e80b80e82222e9505390a5976d8cf6018ac68b30530332ec8599309f14f8c3d0`.
+
+Ces binaires remplacent les précédents artefacts portant eux aussi le numéro
+0.1.19. Le cache local du workflow a été supprimé après vérification pour
+récupérer environ 597 Mio; la copie VPS et les artefacts GitHub restent. Le
+DMG passe `codesign --deep --strict`, mais reste ad hoc et non notarisé.
+
+Le candidat est installé sur le Mac local, le Mac mini et Windows. Le vieux
+desktop Windows est sauvegardé sous
+`C:\Users\gmbhl\AppData\Local\Programs\Fabi.pre-0.1.19-20260817T0924` et le
+vieux 0.1.15 du Mac mini reste dans la Corbeille. Le faux dialogue Theia
+« Restart » est confirmé absent avec les réglages désormais migrés vers
+`window.titleBarStyle=custom`; sa cause reste le listener frontend antérieur à
+la migration, corrigé par `b20cf0`.
+
+Le runtime officiel rc68 est maintenant installé sur les trois machines. Les
+manifestes portent CLI `694ed898...`, moteur qualifié `1c922f399...`, Mesh
+0.75.1 et ABI 0.1.35, Metal sur les Macs et CUDA sur la RTX. L'archive Windows
+officielle a finalement atteint sa taille exacte de 806 907 229 octets avant
+que la transaction ne remplace rc66; l'installateur et son curl se sont ensuite
+fermés. Le desktop Windows a été lancé de façon persistante avec
+`Win32_Process.Create`, car un `Start-Process` enfant de la session SSH était
+tué à sa fermeture. Ce lancement headless permet de qualifier le dataplane,
+mais ne constitue pas un test UI interactif; `quser` ne montrait aucune session
+ouverte.
+
+À la demande explicite de l'utilisateur, OpenClaw a été arrêté sur le Mac mini
+sans supprimer aucun fichier. Le LaunchAgent `ai.openclaw.gateway` a été
+déchargé de la session et les processus agent/Chrome dédiés ont reçu TERM; la
+vérification finale ne trouvait plus de processus ni de label OpenClaw. Les
+transferts temporaires encore actifs ont également été arrêtés sans toucher à
+Fabi. Sur Windows, deux arbres `llama-server.exe` sous `C:\llama` ont été
+terminés exactement; la tâche `OllamaServe` reste installée et Ready, les
+modèles sont préservés. La VRAM est passée d'environ 13 003 Mio utilisés à 63
+Mio avant le lancement de Fabi.
+
+Les deux Macs ont convergé autonomement et sont `ready` : Mac mini node
+`eac4e808...64ec`, catalogue span `[0,15]`, puis Mac local node
+`993a92a3...efab`, span `[15,28]`, avec KV 32 768 et un lien direct. Le seul
+scheduler `parallax-scheduler-qwen3-32b-v3` avait un snapshot DHT vieux de deux
+jours; il a été redémarré seul, sans route/réservation, en conservant son volume,
+son identité `efbb...4f24` et son image. Après relance normale du Mac mini, le
+catalogue est revenu `snapshot_ready`.
+
+Le worker RTX rc68 a ensuite publié une capacité CUDA de 14,86 Gio, créé
+l'endpoint Iroh `c4a8c5206a56248429fe1a6b32898bfdca98723ab3bd1583c26d4e67ffb53714`,
+rejoint le scheduler via relay en une tentative et choisi sans override les
+couches `[28,63]` avec 32 768 tokens. Le scheduler l'a accepté comme troisième
+worker et le catalogue a observé un lien direct Mac local -> RTX. Le log
+indiquait 37 fichiers à récupérer. Au dernier snapshot de cette entrée, la RTX
+était encore `building`/`waiting_contract`, KV non publié et rejet temporaire
+`scheduler_transition`; la route restait donc honnêtement non faisable. Ne pas
+interpréter la borne brute `[28,63]` comme un trou sans observer la convention
+du runtime et l'état final : les logs parlent d'indices de couches alors que la
+documentation de placement emploie souvent des intervalles semi-ouverts.
+
+Les validations locales de cette reprise sont également vertes : 112 tests
+IDE `fabi-swarm`, 7 `fabi-spaces`, 11 desktop/outils et syntaxe des harnesses;
+moteur 1084 réussis et 8 ignorés avec le seul seuil de disque de test neutralisé,
+format/clippy, 31 tests réseau/DHT, DXGI et bridge Skippy; CLI installateur et
+typecheck; runtime lock, bundling et transaction d'upgrade. Le premier passage
+moteur n'avait échoué que sur quatre tests de cache car le disque local était
+sous le seuil produit de 6 Gio. Il ne reste qu'environ 2,7 Gio libres : ne pas
+dupliquer les modèles ou archives sur le Mac local.
+
+Le nouvel état de reprise détaillé est dans
+`docs/CONTINUATION-FABI-V3-2026-08-17.md`; le prompt prêt à coller est
+`docs/NEXT-CONVERSATION-PROMPT-2026-08-17.md`. La conversation Codex de cette
+reprise est conservée dans
+`/Users/noagiannone/.codex/sessions/2026/08/13/rollout-2026-08-13T11-33-08-019ffa77-e1a2-74e2-8e2b-3be5b920aec9.jsonl`, ID
+`019ffa77-e1a2-74e2-8e2b-3be5b920aec9`. Elle ne doit être consultée qu'avec
+`rg`/`tail` et ne doit jamais être copiée dans Git.
+
+L'ordre immédiat est désormais : laisser la RTX finir ses 37 fichiers, exiger
+son état `ready` et une route complète réellement admissible, faire une
+génération OpenAI mesurée, puis P3 multi-Space/lifecycle et P4 Electron/OpenCode
+avec les harnesses déjà préparés. Le speculative decoding de `72de607` reste
+dormant, non épinglé dans rc68 et strictement postérieur à ces gates.

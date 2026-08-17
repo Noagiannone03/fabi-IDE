@@ -1,5 +1,10 @@
 # Reprise opérationnelle Fabi V3 — 13 août 2026
 
+> **Archive de passation.** L'état opérationnel courant est désormais
+> `docs/CONTINUATION-FABI-V3-2026-08-17.md`. Conserver ce document pour
+> l'historique P0–P11, mais ne pas utiliser ses versions rc67/0.1.16 comme état
+> live.
+
 Ce document permet de reprendre le chantier dans une nouvelle conversation
 sans perdre les décisions, preuves et limites de la conversation longue de
 juillet-août 2026. Il complète `docs/HANDOFF-SWARM-2026-07-17.md`, qui reste la
