@@ -593,13 +593,23 @@ Le speculative decoding n'est ni activé ni utilisé comme raccourci.
   `c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7` épingle rc71/CLI/moteur et porte
   le desktop à 0.1.22. Les 116 tests swarm, 7 Spaces, 11 desktop et le bundle
   Electron sont verts localement. Le workflow candidat `32022614426` est
-  encore en cours ; aucun DMG/EXE 0.1.22 n'est encore revendiqué.
+  entièrement vert sur macOS ARM64 et Windows x64, y compris codesign natif et
+  installation silencieuse NSIS. Les digests des deux archives Actions sont
+  exacts, tous les `SHA256SUMS` internes passent sur le VPS et une seconde
+  vérification macOS locale valide `codesign --deep --strict`, l'identifiant
+  `fr.undefinedstudio.fabi`, la version 0.1.22, arm64 et les trois pins dans
+  `app.asar`. Le DMG fait 221 835 232 octets, SHA-256
+  `2045197b496a83d14d422736aee661337d6847aa2372e6063b81dc2510f462ca` ;
+  l'EXE fait 189 253 899 octets, SHA-256
+  `a200c8a36d9ed710688459c9ff7ca61b1ef952f7a11096addb69ffcf0505763a`.
+  Les artefacts vérifiés sont sous `/var/tmp/fabi-desktop-32022614426` sur le
+  VPS ; le répertoire temporaire local de contrôle a été supprimé.
 
 Le contrôle Windows du même worker rc68 PID `10268` confirme une progression
 réelle : 27 blobs pour 6 544 983 277 octets apparents, cinq incomplets pour
 325 058 560 octets, 4 927 832 021 octets écrits et VRAM 73/15 975 Mio. Le
-comptage exact des chemins signés est passé de 16/37 à 18/37 ; les fichiers
-complets vont jusqu'à `layers/layer-043.gguf` et il manque 044 à 062. Le
+comptage exact des chemins signés est passé de 16/37 à 19/37 ; les fichiers
+complets vont jusqu'à `layers/layer-044.gguf` et il manque 045 à 062. Le
 scheduler reste justement non admissible et le Mac mini reste `ready`, KV
 32 768. Fabi demeure volontairement fermé sur ce Mac.
 

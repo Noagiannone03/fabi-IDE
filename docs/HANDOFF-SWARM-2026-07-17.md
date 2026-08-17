@@ -11151,14 +11151,22 @@ compteur lorsque l'événement ready omet ses champs, et
 `c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7` épingle rc71, le CLI et le
 moteur tout en passant le desktop à 0.1.22. Les 116 tests swarm, 7 Spaces, 11
 desktop et le bundle Electron local sont verts. Le candidat officiel
-`32022614426` est encore en construction ; ni DMG ni EXE 0.1.22 ne sont encore
-revendiqués.
+`32022614426` est entièrement vert sur macOS ARM64 et Windows x64. Les digests
+externes des deux archives correspondent à l'API Actions, tous les
+`SHA256SUMS` internes passent sur le VPS et le ZIP macOS exact a été revérifié
+localement : `codesign --deep --strict`, identifiant
+`fr.undefinedstudio.fabi`, version 0.1.22, arm64, et présence des pins rc71/CLI/
+moteur dans `app.asar`. Les artefacts sont sous
+`/var/tmp/fabi-desktop-32022614426`. Le DMG fait 221 835 232 octets, SHA-256
+`2045197b496a83d14d422736aee661337d6847aa2372e6063b81dc2510f462ca` ;
+l'EXE fait 189 253 899 octets, SHA-256
+`a200c8a36d9ed710688459c9ff7ca61b1ef952f7a11096addb69ffcf0505763a`.
 
 Le worker RTX rc68 PID `10268` n'a pas été interrompu. Son état mesuré est
 monté à 27 blobs, 6 544 983 277 octets apparents et 4 927 832 021 octets
 écrits ; cinq fichiers incomplets totalisent toujours 325 058 560 octets et la
 VRAM reste à 73/15 975 Mio. Le comptage exact des 37 chemins signés est passé à
-18 complets : package, metadata et couches 028 à 043 ; il manque 044 à 062.
+19 complets : package, metadata et couches 028 à 044 ; il manque 045 à 062.
 Le scheduler reste honnêtement `waiting`, route/admission fausses et contexte
 zéro avec le Mac local volontairement fermé. Le Mac mini reste ready/KV 32k.
 
