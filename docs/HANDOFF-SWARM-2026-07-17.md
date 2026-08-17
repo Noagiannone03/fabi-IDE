@@ -11097,6 +11097,14 @@ arrêté, le scheduler ne voit logiquement que le Mac mini et la RTX ; il publie
 `need_more_nodes=true`. Aucun runtime ni desktop live n'a été basculé vers
 rc70/0.1.21 pendant ce téléchargement.
 
+À 12:31 CEST, le nettoyage explicitement autorisé a retiré uniquement les
+caches reconstruisibles `vscode-cpptools`, Electron, electron-builder,
+Puppeteer et pre-commit. Il a libéré environ 1,1 Gio. Le cache `dotslash` n'a
+pas été forcé : ses 516 Mio restants contiennent des bundles signés protégés
+par permissions. Aucun `sudo`, modèle, runtime, profil, backup ou cache
+d'application utilisateur n'a été touché. L'espace libre restait volatil,
+autour de 8,4 Gio au relevé suivant.
+
 Le manifeste signé de cette sélection contient exactement 37 fichiers pour
 10 513 630 797 octets : `model-package.json`, `shared/metadata.gguf` et les
 couches 028 à 062. Le log `[28,63)` est donc bien semi-ouvert. Cette preuve ne

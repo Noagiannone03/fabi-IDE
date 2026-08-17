@@ -543,7 +543,8 @@ CI, mais la preuve UI live exige encore l'installation contrôlée de 0.1.21/rc7
 État des machines :
 
 - Mac local : Fabi volontairement fermé par l'utilisateur ; aucun processus
-  Fabi/Parallax ; 7,3 Gio libres au relevé. Ne pas le relancer avant le gate ;
+  Fabi/Parallax ; environ 8,4 Gio libres après suppression de cinq caches de
+  développement reconstruisibles. Ne pas le relancer avant le gate ;
 - Mac mini : desktop/worker rc68 toujours actif, node `eac4e808...`, état V3
   `ready`, KV 32 768 ;
 - RTX : même worker rc68 PID `10268`, 25 blobs et 5 981 789 997 octets

@@ -85,7 +85,8 @@ ne pas déclarer l'updater/signature de production terminé.
 
 - Mac local : l'utilisateur a volontairement fermé Fabi parce que ce Mac ne
   servait pas pour l'instant. Aucun processus Fabi/Parallax au dernier relevé,
-  environ 7,3 Gio libres. Ne pas le relancer avant le gate live.
+  environ 8,4 Gio libres après nettoyage de caches reconstruisibles. Ne pas le
+  relancer avant le gate live.
 - Mac mini : Fabi 0.1.19 dans `/Users/gmbh/Applications/Fabi.app`, rc68 actif,
   span `[0,15)`, node `eac4e808...64ec`, KV 32768. OpenClaw est volontairement
   arrêté et son LaunchAgent déchargé sans suppression ; ne le relance pas
