@@ -10962,3 +10962,62 @@ son état `ready` et une route complète réellement admissible, faire une
 génération OpenAI mesurée, puis P3 multi-Space/lifecycle et P4 Electron/OpenCode
 avec les harnesses déjà préparés. Le speculative decoding de `72de607` reste
 dormant, non épinglé dans rc68 et strictement postérieur à ces gates.
+
+## Readiness Windows liée au lancement et RC69 en construction (17 août 2026, suite)
+
+Le contrôle du lancement rc68 Windows a isolé un défaut réel distinct des
+anciens logs rc66. Le desktop comparait le PID écrit par le serveur au PID du
+processus qu'il avait lancé. Sous le venv Windows, le launcher Python observé
+était le PID `1012`, tandis que le serveur réel, enfant de ce launcher, écrivait
+le PID `740`. Le fichier était donc authentiquement courant mais rejeté comme
+« obsolète ou étranger », ce qui entretenait une boucle de relance. La readiness
+n'est désormais plus liée à l'égalité fragile de ces PID : le desktop crée un
+UUID v4 par lancement et le transmet dans
+`FABI_REQUEST_AGENT_LAUNCH_ID`; le serveur exige cet identifiant et publie un
+document atomique de schéma 2 avec l'identifiant, son PID réel et son URL
+loopback. Le desktop vérifie l'identifiant, le PID positif et l'URL loopback,
+tout en conservant le handle du launcher pour arrêter son arbre.
+
+Le correctif moteur V3 est le commit
+`b022705bf498ac6df7fac6323250e296e58fcbca`, poussé sur la seule branche
+`codex/swarm-protocol-v3`. Sa suite locale donne 1085 réussis, 8 ignorés et zéro
+échec; Ruff et le format sont verts. Le workflow moteur `32009590326` est vert
+sur Ubuntu, macOS 15 et Windows, y compris wheel ABI3, import et contrats V3.
+Le CLI `dev` épingle ce moteur au commit
+`4a22218bb9516c572c6e7bbed2970b965bcc2200`; les trois tests installateur, le
+typecheck local et le hook de typecheck au commit sont verts. Le méta-runtime
+épingle ces deux SHA au commit
+`7a8d9b8bb5e3a0855599d1798847cba91792d0ef`; sa CI de branche
+`32010340794` a validé le lock et les transactions d'installation Linux et
+Windows. Le tag annoté `v2.7.0-rc69` pointe sur ce commit et son workflow de
+publication `32010464145` est entièrement vert : transactions, lock, six builds,
+provenance et publication. Les 27 assets de la release sont présents; pour les
+12 archives et helpers, chaque somme publiée a été comparée au digest GitHub et
+correspond exactement. Le manifeste macOS contrôlé en flux porte rc69, CLI
+`4a22218...`, moteur `b022705...`, Mesh 0.75.1, ABI 0.1.35 et Metal. Aucun nœud
+live n'a été basculé pendant le téléchargement rc68 de la RTX.
+
+Côté IDE, le contrat schéma 2, sa régression simulant le couple launcher/serveur
+Windows, le pin rc69 et la version desktop 0.1.20 sont préparés. Les 113 tests
+`fabi-swarm`, les 11 tests desktop, les builds des extensions et les bundles
+browser/node/Electron sont verts. Les 7 tests `fabi-spaces` et la syntaxe des
+deux harnesses live sont également verts. Ces changements peuvent maintenant
+être committés puisque la release épinglée est complète.
+
+Le nettoyage autorisé par l'utilisateur n'a retiré que des caches
+reconstructibles : ancien cache de qualification, cache npm, cache cargo-xwin,
+cache pip et candidats runtime incomplets. Les modèles, le runtime actif et les
+backups d'application ont été préservés. La suite moteur, qui avait d'abord
+échoué à la collecte avec `ENOSPC`, a ensuite pu passer intégralement. L'espace
+libre reste volatil sous la charge du worker Metal et du swap; il était de 4,9
+Gio au dernier relevé, sans duplication de modèle ou d'archive.
+
+À 10:26 CEST, le processus de téléchargement RTX lancé à 09:53 était toujours
+le même. Le cache sélectif contenait 12 blobs pour 2 152 073 677 octets, dont 5
+fichiers incomplets totalisant 325 058 560 octets apparents. La RTX restait à
+73 Mio de VRAM utilisée et 0 % d'activité GPU : elle n'avait donc pas encore
+chargé sa tranche. Le scheduler voyait toujours les trois nœuds, les deux Macs
+`ready` avec 32 768 tokens de KV, mais la RTX `waiting_contract` sans KV ni pair
+joignable. Il publiait honnêtement `structural_pipeline_ready=false`,
+`admission_ready=false` et contexte routable zéro. La route et la génération
+restent non qualifiées jusqu'à la convergence réelle.

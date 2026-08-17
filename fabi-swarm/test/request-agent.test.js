@@ -2,7 +2,7 @@
 
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
-const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const test = require('node:test');
@@ -157,8 +157,8 @@ test('settles process closure once after a spawn error and close', async () => {
             },
             state => states.push(state),
             () => undefined,
-            (binary, args) => {
-                spawned = { binary, args };
+            (binary, args, options) => {
+                spawned = { binary, args, options };
                 return child;
             }
         );
@@ -168,6 +168,9 @@ test('settles process closure once after a spawn error and close', async () => {
             '--host', '127.0.0.1', '--port', '0', '--ready-file',
             spawned.args[7]
         ]);
+        const launchId = spawned.args[7].match(/ready-([0-9a-f-]+)\.json$/)?.[1];
+        assert.ok(launchId);
+        assert.equal(spawned.options.env.FABI_REQUEST_AGENT_LAUNCH_ID, launchId);
         const rejected = assert.rejects(handle.ready, /impossible à lancer: spawn failed/);
         child.emit('error', new Error('spawn failed'));
         child.exitCode = 1;
@@ -238,35 +241,101 @@ test('does not hang IDE shutdown when close is missing after forced kill', async
     }
 });
 
-test('accepts only the child readiness document bound to loopback', () => {
+test('accepts only launch-bound readiness on loopback across a Windows venv wrapper', () => {
+    const launchId = 'b3432c02-0493-43a5-838c-b793617c6753';
     assert.deepEqual(
         parseRequestAgentReady(JSON.stringify({
-            schema_version: 1,
-            pid: 4312,
+            schema_version: 2,
+            launch_id: launchId,
+            pid: 740,
             base_url: 'http://127.0.0.1:43127'
-        }), 4312),
+        }), launchId),
         {
-            schema_version: 1,
-            pid: 4312,
+            schema_version: 2,
+            launch_id: launchId,
+            pid: 740,
             base_url: 'http://127.0.0.1:43127'
         }
     );
     assert.throws(
         () => parseRequestAgentReady(JSON.stringify({
-            schema_version: 1,
-            pid: 9999,
+            schema_version: 2,
+            launch_id: '605b99fd-a67a-4ea8-9e4a-cf9291aeff23',
+            pid: 740,
             base_url: 'http://127.0.0.1:43127'
-        }), 4312),
+        }), launchId),
         /étrangère/
     );
     assert.throws(
         () => parseRequestAgentReady(JSON.stringify({
-            schema_version: 1,
-            pid: 4312,
+            schema_version: 2,
+            launch_id: launchId,
+            pid: 740,
             base_url: 'http://0.0.0.0:43127'
-        }), 4312),
+        }), launchId),
         /loopback/
     );
+    assert.throws(
+        () => parseRequestAgentReady(JSON.stringify({
+            schema_version: 2,
+            launch_id: launchId,
+            pid: 0,
+            base_url: 'http://127.0.0.1:43127'
+        }), launchId),
+        /PID/
+    );
+});
+
+test('accepts the real server PID behind a Windows venv launcher process', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'fabi-request-agent-test-'));
+    const previousToken = process.env.FABI_ACCOUNT_TOKEN;
+    process.env.FABI_ACCOUNT_TOKEN = '22'.repeat(32);
+    try {
+        const child = new EventEmitter();
+        child.pid = 1012;
+        child.exitCode = null;
+        child.signalCode = null;
+        child.stdout = undefined;
+        child.stderr = undefined;
+        const states = [];
+        const handle = spawnRequestAgent(
+            { binary: 'C:\\runtime\\venv\\Scripts\\python.exe', argsPrefix: ['-m', 'fabi.request_agent'] },
+            requestAgentSwarm(),
+            profile,
+            { rootPath: 'C:\\runtime\\trust\\root.json', dataRoot: root },
+            state => states.push(state),
+            () => undefined,
+            (_binary, args, options) => {
+                writeFileSync(args[7], JSON.stringify({
+                    schema_version: 2,
+                    launch_id: options.env.FABI_REQUEST_AGENT_LAUNCH_ID,
+                    pid: 740,
+                    base_url: 'http://127.0.0.1:43127'
+                }));
+                return child;
+            }
+        );
+
+        assert.deepEqual(await handle.ready, {
+            kind: 'ready',
+            swarmId: 'qwen3-4b-v3',
+            pid: 740,
+            baseUrl: 'http://127.0.0.1:43127'
+        });
+        assert.equal(states.filter(state => state.kind === 'ready').length, 1);
+
+        const stopped = handle.stop();
+        child.exitCode = 0;
+        child.emit('close', 0, null);
+        await stopped;
+    } finally {
+        if (previousToken === undefined) {
+            delete process.env.FABI_ACCOUNT_TOKEN;
+        } else {
+            process.env.FABI_ACCOUNT_TOKEN = previousToken;
+        }
+        rmSync(root, { recursive: true, force: true });
+    }
 });
 
 test('builds a separate persistent V3 identity for the local Request Agent', () => {

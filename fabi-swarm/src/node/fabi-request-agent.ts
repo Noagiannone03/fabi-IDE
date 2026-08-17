@@ -77,6 +77,7 @@ export type RequestAgentSpawner = typeof spawn;
 
 interface ReadyDocument {
     schema_version: number;
+    launch_id: string;
     pid: number;
     base_url: string;
 }
@@ -123,7 +124,7 @@ export function buildRequestAgentEnv(
     return env;
 }
 
-export function parseRequestAgentReady(raw: string, expectedPid: number): ReadyDocument {
+export function parseRequestAgentReady(raw: string, expectedLaunchId: string): ReadyDocument {
     let document: unknown;
     try {
         document = JSON.parse(raw);
@@ -131,8 +132,12 @@ export function parseRequestAgentReady(raw: string, expectedPid: number): ReadyD
         throw new Error('readiness Request Agent illisible');
     }
     const ready = document as Partial<ReadyDocument>;
-    if (ready.schema_version !== 1 || ready.pid !== expectedPid) {
+    if (ready.schema_version !== 2 || ready.launch_id !== expectedLaunchId) {
         throw new Error('readiness Request Agent obsolète ou étrangère');
+    }
+    const pid = ready.pid;
+    if (!Number.isSafeInteger(pid) || pid === undefined || pid <= 0) {
+        throw new Error('PID Request Agent invalide');
     }
     let url: URL;
     try {
@@ -153,8 +158,9 @@ export function parseRequestAgentReady(raw: string, expectedPid: number): ReadyD
         throw new Error('le Request Agent doit écouter uniquement en loopback');
     }
     return {
-        schema_version: 1,
-        pid: expectedPid,
+        schema_version: 2,
+        launch_id: expectedLaunchId,
+        pid,
         base_url: url.origin
     };
 }
@@ -171,7 +177,8 @@ export function spawnRequestAgent(
     const id = safeSwarmId(swarm.id);
     const frontendRoot = join(bootstrap.dataRoot, 'request-agent', id, 'frontend');
     mkdirSync(frontendRoot, { recursive: true });
-    const readyFile = join(frontendRoot, `ready-${randomUUID()}.json`);
+    const launchId = randomUUID();
+    const readyFile = join(frontendRoot, `ready-${launchId}.json`);
     const log = openLog(bootstrap.dataRoot, id);
     let child: ChildProcess | undefined;
     let watchingReadyFile = false;
@@ -226,6 +233,7 @@ export function spawnRequestAgent(
 
     try {
         const env = buildRequestAgentEnv(swarm, profile, bootstrap);
+        env.FABI_REQUEST_AGENT_LAUNCH_ID = launchId;
         // Le fichier n'existe pas au démarrage. StatWatcher notifie aussi sa
         // création ultérieure et évite les divergences fs.watch entre
         // ReadDirectoryChangesW, kqueue et inotify. Ce polling ne décide
@@ -235,12 +243,12 @@ export function spawnRequestAgent(
                 return;
             }
             try {
-                const document = parseRequestAgentReady(readFileSync(readyFile, 'utf8'), child.pid);
+                const document = parseRequestAgentReady(readFileSync(readyFile, 'utf8'), launchId);
                 settled = true;
                 const state: RequestAgentState = {
                     kind: 'ready',
                     swarmId: swarm.id,
-                    pid: child.pid,
+                    pid: document.pid,
                     baseUrl: document.base_url
                 };
                 resolveReady(state);
