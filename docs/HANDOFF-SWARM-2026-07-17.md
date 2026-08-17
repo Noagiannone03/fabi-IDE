@@ -11118,3 +11118,58 @@ rc70/0.1.21 et remettre ce Mac dans la route pour couvrir toutes les couches.
 Seulement alors exiger une route réellement admissible et une génération
 OpenAI mesurée, puis P3/P4. Le speculative decoding reste dormant et non
 activé dans rc70 ; il demeure postérieur aux gates de fiabilité documentés.
+
+## Progression de poids structurée et candidats rc71/0.1.22 (17 août 2026, suite 3)
+
+L'analyse du faux bootstrap a isolé un dernier manque produit : même avec les
+événements début/fin de rc70, un téléchargement Hugging Face de plusieurs
+heures n'aurait montré aucun compteur intermédiaire. Le moteur V3 exclusif
+porte désormais `dcb5c5f255a711df1f702904e27f0e5f21caa33a`. Il branche une
+classe tqdm sur le paramètre public `snapshot_download(tqdm_class=...)`, ignore
+les barres byte/fichier et suit uniquement `Fetching N files`. Chaque fichier
+achevé émet `weights_load_progress`; une exception de callback est absorbée et
+ne peut donc jamais casser la matérialisation signée. L'événement final inclut
+les compteurs mesurés lorsqu'ils existent.
+
+Les 25 tests ciblés et la suite locale complète avec le seuil disque de test
+neutralisé sont verts (`1090 passed, 8 skipped`). Le premier passage sans cet
+ajustement avait seulement quatre refus de cache sous le minimum produit et un
+budget KV MLX nul dans le processus long ; les cinq tests passent séparément.
+Le workflow natif `32021830865` est entièrement vert au SHA exact sur Ubuntu,
+macOS et Windows, y compris wheels ABI3, DHT, DXGI, bridge Skippy et contrats
+V3. Le CLI `271eb46cfaf731dca12343087323e4d7f0d1ad76` épingle ce moteur ; ses
+tests et son typecheck sont verts.
+
+Le méta-runtime `28c3f9119c1c54dc05a96660102a1c95f541813a` épingle ce CLI et
+ce moteur. Le run de branche `32022430867` a validé cohérence du lock et
+transactions Linux/Windows. Le tag annoté `v2.7.0-rc71` dereference exactement
+ce commit ; le run `32022504921` construit encore les six archives, donc aucun
+asset rc71 n'est encore qualifié ni installé.
+
+Côté IDE, `b3c7db7eeec809f19e518ef3b72eddaa2d0c0b94` conserve le dernier
+compteur lorsque l'événement ready omet ses champs, et
+`c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7` épingle rc71, le CLI et le
+moteur tout en passant le desktop à 0.1.22. Les 116 tests swarm, 7 Spaces, 11
+desktop et le bundle Electron local sont verts. Le candidat officiel
+`32022614426` est encore en construction ; ni DMG ni EXE 0.1.22 ne sont encore
+revendiqués.
+
+Le worker RTX rc68 PID `10268` n'a pas été interrompu. Son état mesuré est
+monté à 27 blobs, 6 544 983 277 octets apparents et 4 927 832 021 octets
+écrits ; cinq fichiers incomplets totalisent toujours 325 058 560 octets et la
+VRAM reste à 73/15 975 Mio. Le comptage exact des 37 chemins signés est passé à
+18 complets : package, metadata et couches 028 à 043 ; il manque 044 à 062.
+Le scheduler reste honnêtement `waiting`, route/admission fausses et contexte
+zéro avec le Mac local volontairement fermé. Le Mac mini reste ready/KV 32k.
+
+Deux caches modèles 0,6B uniquement recréés par les tests ont été supprimés ;
+le cache Fabi 32B de 14 Gio est préservé. L'espace libre local est revenu vers
+6,6 Gio. Sur le Mac mini, un ancien `curl` de transfert oublié a été arrêté ;
+le vieux `dd` et les anciens `shasum` restent en état noyau `U` malgré TERM,
+sur un fichier temporaire absent. Aucun processus Fabi n'a été touché.
+
+Ordre immédiat : attendre et vérifier intégralement rc71/0.1.22, laisser rc68
+finir ses 37 fichiers, puis exiger chargement, KV, VRAM et liens avant la
+transition contrôlée des trois machines. Remettre alors seulement le Mac local
+dans la route, exiger admission réelle et génération mesurée. P3/P4 suivent ;
+le speculative decoding reste dormant.

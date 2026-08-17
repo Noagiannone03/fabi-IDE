@@ -195,3 +195,13 @@ puis poursuivre placement, failover, NAT, updater signé, pairing, stockage,
 portabilité, multi-modèle et enfin speculative decoding, sans fallback V2 ni
 preuve de laboratoire et en documentant/poussant chaque gate réel.
 ```
+
+Mise à jour postérieure à ce prompt : le correctif de compteur est au moteur
+`dcb5c5f255a711df1f702904e27f0e5f21caa33a`, CI `32021830865` verte ; CLI
+`271eb46cfaf731dca12343087323e4d7f0d1ad76`; méta-runtime
+`28c3f9119c1c54dc05a96660102a1c95f541813a`, tag annoté rc71, workflow
+`32022504921` en cours ; IDE `c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7`,
+desktop 0.1.22, workflow `32022614426` en cours. Le RTX rc68 PID `10268` est à
+18/37 fichiers signés exacts, jusqu'à la couche 043, sans chargement VRAM/KV.
+Ne rien installer avant la vérification complète des deux workflows et ne pas
+redémarrer le RTX pendant son téléchargement.

@@ -563,3 +563,55 @@ Après sa fin : vérifier borne `[28,63)` et fichiers exacts, KV/VRAM/liens,
 basculer proprement les trois machines, remettre le Mac local dans la route,
 exiger admission réelle et génération mesurée. P3/P4 suivent immédiatement.
 Le speculative decoding n'est ni activé ni utilisé comme raccourci.
+
+## 13. Compteur de téléchargement rc71 en qualification
+
+État vérifié le 17 août 2026 vers 13:03 CEST :
+
+- moteur V3 `dcb5c5f255a711df1f702904e27f0e5f21caa33a`, poussé sur
+  `codex/swarm-protocol-v3` ; le chemin Skippy fournit maintenant à
+  `snapshot_download` une classe tqdm qui ne suit que la barre externe
+  `Fetching N files`, publie `weights_load_progress` et rend toute exception
+  de télémétrie inoffensive pour le téléchargement authentifié ;
+- tests ciblés moteur : 25 réussis ; suite complète : `1090 passed, 8 skipped`.
+  Le premier passage avait cinq échecs environnementaux dus au seuil disque
+  produit et à un budget MLX nul dans le processus long ; les quatre tests
+  stockage passent avec le seuil de test neutralisé et le test MLX passe seul,
+  puis la suite complète passe avec ce même seuil de test neutralisé ;
+- workflow moteur `32021830865` entièrement vert sur Ubuntu, macOS et Windows
+  au SHA exact, y compris format/lint, DHT, wheel ABI3, bridge Skippy et
+  contrats V3 ;
+- CLI `271eb46cfaf731dca12343087323e4d7f0d1ad76`, tests installateur ciblés et
+  typecheck complet verts, poussé sur `dev` ;
+- méta-runtime `28c3f9119c1c54dc05a96660102a1c95f541813a` : ses transactions
+  Linux/Windows et la cohérence du lock sont vertes dans `32022430867`. Le tag
+  annoté `v2.7.0-rc71` dereference exactement ce commit ; le workflow release
+  `32022504921` construit encore les six tarballs. Aucun asset rc71 n'est encore
+  revendiqué ni installé ;
+- IDE `b3c7db7eeec809f19e518ef3b72eddaa2d0c0b94` préserve le dernier total de
+  fichiers jusqu'à `weights_load_done`, puis
+  `c6b7c1bcaa8a2bb04eb0e1261d1d596f7ed4f0a7` épingle rc71/CLI/moteur et porte
+  le desktop à 0.1.22. Les 116 tests swarm, 7 Spaces, 11 desktop et le bundle
+  Electron sont verts localement. Le workflow candidat `32022614426` est
+  encore en cours ; aucun DMG/EXE 0.1.22 n'est encore revendiqué.
+
+Le contrôle Windows du même worker rc68 PID `10268` confirme une progression
+réelle : 27 blobs pour 6 544 983 277 octets apparents, cinq incomplets pour
+325 058 560 octets, 4 927 832 021 octets écrits et VRAM 73/15 975 Mio. Le
+comptage exact des chemins signés est passé de 16/37 à 18/37 ; les fichiers
+complets vont jusqu'à `layers/layer-043.gguf` et il manque 044 à 062. Le
+scheduler reste justement non admissible et le Mac mini reste `ready`, KV
+32 768. Fabi demeure volontairement fermé sur ce Mac.
+
+Deux modèles 0,6B uniquement téléchargés par la suite de tests ont été retirés
+du cache Hugging Face comme données reconstruisibles ; le cache Fabi 32B de
+14 Gio est intégralement préservé. L'espace libre observé est remonté à environ
+6,6 Gio. Sur le Mac mini, un `curl` oublié de l'ancienne tentative de transfert
+a été arrêté exactement ; le vieux `dd` sur le fichier temporaire déjà absent
+reste en état noyau `U` malgré TERM, comme les anciens `shasum`. Le worker Fabi
+n'a pas été touché.
+
+Ordre immédiat actualisé : terminer et vérifier les workflows rc71/0.1.22,
+laisser le RTX rc68 achever ses 37 fichiers sans restart, exiger son chargement,
+son KV, sa VRAM et ses liens, puis seulement effectuer la transition contrôlée
+des trois machines. Le speculative decoding reste dormant.
