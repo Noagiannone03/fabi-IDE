@@ -316,12 +316,23 @@ test('accepts the real server PID behind a Windows venv launcher process', async
             }
         );
 
-        assert.deepEqual(await handle.ready, {
-            kind: 'ready',
-            swarmId: 'qwen3-4b-v3',
-            pid: 740,
-            baseUrl: 'http://127.0.0.1:43127'
+        let readinessTimeout;
+        const timeout = new Promise((_, reject) => {
+            readinessTimeout = setTimeout(
+                () => reject(new Error('Request Agent readiness was not observed')),
+                5_000
+            );
         });
+        try {
+            assert.deepEqual(await Promise.race([handle.ready, timeout]), {
+                kind: 'ready',
+                swarmId: 'qwen3-4b-v3',
+                pid: 740,
+                baseUrl: 'http://127.0.0.1:43127'
+            });
+        } finally {
+            clearTimeout(readinessTimeout);
+        }
         assert.equal(states.filter(state => state.kind === 'ready').length, 1);
 
         const stopped = handle.stop();
