@@ -1,0 +1,50 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const test = require('node:test');
+const { FabiWorkerEventStream } = require('../lib/node/fabi-swarm-worker');
+
+test('frames split V3 worker events from stdout', () => {
+    const state = { kind: 'running', pid: 42, swarmId: 'qwen3-32b-v3' };
+    const snapshots = [];
+    const stream = new FabiWorkerEventStream(state, () => snapshots.push({ ...state }));
+
+    stream.ingest('[FABI] {"event":"allocated","start_layer":15,');
+    stream.ingest('"end_layer":28}\r\n[FABI] {"event":"weights_load_');
+    stream.ingest('done","files_total":37}\n');
+
+    assert.equal(snapshots.length, 2);
+    assert.deepEqual(snapshots[0], {
+        kind: 'running',
+        pid: 42,
+        swarmId: 'qwen3-32b-v3',
+        stage: 'loading-weights',
+        startLayer: 15,
+        endLayer: 28
+    });
+    assert.deepEqual(snapshots[1], {
+        kind: 'running',
+        pid: 42,
+        swarmId: 'qwen3-32b-v3',
+        stage: 'ready',
+        startLayer: 15,
+        endLayer: 28,
+        weightsFilesTotal: 37,
+        weightsFilesDone: 37,
+        weightsCurrentFile: undefined
+    });
+});
+
+test('flushes the last event even without a trailing newline', () => {
+    const state = { kind: 'running', pid: 7, swarmId: 'qwen3-32b-v3' };
+    const snapshots = [];
+    const stream = new FabiWorkerEventStream(state, () => snapshots.push({ ...state }));
+
+    stream.ingest('[FABI] {"event":"peer_id","peer_id":"worker-endpoint"}');
+    assert.equal(snapshots.length, 0);
+    stream.flush();
+
+    assert.equal(snapshots.length, 1);
+    assert.equal(snapshots[0].peerId, 'worker-endpoint');
+    assert.equal(snapshots[0].stage, 'handshake');
+});

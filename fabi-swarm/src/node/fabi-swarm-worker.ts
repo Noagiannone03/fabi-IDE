@@ -82,17 +82,13 @@ export function spawnWorker(
         const state: WorkerState = { kind: 'running', pid: currentPid, swarmId };
         onUpdate({ ...state });
         const push = () => onUpdate({ ...state });
+        const stdoutEvents = new FabiWorkerEventStream(state, push);
 
-        let buf = '';
         const onChunk = (source: 'stdout' | 'stderr', chunk: Buffer) => {
             const text = chunk.toString('utf-8');
             writeWorkerLog(log, source, text);
-            buf += text;
-            let nl: number;
-            while ((nl = buf.indexOf('\n')) >= 0) {
-                const line = buf.slice(0, nl);
-                buf = buf.slice(nl + 1);
-                handleLine(line, state, push);
+            if (source === 'stdout') {
+                stdoutEvents.ingest(text);
             }
         };
         proc.stdout?.on('data', chunk => onChunk('stdout', chunk));
@@ -103,6 +99,7 @@ export function spawnWorker(
             onUpdate({ kind: 'error', swarmId, message: err.message });
         });
         proc.on('close', (code, signal) => {
+            stdoutEvents.flush();
             writeWorkerLog(log, 'launcher', `close code=${code} signal=${signal}`);
             log?.end();
             if (stopped) {
@@ -255,6 +252,38 @@ function writeWorkerLog(log: WriteStream | undefined, source: string, message: s
     }
     const line = message.endsWith('\n') ? message : `${message}\n`;
     log.write(`[${new Date().toISOString()}] [${source}] ${line}`);
+}
+
+/**
+ * Frames the stdout-only worker event channel. Native backends are extremely
+ * verbose on stderr; sharing one buffer between both pipes can splice a stderr
+ * fragment into a valid `[FABI]` JSON line and leave the UI stuck forever.
+ */
+export class FabiWorkerEventStream {
+    protected buffer = '';
+
+    constructor(
+        protected readonly state: WorkerState,
+        protected readonly push: () => void
+    ) {}
+
+    ingest(chunk: Buffer | string): void {
+        this.buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf-8');
+        let newline: number;
+        while ((newline = this.buffer.indexOf('\n')) >= 0) {
+            const line = this.buffer.slice(0, newline).replace(/\r$/, '');
+            this.buffer = this.buffer.slice(newline + 1);
+            handleLine(line, this.state, this.push);
+        }
+    }
+
+    flush(): void {
+        const line = this.buffer.replace(/\r$/, '');
+        this.buffer = '';
+        if (line) {
+            handleLine(line, this.state, this.push);
+        }
+    }
 }
 
 /** Applique un event `[FABI] {...}` à l'état du worker (port de events.ts). */
