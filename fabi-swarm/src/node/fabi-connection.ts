@@ -127,6 +127,13 @@ export function deriveConnection(
         return { reason: 'worker-missing-binary', ready: false, headline: 'Moteur non installé',
             activity: 'installe le moteur Fabi pour rejoindre le swarm', detail: worker.message, ...base };
     }
+    if (worker.failureCode === 'registry-metadata-expired') {
+        const role = worker.failureRole ?? 'snapshot';
+        return { reason: 'registry-expired', ready: false, headline: 'Catalogue signé expiré',
+            activity: `${role}.json a expiré — nouvelle tentative automatique après sa publication`,
+            detail: 'Fabi refuse correctement les métadonnées périmées ; aucune connexion au modèle n’est en cours tant que le registre signé n’est pas renouvelé.',
+            ...base };
+    }
     if (worker.kind === 'error' || worker.kind === 'stopped') {
         return { reason: 'worker-crashed', ready: false, headline: 'Redémarrage du worker',
             activity: worker.message ?? 'le worker s\'est arrêté',

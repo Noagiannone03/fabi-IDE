@@ -99,6 +99,10 @@ export interface WorkerState {
     kind: WorkerKind;
     pid?: number;
     message?: string;
+    /** Erreur terminale reconnue sans exposer le contenu brut de stderr. */
+    failureCode?: 'registry-metadata-expired';
+    /** Rôle TUF expiré, borné à la liste publique des métadonnées. */
+    failureRole?: 'root' | 'timestamp' | 'snapshot' | 'targets';
     /** Id du swarm auquel ce worker est rattaché. */
     swarmId?: string;
     /** Détails live (events parallax) pour l'UI. */
@@ -151,6 +155,7 @@ export type ConnectionReason =
     | 'worker-missing-binary'  // moteur pas installé
     | 'worker-starting'        // process en démarrage
     | 'worker-crashed'         // worker mort → auto-restart
+    | 'registry-expired'       // métadonnée TUF expirée, retry fail-closed
     | 'alloc-timeout'          // scheduler n'a pas alloué de couches (300s)
     | 'scheduler-unreachable'  // scheduler injoignable
     | 'connecting'             // handshake / join / découverte

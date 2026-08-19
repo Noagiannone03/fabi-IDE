@@ -26,6 +26,7 @@ const PHASE_OF: Record<ConnectionReason, Phase> = {
     'alloc-timeout': 'error',
     'scheduler-unreachable': 'error',
     'worker-crashed': 'error',
+    'registry-expired': 'error',
     'worker-missing-binary': 'error'
 };
 

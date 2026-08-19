@@ -22,6 +22,23 @@ const TERMINATE_GRACE_MS = 5_000;
 const RESTART_DELAY_MS = 30_000;
 const EVENT_PREFIX = '[FABI] ';
 const WORKER_LOG_DIR = workerLogDirectory();
+const REGISTRY_EXPIRY_PATTERN = /ExpiredMetadataError:\s*(root|timestamp|snapshot|targets)(?:\.json)? is expired/i;
+
+type RegistryExpiryFailure = Pick<WorkerState, 'failureCode' | 'failureRole' | 'message'>;
+
+/** Réduit stderr à un contrat public borné ; aucun texte arbitraire n'atteint l'UI. */
+export function detectRegistryMetadataExpiry(text: string): RegistryExpiryFailure | undefined {
+    const match = text.match(REGISTRY_EXPIRY_PATTERN);
+    if (!match) {
+        return undefined;
+    }
+    const role = match[1].toLowerCase() as NonNullable<WorkerState['failureRole']>;
+    return {
+        failureCode: 'registry-metadata-expired',
+        failureRole: role,
+        message: `métadonnée TUF ${role}.json expirée`
+    };
+}
 
 export interface WorkerHandle {
     /** PID courant (change après un auto-restart). */
@@ -47,6 +64,7 @@ export function spawnWorker(
     let child: ChildProcess | undefined;
     let currentPid: number | undefined;
     let restartTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastRegistryFailure: RegistryExpiryFailure | undefined;
 
     const startChild = (): void => {
         const args = [
@@ -79,16 +97,27 @@ export function spawnWorker(
             'launcher',
             `spawn pid=${currentPid} cmd=${command.binary} ${args.join(' ')}`
         );
-        const state: WorkerState = { kind: 'running', pid: currentPid, swarmId };
+        const state: WorkerState = { kind: 'running', pid: currentPid, swarmId, ...lastRegistryFailure };
         onUpdate({ ...state });
         const push = () => onUpdate({ ...state });
-        const stdoutEvents = new FabiWorkerEventStream(state, push);
+        const stdoutEvents = new FabiWorkerEventStream(state, push, () => {
+            lastRegistryFailure = undefined;
+        });
+        let stderrTail = '';
 
         const onChunk = (source: 'stdout' | 'stderr', chunk: Buffer) => {
             const text = chunk.toString('utf-8');
             writeWorkerLog(log, source, text);
             if (source === 'stdout') {
                 stdoutEvents.ingest(text);
+            } else {
+                stderrTail = `${stderrTail}${text}`.slice(-4096);
+                const failure = detectRegistryMetadataExpiry(stderrTail);
+                if (failure && (failure.failureRole !== state.failureRole || !state.failureCode)) {
+                    lastRegistryFailure = failure;
+                    Object.assign(state, failure);
+                    push();
+                }
             }
         };
         proc.stdout?.on('data', chunk => onChunk('stdout', chunk));
@@ -107,10 +136,12 @@ export function spawnWorker(
                 return;
             }
             // Crash inattendu → on signale puis on re-spawn dans 30 s.
-            onUpdate({ kind: 'error', swarmId, message: `worker arrêté (code=${code}${signal ? ` signal=${signal}` : ''}) — redémarrage auto` });
+            onUpdate(lastRegistryFailure
+                ? { kind: 'error', swarmId, ...lastRegistryFailure }
+                : { kind: 'error', swarmId, message: `worker arrêté (code=${code}${signal ? ` signal=${signal}` : ''}) — redémarrage auto` });
             restartTimer = setTimeout(() => {
                 if (!stopped) {
-                    onUpdate({ kind: 'starting', swarmId });
+                    onUpdate({ kind: 'starting', swarmId, ...lastRegistryFailure });
                     startChild();
                 }
             }, RESTART_DELAY_MS);
@@ -264,7 +295,8 @@ export class FabiWorkerEventStream {
 
     constructor(
         protected readonly state: WorkerState,
-        protected readonly push: () => void
+        protected readonly push: () => void,
+        protected readonly onProgress?: () => void
     ) {}
 
     ingest(chunk: Buffer | string): void {
@@ -273,7 +305,7 @@ export class FabiWorkerEventStream {
         while ((newline = this.buffer.indexOf('\n')) >= 0) {
             const line = this.buffer.slice(0, newline).replace(/\r$/, '');
             this.buffer = this.buffer.slice(newline + 1);
-            handleLine(line, this.state, this.push);
+            handleLine(line, this.state, this.push, this.onProgress);
         }
     }
 
@@ -281,13 +313,18 @@ export class FabiWorkerEventStream {
         const line = this.buffer.replace(/\r$/, '');
         this.buffer = '';
         if (line) {
-            handleLine(line, this.state, this.push);
+            handleLine(line, this.state, this.push, this.onProgress);
         }
     }
 }
 
 /** Applique un event `[FABI] {...}` à l'état du worker (port de events.ts). */
-function handleLine(line: string, state: WorkerState, push: () => void): void {
+function handleLine(
+    line: string,
+    state: WorkerState,
+    push: () => void,
+    onProgress?: () => void
+): void {
     if (!line.startsWith(EVENT_PREFIX)) {
         return;
     }
@@ -342,6 +379,10 @@ function handleLine(line: string, state: WorkerState, push: () => void): void {
         default:
             return; // event inconnu (ex. 'pressure') → pas de changement d'étape
     }
+    delete state.message;
+    delete state.failureCode;
+    delete state.failureRole;
+    onProgress?.();
     push();
 }
 

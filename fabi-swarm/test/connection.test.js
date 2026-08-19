@@ -127,6 +127,19 @@ test('surfaces capacity, scheduler and worker failures instead of optimistic sta
         deriveConnection(swarm(), { kind: 'error', message: 'worker exited' }).reason,
         'worker-crashed'
     );
+    const expired = deriveConnection(
+        swarm(),
+        {
+            kind: 'running',
+            stage: 'joining',
+            failureCode: 'registry-metadata-expired',
+            failureRole: 'snapshot'
+        }
+    );
+    assert.equal(expired.reason, 'registry-expired');
+    assert.equal(expired.headline, 'Catalogue signé expiré');
+    assert.match(expired.activity, /snapshot\.json a expiré/);
+    assert.doesNotMatch(expired.activity, /bootstrap/i);
 });
 
 test('keeps the prompt locked until contribution is authorized', () => {
