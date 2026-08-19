@@ -6,7 +6,7 @@
 
 import { ChildProcess, spawn, spawnSync } from 'child_process';
 import {
-    createWriteStream, mkdirSync, readFileSync, rmSync, unwatchFile, watchFile,
+    createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, unwatchFile, watchFile,
     type WriteStream
 } from 'fs';
 import { randomUUID } from 'crypto';
@@ -230,6 +230,39 @@ export function spawnRequestAgent(
             watchingReadyFile = false;
         }
     };
+    const consumeReadyFile = () => {
+        if (settled || !child?.pid || !existsSync(readyFile)) {
+            return;
+        }
+        try {
+            const document = parseRequestAgentReady(readFileSync(readyFile, 'utf8'), launchId);
+            settled = true;
+            const state: RequestAgentState = {
+                kind: 'ready',
+                swarmId: swarm.id,
+                pid: document.pid,
+                baseUrl: document.base_url
+            };
+            resolveReady(state);
+            onUpdate(state);
+            eventFeed = new RequestAgentEventFeed(
+                document.base_url,
+                getAccountToken(),
+                onActivity
+            );
+            eventFeed.start();
+            stopWatchingReadyFile();
+        } catch (error) {
+            // Le moteur publie par rename atomique. Un fichier final invalide
+            // est une faute de contrat, pas une condition transitoire.
+            const message = `readiness invalide: ${
+                error instanceof Error ? error.message : String(error)
+            }`;
+            stopWatchingReadyFile();
+            settleError(message);
+            void stopProcess(child);
+        }
+    };
 
     try {
         const env = buildRequestAgentEnv(swarm, profile, bootstrap);
@@ -239,37 +272,8 @@ export function spawnRequestAgent(
         // ReadDirectoryChangesW, kqueue et inotify. Ce polling ne décide
         // jamais qu'un process est mort : seul exit/close le fait.
         watchFile(readyFile, { interval: 100, persistent: false }, current => {
-            if (settled || !child?.pid || !current.isFile()) {
-                return;
-            }
-            try {
-                const document = parseRequestAgentReady(readFileSync(readyFile, 'utf8'), launchId);
-                settled = true;
-                const state: RequestAgentState = {
-                    kind: 'ready',
-                    swarmId: swarm.id,
-                    pid: document.pid,
-                    baseUrl: document.base_url
-                };
-                resolveReady(state);
-                onUpdate(state);
-                eventFeed = new RequestAgentEventFeed(
-                    document.base_url,
-                    getAccountToken(),
-                    onActivity
-                );
-                eventFeed.start();
-                stopWatchingReadyFile();
-            } catch (error) {
-                // Le moteur publie par rename atomique. Un fichier final
-                // invalide est donc une faute de contrat, pas une condition
-                // transitoire à masquer.
-                const message = `readiness invalide: ${
-                    error instanceof Error ? error.message : String(error)
-                }`;
-                stopWatchingReadyFile();
-                settleError(message);
-                void stopProcess(child);
+            if (current.isFile()) {
+                consumeReadyFile();
             }
         });
         watchingReadyFile = true;
@@ -307,6 +311,10 @@ export function spawnRequestAgent(
             }
             settleClosed();
         });
+        // Un wrapper venv Windows peut lancer le serveur, attendre sa
+        // readiness puis seulement rendre la main à Node. Dans ce cas le
+        // fichier existe déjà et aucun tick de StatWatcher n'est requis.
+        consumeReadyFile();
     } catch (error) {
         stopWatchingReadyFile();
         rmSync(readyFile, { force: true });
