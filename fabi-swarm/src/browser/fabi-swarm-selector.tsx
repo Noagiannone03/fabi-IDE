@@ -37,6 +37,8 @@ export const FabiSwarmSelector: React.FC<{
     const [view, setView] = React.useState<'list' | 'connection'>('list');
     const [busyId, setBusyId] = React.useState<string | undefined>(undefined);
     const [installing, setInstalling] = React.useState(false);
+    const [actionError, setActionError] = React.useState<string | undefined>();
+    const actionPending = React.useRef(false);
 
     const rootRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -87,31 +89,56 @@ export const FabiSwarmSelector: React.FC<{
     };
     const toggle = () => (open ? setOpen(false) : openPanel());
 
+    React.useEffect(() => {
+        if (open) {
+            rootRef.current?.querySelector<HTMLButtonElement>('.fabi-sel-expand button:not(:disabled)')?.focus();
+        }
+    }, [open]);
+
     const install = async () => {
+        if (actionPending.current) { return; }
+        actionPending.current = true;
+        setActionError(undefined);
         setInstalling(true);
         try {
             await frontend.service.installRuntime();
+        } catch (error) {
+            setActionError(`Installation impossible : ${error instanceof Error ? error.message : String(error)}`);
         } finally {
+            actionPending.current = false;
             setInstalling(false);
         }
     };
 
     const connect = async (swarm: SwarmEntry) => {
+        if (actionPending.current) { return; }
+        actionPending.current = true;
+        setActionError(undefined);
         setBusyId(swarm.id);
         setView('connection');
         try {
             await frontend.service.connectSwarm(swarm.id);
+        } catch (error) {
+            setActionError(`Connexion impossible : ${error instanceof Error ? error.message : String(error)}`);
+            setView('list');
         } finally {
+            actionPending.current = false;
             setBusyId(undefined);
         }
     };
 
     const disconnect = async () => {
+        if (actionPending.current) { return; }
+        actionPending.current = true;
+        setActionError(undefined);
         setBusyId(active?.id);
         try {
             await frontend.service.disconnect();
             setView('list');
+        } catch (error) {
+            setActionError(`Déconnexion impossible : ${error instanceof Error ? error.message : String(error)}`);
         } finally {
+            actionPending.current = false;
             setBusyId(undefined);
         }
     };
@@ -161,7 +188,7 @@ export const FabiSwarmSelector: React.FC<{
             <div className="fabi-sel-list-view">
                 {runtime && !installed && runtime.accel !== 'cpu' && (
                     <div className="fabi-sel-engine">
-                        <button className="theia-button main" disabled={installing} onClick={install}>
+                        <button className="theia-button main" disabled={installing || busyId !== undefined} onClick={install}>
                             {installing
                                 ? (runtime.downloading ? `Installation… ${runtime.progress ?? 0}%` : 'Installation…')
                                 : 'Installer le moteur'}
@@ -172,7 +199,7 @@ export const FabiSwarmSelector: React.FC<{
                         {runtime.message && !runtime.downloading && (
                             <span className="fabi-sel-hint error" role="alert">{runtime.message}</span>
                         )}
-                        <span className="fabi-sel-hint">{runtime.platform} · une fois, téléchargé par l’app</span>
+                        <span className="fabi-sel-hint">Le moteur doit être installé avant la connexion. Téléchargement pour {runtime.platform}.</span>
                     </div>
                 )}
                 {runtime && runtime.accel === 'cpu' && (
@@ -180,25 +207,29 @@ export const FabiSwarmSelector: React.FC<{
                 )}
 
                 <div className="fabi-sel-list">
-                    {sorted.length === 0 && <div className="fabi-sel-hint">Aucun swarm annoncé (registry injoignable ?)</div>}
+                    {sorted.length === 0 && <div className="fabi-sel-empty">Aucun modèle disponible pour le moment.<span>La liste se met à jour avec les annonces du réseau.</span></div>}
                     {sorted.map(s => {
                         const isActive = active?.id === s.id;
                         const busy = busyId === s.id;
                         const offline = s.status !== 'online';
                         return (
-                            <div
+                            <button
+                                type="button"
                                 key={s.id}
                                 className={`fabi-sel-row ${isActive ? 'active' : ''} ${offline ? 'offline' : ''}`}
-                                onClick={() => !offline && !busy && connect(s)}
+                                disabled={offline || busyId !== undefined || installing}
+                                aria-pressed={isActive}
+                                onClick={() => void connect(s)}
                             >
-                                <div className="fabi-sel-row-main">
+                                <span className="fabi-sel-row-main">
                                     <span className="fabi-sel-row-name">{s.model.split('/').pop() ?? s.model}</span>
-                                </div>
-                                <div className="fabi-sel-row-meta">
+                                </span>
+                                <span className="fabi-sel-row-meta">
+                                    {busy ? <span>Connexion…</span> : offline ? <span>Hors ligne</span> : isActive ? <span>Sélectionné</span> : null}
                                     <span>{s.peers} nœud{s.peers > 1 ? 's' : ''}</span>
                                     {s.totalVramGb > 0 && <span>· {s.totalVramGb} Go</span>}
-                                </div>
-                            </div>
+                                </span>
+                            </button>
                         );
                     })}
                 </div>
@@ -233,14 +264,23 @@ export const FabiSwarmSelector: React.FC<{
                             <span className="fabi-sel-locked-state">{connection.headline}</span>
                         )}
                     </div>
-                    <div className="fabi-sel-locked-body">{body}</div>
+                    <div className="fabi-sel-locked-body">
+                        {actionError && <p className="fabi-sel-action-error" role="alert">{actionError}</p>}
+                        {body}
+                    </div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className={`fabi-sel ${open ? 'open' : ''}`} ref={rootRef}>
+        <div className={`fabi-sel ${open ? 'open' : ''}`} ref={rootRef}
+            onKeyDown={event => {
+                if (event.key === 'Escape' && open) {
+                    event.preventDefault(); event.stopPropagation(); setOpen(false);
+                    rootRef.current?.querySelector<HTMLButtonElement>('.fabi-sel-bar')?.focus();
+                }
+            }}>
             {open && (
                 <div className="fabi-sel-expand">
                     <div className="fabi-sel-expand-head">
@@ -248,11 +288,14 @@ export const FabiSwarmSelector: React.FC<{
                             {view === 'connection' ? 'Connexion au swarm' : 'Choisis un modèle'}
                         </span>
                     </div>
-                    <div className="fabi-sel-expand-body">{body}</div>
+                    <div className="fabi-sel-expand-body">
+                        {actionError && <p className="fabi-sel-action-error" role="alert">{actionError}</p>}
+                        {body}
+                    </div>
                 </div>
             )}
 
-            <button className="fabi-sel-bar" title="Modèle du swarm Fabi" onClick={toggle}>
+            <button className="fabi-sel-bar" title="Modèle du swarm Fabi" aria-expanded={open} onClick={toggle}>
                 <span className="fabi-sel-bar-label">{barLabel}</span>
                 {barStatus && (
                     <span

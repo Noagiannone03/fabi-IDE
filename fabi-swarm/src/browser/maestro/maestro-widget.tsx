@@ -2,24 +2,13 @@ import * as React from '@theia/core/shared/react';
 import { injectable, inject, postConstruct } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { UnsafeWidgetUtilities } from '@theia/core/lib/browser/widgets/widget';
-import { DisposableCollection } from '@theia/core';
+import { DisposableCollection, MessageService } from '@theia/core';
 import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { FabiMaestroFrontend } from './fabi-maestro-frontend';
-import { MaestroMascot } from './maestro-mascot';
 import { MaestroAgent, MaestroMessage, MaestroSnapshot } from '../../common/fabi-maestro-protocol';
-
-const GLYPHS: Record<string, string[]> = {
-    M: ['#...#', '##.##', '#.#.#', '#.#.#', '#...#', '#...#', '#...#'],
-    A: ['.###.', '#...#', '#...#', '#####', '#...#', '#...#', '#...#'],
-    E: ['#####', '#....', '#....', '####.', '#....', '#....', '#####'],
-    S: ['.####', '#....', '#....', '.###.', '....#', '....#', '####.'],
-    T: ['#####', '..#..', '..#..', '..#..', '..#..', '..#..', '..#..'],
-    R: ['####.', '#...#', '#...#', '####.', '#.#..', '#..#.', '#...#'],
-    O: ['.###.', '#...#', '#...#', '#...#', '#...#', '#...#', '.###.']
-};
 
 /**
  * Maestro — UN SEUL widget plein écran (aucun chrome Theia autour). À gauche : la
@@ -38,12 +27,14 @@ export class MaestroWidget extends ReactWidget {
 
     @inject(FabiMaestroFrontend) protected readonly maestro: FabiMaestroFrontend;
     @inject(TerminalService) protected readonly terminals: TerminalService;
+    @inject(MessageService) protected readonly notifications: MessageService;
 
     protected snapshot: MaestroSnapshot = { engine: 'starting', agents: [] };
     protected selectedKey: string | undefined;
     protected messages: MaestroMessage[] | undefined;
     protected loadingMessages = false;
     protected sending = false;
+    protected conversationError: string | undefined;
 
     /** Terminal embarqué courant (rattaché à un PTY existant). */
     protected terminal: TerminalWidget | undefined;
@@ -89,6 +80,7 @@ export class MaestroWidget extends ReactWidget {
         this.snapshot = snapshot;
         if (this.selectedKey && !snapshot.agents.some(a => a.key === this.selectedKey)) {
             this.selectedKey = undefined;
+            this.conversationError = undefined;
             this.messages = undefined;
         }
         if (!this.selectedKey && snapshot.agents.length > 0) {
@@ -110,6 +102,7 @@ export class MaestroWidget extends ReactWidget {
 
     protected async select(agent: MaestroAgent): Promise<void> {
         this.selectedKey = agent.key;
+        this.conversationError = undefined;
         const isTerminal = agent.surface?.kind === 'terminal' && typeof agent.surface.terminalId === 'number';
         if (isTerminal) {
             this.messages = undefined;
@@ -204,10 +197,11 @@ export class MaestroWidget extends ReactWidget {
             const messages = await this.maestro.service.getConversation(key);
             if (this.selectedKey === key) {
                 this.messages = messages;
+                this.conversationError = undefined;
             }
         } catch {
             if (this.selectedKey === key) {
-                this.messages = [];
+                this.conversationError = 'Impossible de charger cette conversation.';
             }
         } finally {
             this.loadingMessages = false;
@@ -244,16 +238,19 @@ export class MaestroWidget extends ReactWidget {
         if (!agent || !input || this.sending || !agent.key.startsWith('fabi:')) {
             return;
         }
-        const text = input.value.trim();
+        const draft = input.value;
+        const text = draft.trim();
         if (!text) {
             return;
         }
-        input.value = '';
         this.sending = true;
         this.update();
         try {
             await this.maestro.service.send(agent.key, text);
+            if (this.selectedKey === agent.key && input.value === draft) { input.value = ''; }
             await this.loadMessages(agent.key);
+        } catch (error) {
+            void this.notifications.error('Envoi impossible. Votre texte est conservé : ' + String(error));
         } finally {
             this.sending = false;
             this.update();
@@ -268,7 +265,9 @@ export class MaestroWidget extends ReactWidget {
     }
 
     protected async abort(agent: MaestroAgent): Promise<void> {
-        await this.maestro.service.abort(agent.key).catch(() => undefined);
+        await this.maestro.service.abort(agent.key).catch(error => {
+            void this.notifications.error('Impossible d’arrêter cet agent : ' + String(error));
+        });
     }
 
     // ----------------------------------------------------------- rendu
@@ -303,28 +302,10 @@ export class MaestroWidget extends ReactWidget {
     }
 
     protected renderWordmark(): React.ReactNode {
-        const word = 'MAESTRO';
-        const letterW = 5, gap = 1;
-        const rects: React.ReactNode[] = [];
-        let ox = 0;
-        for (const ch of word) {
-            const glyph = GLYPHS[ch];
-            if (glyph) {
-                for (let y = 0; y < glyph.length; y++) {
-                    for (let x = 0; x < letterW; x++) {
-                        if (glyph[y][x] === '#') {
-                            rects.push(<rect key={`${ox}-${x}-${y}`} x={ox + x} y={y} width="1.04" height="1.04" />);
-                        }
-                    }
-                }
-            }
-            ox += letterW + gap;
-        }
-        return (
-            <svg className="fabi-maestro-wordmark" viewBox={`0 0 ${ox - gap} 7`} shapeRendering="crispEdges" role="img" aria-label="Maestro">
-                {rects}
-            </svg>
-        );
+        return <>
+            <h1 className="fabi-maestro-heading">Maestro</h1>
+            <p className="fabi-maestro-description">Les agents de vos Spaces, au même endroit.</p>
+        </>;
     }
 
     protected renderList(): React.ReactNode {
@@ -358,10 +339,12 @@ export class MaestroWidget extends ReactWidget {
             <button
                 key={agent.key}
                 className={`fabi-maestro-row ${selected ? 'selected' : ''}`}
+                aria-pressed={selected}
+                aria-label={agent.title + ' — ' + this.agentStatusLabel(agent)}
                 onClick={() => void this.select(agent)}
             >
                 <span className="fabi-maestro-mascot" title={this.agentStatusLabel(agent)}>
-                    <MaestroMascot agent={agent} size={30} />
+                    <span className={`fabi-maestro-state ${agent.status}`} aria-hidden="true" />
                 </span>
                 <span className="fabi-maestro-row-body">
                     <span className="fabi-maestro-row-top">
@@ -402,8 +385,8 @@ export class MaestroWidget extends ReactWidget {
                 {this.renderThread(agent)}
                 {canReply && (
                     <div className="fabi-maestro-composer">
-                        <textarea ref={this.composerRef} rows={1} placeholder="Répondre à Fabi…" onKeyDown={e => this.onComposerKeyDown(e)} />
-                        <button disabled={this.sending} onClick={() => void this.sendReply()} title="Envoyer (Entrée)">
+                        <textarea ref={this.composerRef} rows={1} aria-label="Message à l’agent" placeholder="Répondre à Fabi…" onKeyDown={e => this.onComposerKeyDown(e)} />
+                        <button disabled={this.sending} onClick={() => void this.sendReply()} aria-label="Envoyer le message" title="Envoyer (Entrée)">
                             <span className={`codicon ${this.sending ? 'codicon-loading codicon-modifier-spin' : 'codicon-send'}`} />
                         </button>
                     </div>
@@ -413,6 +396,12 @@ export class MaestroWidget extends ReactWidget {
     }
 
     protected renderThread(agent: MaestroAgent): React.ReactNode {
+        if (this.conversationError) {
+            return <div className="fabi-maestro-thread empty">
+                <p role="alert">{this.conversationError}</p>
+                <button className="theia-button secondary" disabled={this.loadingMessages} onClick={() => void this.loadMessages(agent.key)}>Réessayer</button>
+            </div>;
+        }
         if (this.loadingMessages && !this.messages) {
             return <div className="fabi-maestro-thread loading"><span className="codicon codicon-loading codicon-modifier-spin" /></div>;
         }

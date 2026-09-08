@@ -11,10 +11,10 @@
 <body>
     <nav id="rail" class="rail" aria-label="Espaces de travail">
         <div class="rail-head">
-            <button class="fox-btn" id="foxBtn" title="Épingler la barre des espaces">
+            <button class="fox-btn" id="foxBtn" title="Fermer la gestion des Spaces" aria-label="Fermer la gestion des Spaces">
                 <img src="fox.svg" alt="Fabi" draggable="false" />
             </button>
-            <span class="rail-title">Mes espaces</span>
+            <span class="rail-title">Gérer les Spaces</span>
         </div>
         <div class="tiles" id="tiles"></div>
         <div class="rail-spacer"></div>
@@ -28,7 +28,7 @@
         </button>
     </nav>
 
-    <div id="ctxmenu" class="ctxmenu hidden"></div>
+    <div id="ctxmenu" class="ctxmenu hidden" role="dialog" aria-label="Options du Space"></div>
 
     <script src="rail.js"></script>
 </body>

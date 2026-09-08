@@ -11,42 +11,47 @@
 <body>
     <div class="scrim" id="scrim"></div>
 
-    <section class="card" role="dialog" aria-label="Nouvel espace">
+    <section class="card" role="dialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogDescription">
         <header class="card-head">
             <div class="preview" id="preview"><span class="preview-glyph" id="previewGlyph"></span></div>
             <div class="head-text">
-                <h1>Nouvel espace</h1>
+                <h1 id="dialogTitle">Nouveau Space</h1>
                 <p class="preview-name" id="previewName">Espace</p>
             </div>
         </header>
+        <p class="description" id="dialogDescription">Un projet, ses fichiers et ses outils. Retrouvez-les ensemble dans votre Space.</p>
 
         <div class="field">
-            <span class="label">Nom</span>
-            <input id="nameInput" class="input" type="text" spellcheck="false" placeholder="Nom de l'espace" />
+            <label class="label" for="nameInput">Nom du Space</label>
+            <input id="nameInput" class="input" type="text" maxlength="100" spellcheck="false" placeholder="Nom du projet" aria-describedby="nameError" />
+            <p id="nameError" class="field-error" role="alert" hidden></p>
         </div>
 
         <div class="field">
-            <span class="label">Dossier</span>
+            <span class="label" id="folderLabel">Dossier du projet</span>
             <div class="folder-row">
-                <i class="codicon codicon-folder"></i>
+                <i class="codicon codicon-folder" aria-hidden="true"></i>
                 <span class="folder-path" id="folderPath"></span>
-                <button class="folder-change" id="changeFolder">Changer</button>
+                <button class="folder-change" id="changeFolder" aria-describedby="folderPath">Changer</button>
             </div>
         </div>
 
-        <div class="field">
-            <span class="label">Icône</span>
-            <div class="icon-grid" id="iconGrid"></div>
-        </div>
+        <details class="personalization">
+            <summary>Personnaliser l’icône et la couleur</summary>
+            <div class="field">
+                <span class="label" id="iconLabel">Icône</span>
+                <div class="icon-grid" id="iconGrid" role="group" aria-labelledby="iconLabel"></div>
+            </div>
 
         <div class="field">
-            <span class="label">Couleur</span>
-            <div class="swatches" id="swatches"></div>
+            <span class="label" id="colorLabel">Couleur de repérage</span>
+            <div class="swatches" id="swatches" role="group" aria-labelledby="colorLabel"></div>
         </div>
+        </details>
 
         <footer class="card-foot">
             <button class="btn ghost" id="cancelBtn">Annuler</button>
-            <button class="btn primary" id="createBtn">Créer l'espace</button>
+            <button class="btn primary" id="createBtn">Créer le Space</button>
         </footer>
     </section>
 

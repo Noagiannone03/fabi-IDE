@@ -24,11 +24,11 @@ import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './fro
 import { attachNativeView, reattachNativeView } from './native-view-layout';
 
 /** Largeur du rail au repos (colonne d'icônes d'espaces), en px CSS. */
-const RAIL_COLLAPSED = 52;   // = largeur réelle de la colonne de tuiles (8+5+34+5) → l'explorateur est COLLÉ au rail, plus de vide à droite
+const RAIL_COLLAPSED = 0;    // La gestion des Spaces ne réserve aucune colonne quand elle est fermée.
 /** Largeur du rail déplié au survol (affiche les noms + la gestion, façon Arc). */
 const RAIL_EXPANDED = 250;
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
-const TOPBAR_HEIGHT = 36;
+const TOPBAR_HEIGHT = 32;
 /**
  * Les WebContentsView sont compositées séparément par Chromium. Sur les écrans
  * Retina, deux rectangles strictement adjacents peuvent laisser apparaître une
@@ -149,11 +149,11 @@ export class SpaceManager {
             minWidth: 640,
             minHeight: 400,
             title: this.opts.appName,
-            backgroundColor: '#22262d',
+            backgroundColor: '#191a1e',
             show: false,
             ...(mac
                 ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 13, y: 11 } }
-                : { frame: false })
+                : { frame: true })
         });
         this.host.center();
         this.host.on('resize', () => this.layout());
@@ -178,9 +178,9 @@ export class SpaceManager {
     protected createChrome(): Promise<void> {
         // Sidebar d'espaces (gauche) + barre de titre (haut) : deux vues de chrome.
         this.railView = this.chromeView();
-        this.railView.setBackgroundColor('#22262d');
+        this.railView.setBackgroundColor('#191a1e');
         this.topbarView = this.chromeView();
-        this.topbarView.setBackgroundColor('#22262d');
+        this.topbarView.setBackgroundColor('#191a1e');
 
         const { width: W, height: H } = this.contentBounds();
         const railReady = this.loadView(
@@ -191,11 +191,13 @@ export class SpaceManager {
         );
         const topbarReady = this.loadView(
             this.topbarView,
-            this.topbarBounds(W),
+            this.topbarBounds(W, H),
             'topbar',
             () => this.topbarView.webContents.loadFile(this.opts.topbarHtmlPath)
         );
-        return Promise.all([railReady, topbarReady]).then(() => undefined);
+        return Promise.all([railReady, topbarReady]).then(() => {
+            this.railView.setVisible(this.railExpanded);
+        });
     }
 
     /**
@@ -261,35 +263,37 @@ export class SpaceManager {
     }
 
     protected spaceBounds(W: number, H: number): Rectangle {
-        const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
+        const railW = RAIL_COLLAPSED;
+        const x = Math.min(W, Math.max(0, railW - CHROME_OVERLAP));
+        const y = Math.min(H, Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP));
         return {
-            x: Math.max(0, railW - CHROME_OVERLAP),
-            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
-            width: Math.max(0, W - railW + CHROME_OVERLAP),
-            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
+            x, y,
+            width: Math.max(0, W - x),
+            height: Math.max(0, H - y)
         };
     }
 
     protected railBounds(W: number, H: number): Rectangle {
-        const railW = this.railExpanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
+        // Garder un viewport valide même lorsque la vue native est masquée.
+        const railW = RAIL_EXPANDED;
+        const height = Math.max(0, Math.min(460, 132 + this.store.getSpaces().length * 54, H - TOPBAR_HEIGHT - 88));
         return {
             x: 0,
-            y: Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP),
+            y: Math.max(TOPBAR_HEIGHT, H - 88 - height),
             width: Math.min(W, railW),
-            height: Math.max(0, H - TOPBAR_HEIGHT + CHROME_OVERLAP)
+            height
         };
     }
 
-    protected topbarBounds(W: number): Rectangle {
-        return { x: 0, y: 0, width: W, height: TOPBAR_HEIGHT };
+    protected topbarBounds(W: number, H: number): Rectangle {
+        return { x: 8, y: Math.max(0, H - 88), width: Math.min(208, W - 16), height: 64 };
     }
 
     /**
-     * Modèle Arc :
+     * Organisation des Spaces :
      *  - barre de titre (topbar) pleine largeur en haut (déplaçable + traffic-lights) ;
-     *  - sidebar d'espaces (rail) à gauche, sous la topbar : étroite au repos, élargie au
-     *    survol — elle OVERLAY l'IDE (ne le pousse pas, pas de reflow) ;
-     *  - l'IDE actif occupe le reste (toujours à x = RAIL_COLLAPSED).
+     *  - gestion des espaces à gauche, uniquement sur demande ;
+     *  - l'IDE actif occupe toute la largeur disponible lorsque la gestion est fermée.
      * z-order (bas → haut) : vues d'IDE, rail, topbar.
      */
     protected layout(): void {
@@ -323,13 +327,14 @@ export class SpaceManager {
             }
         }
 
-        // Rail (sidebar) : au-dessus de l'IDE pour pouvoir l'overlay quand déplié.
+        // Gestion des Spaces : vue native masquée quand le panneau est fermé.
         this.railView.setBounds(this.railBounds(W, H));
         this.host.contentView.addChildView(this.railView);
+        this.railView.setVisible(this.railExpanded);
 
         // Topbar : pleine largeur, tout en haut, au sommet.
-        this.topbarView.setBounds(this.topbarBounds(W));
         this.host.contentView.addChildView(this.topbarView);
+        this.topbarView.setBounds(this.topbarBounds(W, H));
 
         // Modal de création : plein écran, AU-DESSUS de tout.
         if (this.modalView && !this.modalView.webContents.isDestroyed()) {
@@ -419,6 +424,7 @@ export class SpaceManager {
             this.maestroPreviewId = undefined;
         }
         this.activeId = id;
+        this.railExpanded = false;
         this.store.setActive(id);
 
         // Visibilité : seule la vue active est visible.
@@ -444,8 +450,18 @@ export class SpaceManager {
         ).catch(() => { /* frontend pas prêt */ });
     }
 
-    /** Crée un nouveau Space : choix du dossier (OS) → popup de config → création. */
+    protected creatingSpace = false;
+
+    /** One creation flow at a time, including the native folder picker. */
     async create(): Promise<void> {
+        if (this.creatingSpace || this.disposed) { return; }
+        this.creatingSpace = true;
+        try { await this.createSpace(); }
+        finally { this.creatingSpace = false; }
+    }
+
+    /** Crée un nouveau Space : choix du dossier (OS) → popup de config → création. */
+    protected async createSpace(): Promise<void> {
         const dir = await this.pickFolder();
         if (dir === undefined) {
             return; // sélection de dossier annulée
@@ -618,6 +634,9 @@ export class SpaceManager {
         this.railExpanded = expanded;
         this.layout();
         this.pushState();
+        const target = expanded ? this.railView : this.topbarView;
+        target.webContents.focus();
+        void target.webContents.executeJavaScript(`document.querySelector('button')?.focus()`).catch(() => {});
     }
 
     windowControl(action: 'minimize' | 'maximize' | 'close'): void {
@@ -656,9 +675,9 @@ export class SpaceManager {
         const fromChrome = (event: IpcMainEvent) =>
             event.sender.id === this.railView.webContents.id || event.sender.id === this.topbarView.webContents.id;
 
-        ipcMain.on(SpacesIpc.READY, e => { if (fromRail(e)) { this.pushState(); } });
-        ipcMain.on(SpacesIpc.OPEN, (e, id: string) => { if (fromRail(e)) { void this.open(id); } });
-        ipcMain.on(SpacesIpc.CREATE, e => { if (fromRail(e)) { void this.create(); } });
+        ipcMain.on(SpacesIpc.READY, e => { if (fromChrome(e)) { this.pushState(); } });
+        ipcMain.on(SpacesIpc.OPEN, (e, id: string) => { if (fromChrome(e)) { void this.open(id); } });
+        ipcMain.on(SpacesIpc.CREATE, e => { if (fromChrome(e)) { void this.create(); } });
         ipcMain.on(SpacesIpc.CLOSE, (e, id: string) => { if (fromRail(e)) { void this.close(id); } });
         ipcMain.on(SpacesIpc.RENAME, (e, id: string, name: string) => { if (fromRail(e)) { this.rename(id, name); } });
         ipcMain.on(SpacesIpc.SET_COLOR, (e, id: string, color: string) => { if (fromRail(e)) { this.setColor(id, color); } });

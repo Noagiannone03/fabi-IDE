@@ -304,3 +304,41 @@
 .fabi-maestro-composer button:hover { filter: brightness(1.08); }
 .fabi-maestro-composer button:active { transform: scale(0.95); }
 .fabi-maestro-composer button:disabled { opacity: 0.6; cursor: default; }
+/* Midnight: keep the 340px native preview boundary, simplify the chrome. */
+body .fabi-maestro {
+    --m-accent: #b9b4d6;
+    --m-bg: #191a1e;
+    --m-surface: #24252b;
+    --m-surface-2: #30313a;
+    --m-text: #d7d7df;
+    --m-muted: #9999a7;
+    --m-faint: #92929e;
+    --m-line: #ffffff0d;
+    --m-gen: #9cbde0;
+    --m-wait: #d8bd8b;
+    --m-idle: #a4c5a6;
+    --m-err: #e6949c;
+    font-family: 'Fabi UI', -apple-system, 'Segoe UI', sans-serif;
+}
+.fabi-maestro-heading { margin: 0; font-size: 21px; line-height: 1.3; letter-spacing: -.5px; font-weight: 550; }
+.fabi-maestro-description { margin: 7px 0 0; font-size: 11px; line-height: 1.6; color: var(--m-muted); }
+body .fabi-maestro-id { padding: 24px 20px 20px; border-bottom-color: var(--m-line); }
+body .fabi-maestro-stage, body .fabi-maestro-conv { background: #121316; }
+body .fabi-maestro-group-head { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 11px; padding: 12px 10px 8px; }
+body .fabi-maestro-row { border-radius: 6px; gap: 10px; padding: 11px 10px; }
+body .fabi-maestro-row.selected { background: #30313a; }
+body .fabi-maestro-row-title { font-size: 12px; font-weight: 500; }
+body .fabi-maestro-row-sub { font-size: 11px; line-height: 1.5; }
+body .fabi-maestro-mascot { display: grid; place-items: center; width: 18px; height: 24px; flex: 0 0 18px; }
+body .fabi-maestro-state.generating, body .fabi-maestro-live-dot.on { animation: none; box-shadow: none; }
+body .fabi-maestro-state.waiting { box-shadow: none; }
+body .fabi-maestro-src { font-weight: 500; border-radius: 3px; }
+body .fabi-maestro-conv-head { padding: 16px 20px; }
+body .fabi-maestro-thread { padding: 20px; }
+body .fabi-maestro-msg .bubble { border-radius: 7px; font-size: 12px; line-height: 1.65; }
+body .fabi-maestro-msg .tool { border-radius: 4px; }
+body .fabi-maestro-composer { padding: 14px 20px 20px; gap: 8px; }
+body .fabi-maestro-composer textarea { background: #212228; border-radius: 7px; font-size: 12px; padding: 10px 12px; }
+body .fabi-maestro-composer textarea:focus { border-color: #b9b4d6; box-shadow: none; }
+body .fabi-maestro-composer button { width: 34px; height: 34px; border-radius: 6px; background: #d7d9e2; color: #24252b; }
+body .fabi-maestro button:focus-visible, body .fabi-maestro textarea:focus-visible { outline: 2px solid #b9b4d6 !important; outline-offset: -2px; }

@@ -1,5 +1,6 @@
 import '../../src/browser/style/fabi-swarm.css';
 import '../../src/browser/style/fabi-welcome.css';
+import '../../src/browser/style/fabi-agent-midnight.css';
 import '../../src/browser/style/fabi-maestro.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
@@ -146,8 +147,8 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(TabBarToolbarContribution).toService(FabiChatHeaderContribution);
 
     // --- Panneaux en onglet de la zone de code par défaut ---
-    // Le chat IA et les terminaux s'ouvrent en onglet de la zone d'édition (main)
-    // plutôt qu'en dock (sidebar droite / panneau bas). On sous-classe les deux
+    // Le chat IA et les terminaux s'ouvrent à côté du code (droite / bas),
+    // sans déplacer les vues restaurées. On sous-classe les deux
     // contributions d'origine et on rebind : tous les tokens qui pointaient vers
     // elles (CommandContribution, FrontendApplicationContribution, TerminalService…)
     // résolvent désormais nos versions. Modules chargés avant fabi-swarm (dépendances
@@ -186,7 +187,6 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(FabiEditorActionsContribution).toSelf().inSingletonScope();
     bind(CommandContribution).toService(FabiEditorActionsContribution);
     bind(TabBarToolbarContribution).toService(FabiEditorActionsContribution);
-    bind(FrontendApplicationContribution).toService(FabiEditorActionsContribution);
 
     // Renommage des onglets (terminaux + chats IA) au clic droit.
     bind(FabiTabRenameContribution).toSelf().inSingletonScope();

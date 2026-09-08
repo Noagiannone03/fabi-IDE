@@ -1,11 +1,11 @@
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { MonacoThemingService } from '@theia/monaco/lib/browser/monaco-theming-service';
-import { fabiIslandsTheme } from './fabi-islands-theme';
+import { fabiMidnightTheme } from './fabi-midnight-theme';
 
 /**
- * Enregistre le thème de couleurs « Fabi Islands » (palette îlots sombre +
- * accent neutre Fabi) comme thème workbench sélectionnable. On enregistre tôt
+ * Enregistre le thème « Fabi Midnight » avec l'identifiant historique conservé
+ * pour les préférences des workspaces existants. On enregistre tôt
  * (`initialize`) pour qu'il soit dispo quand le ThemeService applique le thème
  * par défaut configuré dans les préférences (`workbench.colorTheme: fabi-islands`).
  */
@@ -18,9 +18,10 @@ export class FabiThemeContribution implements FrontendApplicationContribution {
     initialize(): void {
         this.theming.registerParsedTheme({
             id: 'fabi-islands',
-            label: 'Fabi Islands',
+            // Keep the persisted ID so existing workspaces receive the redesign.
+            label: 'Fabi Midnight',
             uiTheme: 'vs-dark',
-            json: fabiIslandsTheme as unknown as Record<string, unknown>
+            json: fabiMidnightTheme as unknown as Record<string, unknown>
         });
     }
 }

@@ -10,10 +10,12 @@
 // on l'élargit, elles reviennent. (Avant : seuil fixe de 7 icônes → débordement coupé.)
 
 import * as React from '@theia/core/shared/react';
+import { FabiSymbol, viewSymbol } from './fabi-symbol';
 import { Message } from '@theia/core/shared/@lumino/messaging';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
 import { SideTabBar } from '@theia/core/lib/browser/shell/tab-bars';
 import { Title, Widget } from '@theia/core/shared/@lumino/widgets';
+import { Disposable } from '@theia/core/lib/common';
 
 /** Ce dont la barre a besoin de l'hôte (le SidePanelHandler) pour piloter les vues. */
 export interface FabiActivityBarHost {
@@ -36,6 +38,7 @@ export class FabiActivityBar extends ReactWidget {
     /** Largeur dispo mesurée (px). 0 = pas encore mesurée → on montre tout. */
     protected availableWidth = 0;
     protected resizeObserver?: ResizeObserver;
+    protected readonly titleListeners = new Map<Title<Widget>, Disposable>();
 
     constructor(protected readonly host: FabiActivityBarHost) {
         super();
@@ -43,9 +46,55 @@ export class FabiActivityBar extends ReactWidget {
         this.addClass('fabi-activity-bar');
         const tabBar = host.tabBar;
         // Re-render quand les vues ou la sélection changent.
-        tabBar.tabAdded.connect(() => this.update());
-        tabBar.currentChanged.connect(() => this.update());
-        tabBar.tabMoved.connect(() => this.update());
+        const refresh = () => this.refreshViews();
+        tabBar.tabAdded.connect(refresh);
+        tabBar.currentChanged.connect(refresh);
+        tabBar.tabMoved.connect(refresh);
+        const resize = () => { if (this.overflowOpen) { this.update(); } };
+        window.addEventListener('resize', resize);
+        this.toDispose.push(Disposable.create(() => {
+            tabBar.tabAdded.disconnect(refresh);
+            tabBar.currentChanged.disconnect(refresh);
+            tabBar.tabMoved.disconnect(refresh);
+            window.removeEventListener('resize', resize);
+            for (const listener of this.titleListeners.values()) { listener.dispose(); }
+            this.titleListeners.clear();
+        }));
+        this.refreshViews();
+    }
+
+    refreshViews(): void {
+        const titles = new Set(this.host.tabBar.titles);
+        for (const [title, listener] of this.titleListeners) {
+            if (!titles.has(title)) { listener.dispose(); this.titleListeners.delete(title); }
+        }
+        for (const title of titles) {
+            if (!this.titleListeners.has(title)) {
+                const changed = () => this.update();
+                title.changed.connect(changed);
+                this.titleListeners.set(title, Disposable.create(() => title.changed.disconnect(changed)));
+            }
+        }
+        this.update();
+    }
+
+    protected closeOverflow(restoreFocus = false): void {
+        this.overflowOpen = false;
+        this.update();
+        if (restoreFocus) { this.node.querySelector<HTMLButtonElement>('.fabi-activity-item.more')?.focus(); }
+    }
+
+    protected onMenuKeyDown(event: React.KeyboardEvent<HTMLDivElement>): void {
+        if (event.key === 'Escape') {
+            event.preventDefault(); event.stopPropagation(); this.closeOverflow(true); return;
+        }
+        if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) { return; }
+        const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('.fabi-activity-menu-item'));
+        if (!items.length) { return; }
+        const current = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+        event.preventDefault(); items[next].focus();
     }
 
     protected override onAfterAttach(msg: Message): void {
@@ -76,7 +125,7 @@ export class FabiActivityBar extends ReactWidget {
         const before = this.visibleCount(this.titles().length, this.availableWidth);
         const after = this.visibleCount(this.titles().length, width);
         this.availableWidth = width;
-        if (before !== after) {
+        if (before !== after || this.overflowOpen) {
             this.update();
         }
     }
@@ -100,6 +149,18 @@ export class FabiActivityBar extends ReactWidget {
         return Array.from(this.host.tabBar.titles);
     }
 
+    protected overflowPosition(): React.CSSProperties {
+        const trigger = this.node.querySelector('.fabi-activity-item.more');
+        const bounds = trigger?.getBoundingClientRect() ?? this.node.getBoundingClientRect();
+        const width = Math.min(220, window.innerWidth - 16);
+        return {
+            position: 'fixed', width, minWidth: 0,
+            left: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
+            bottom: window.innerHeight - bounds.top + 6,
+            maxHeight: Math.max(40, bounds.top - 14), overflowY: 'auto'
+        };
+    }
+
     protected onItemClick(title: Title<Widget>): void {
         this.overflowOpen = false;
         this.host.selectView(title);
@@ -113,9 +174,11 @@ export class FabiActivityBar extends ReactWidget {
                 key={key}
                 className={'fabi-activity-item' + (active ? ' active' : '')}
                 title={title.label || title.caption}
+                aria-label={title.label || title.caption}
+                aria-pressed={active}
                 onClick={() => this.onItemClick(title)}
             >
-                <span className={'fabi-activity-icon ' + (title.iconClass || '')} />
+                {viewSymbol(title.owner.id) ? <FabiSymbol name={viewSymbol(title.owner.id)!} /> : <span className={'fabi-activity-icon ' + (title.iconClass || '')} />}
             </button>
         );
     }
@@ -131,28 +194,40 @@ export class FabiActivityBar extends ReactWidget {
         const currentHidden = !!current && overflow.indexOf(current) >= 0;
 
         return (
-            <div className="fabi-activity-inner">
-                {visible.map((t, i) => this.renderItem(t, current, i))}
+            <nav className="fabi-activity-inner" aria-label="Vues du projet"
+                onBlur={event => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) { this.closeOverflow(); }
+                }}>
+                {visible.map(t => this.renderItem(t, current, t.owner.id))}
                 {overflow.length > 0 && (
                     <div className="fabi-activity-overflow">
                         <button
                             className={'fabi-activity-item more' + (this.overflowOpen || currentHidden ? ' active' : '')}
                             title="Plus de vues"
+                            aria-label="Plus de vues"
+                            aria-expanded={this.overflowOpen}
+                            aria-haspopup="menu"
+                            onKeyDown={event => {
+                                if (event.key === 'Escape') { this.overflowOpen = false; this.update(); }
+                            }}
                             onClick={() => { this.overflowOpen = !this.overflowOpen; this.update(); }}
                         >
-                            <span className="fabi-activity-icon codicon codicon-more" />
+                            <FabiSymbol name="more" />
                         </button>
                         {this.overflowOpen && (
                             <>
                                 {/* Voile transparent : un clic en dehors ferme le menu. */}
                                 <div
                                     className="fabi-activity-backdrop"
-                                    onClick={() => { this.overflowOpen = false; this.update(); }}
+                                    onClick={() => this.closeOverflow()}
                                 />
-                                <div className="fabi-activity-menu">
+                                <div className="fabi-activity-menu" style={this.overflowPosition()} role="menu" aria-label="Autres vues du projet" onKeyDown={event => this.onMenuKeyDown(event)}>
                                     {overflow.map((t, i) => (
                                         <button
-                                            key={i}
+                                            key={t.owner.id}
+                                            role="menuitemradio"
+                                            aria-checked={t === current}
+                                            autoFocus={currentHidden ? t === current : i === 0}
                                             className={'fabi-activity-menu-item' + (t === current ? ' active' : '')}
                                             onClick={() => this.onItemClick(t)}
                                         >
@@ -165,7 +240,7 @@ export class FabiActivityBar extends ReactWidget {
                         )}
                     </div>
                 )}
-            </div>
+            </nav>
         );
     }
 }

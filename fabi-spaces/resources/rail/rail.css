@@ -4,16 +4,16 @@
    l'état déplié (250px) et l'état replié le rogne (overflow). */
 
 :root {
-    --canvas: #22262d;
-    --surface: #292e37;
+    --canvas: #191a1e;
+    --surface: #24252b;
     /* Tuiles au repos : LÉGÈREMENT élevées au-dessus du chrome #22262d (elles
        lisent comme de vrais objets posés) — façon liste macOS / Arc. */
-    --tile: #292e37;
-    --tile-hover: #333944;
-    --tile-active: #3a4150;
-    --text: #f3ece6;
-    --muted: rgba(243, 236, 230, 0.55);
-    --muted-2: rgba(243, 236, 230, 0.34);
+    --tile: #24252b;
+    --tile-hover: #303138;
+    --tile-active: #35353f;
+    --text: #d7d7df;
+    --muted: rgba(215, 215, 223, 0.60);
+    --muted-2: rgba(215, 215, 223, 0.38);
     --hairline: rgba(255, 255, 255, 0.07);
     /* Accent par défaut (fallback rare — un espace porte toujours sa couleur).
        Bleu système Apple, jamais l'orange (réservé au logo). */
@@ -23,7 +23,7 @@
 
 @font-face {
     font-family: 'Fabi UI';
-    src: url('./fonts/InterVariable.woff2') format('woff2');
+    src: url('./fonts/GeistVariable.ttf') format('truetype');
     font-weight: 100 900;
     font-style: normal;
     font-display: block;
@@ -42,7 +42,7 @@ html, body {
     margin: 0; width: 100vw; height: 100vh; overflow: hidden;
     background: var(--canvas);
     color: var(--text);
-    font-family: 'Fabi UI', Inter, -apple-system, "Segoe UI", sans-serif;
+    font-family: 'Fabi UI', -apple-system, "Segoe UI", sans-serif;
     font-optical-sizing: auto;
     letter-spacing: normal;
     -webkit-font-smoothing: antialiased;
@@ -268,3 +268,30 @@ body.expanded .add-row .add-label { opacity: 1; }
 }
 /* Actif : la tuile prend le chip orange plein (règle .active générique), glyphe blanc. */
 .space-row.maestro.active .tile { color: #fff; }
+/* Midnight management drawer. Navigation remains in the topbar. */
+.rail { padding: 10px 10px 12px; gap: 8px; inset: 4px 6px; width: auto; background: #25262c; border: 1px solid #ffffff12; border-radius: 15px; box-shadow: inset 0 1px 0 #ffffff06; }
+.rail-head { gap: 9px; padding: 0 2px 8px; }
+.rail-title { font-size: 12px; font-weight: 500; letter-spacing: 0; color: #b5b2c2; }
+.fox-btn { width: 28px; height: 28px; border-radius: 6px; padding: 5px; }
+.fox-btn.pinned { background: transparent; }
+.space-row { min-height: 42px; padding: 4px; gap: 9px; border-radius: 6px; }
+.space-row:hover { background: #24252b; }
+.space-row.active { background: #292a32; }
+.tile { width: 28px; height: 28px; border: 0; border-radius: 6px; font: inherit; cursor: pointer; background: #24252b; color: #b5b2c2; box-shadow: none; }
+.space-row.active .tile, .space-row.active:hover .tile { background: #35353f; color: #e1dce9; box-shadow: none; }
+.space-name { font-size: 12px; color: #b5b2c2; min-width: 0; }
+.space-row.active .space-name { font-weight: 500; }
+.space-options { flex: 0 0 24px; width: 24px; height: 26px; margin-left: auto; padding: 0; border: 0; border-radius: 4px; background: transparent; color: #9999a7; font-size: 18px; cursor: pointer; }
+.space-options:hover { background: #ffffff0a; color: #e1dce9; }
+.space-options[hidden] { display: none; }
+.space-name-input { min-width: 0; width: 100%; font-size: 12px; border-radius: 4px; color: #e1dce9; background: #121316; }
+.ctxmenu { background: #24252b; border-radius: 8px; border: 1px solid #ffffff12; box-shadow: 0 12px 34px #08090b66; max-width: calc(100vw - 16px); overflow-y: auto; scrollbar-width: thin; }
+.ctx-item { font-size: 12px; border-radius: 4px; }
+.ctx-label { text-transform: none; color: #9999a7; letter-spacing: 0; font-size: 11px; }
+.ctx-appearance summary { padding: 8px; color: #b5b2c2; font-size: 11px; cursor: pointer; }
+.ctx-emoji-grid { border-radius: 5px; }
+.ctx-emoji-btn { border-radius: 4px; }
+.ctx-emoji-btn.sel { background: #383442; }
+.ctx-swatch { border-radius: 5px; }
+button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #b9b4d6; outline-offset: -1px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

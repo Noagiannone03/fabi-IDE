@@ -12,8 +12,10 @@ import '../../src/browser/style/fabi-explorer-type.css';
 import '../../src/browser/style/fabi-islands.css';
 import '../../src/browser/style/fabi-activity-bar.css';
 import '../../src/browser/style/fabi-space-accent.css';
-import '../../src/browser/style/fabi-no-focus-outline.css'; // neutralise tous les cadres de focus/sélection
 import '../../src/browser/style/fabi-ui-icons.css';         // EN DERNIER : remappe les codicons en icônes Fluent rondes
+import '../../src/browser/style/fabi-midnight.css';
+import '../../src/browser/style/fabi-native-midnight.css';
+import '../../src/browser/style/fabi-studio.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
@@ -25,11 +27,13 @@ import { ViewContainerPart } from '@theia/core/lib/browser/view-container';
 
 import { FabiWelcomeWidget } from './welcome/fabi-welcome-widget';
 import { FabiWelcomeContribution } from './welcome/fabi-welcome-contribution';
+import { FabiRecentFiles } from './welcome/fabi-recent-files';
 import { FabiAboutDialog } from './about/fabi-about-dialog';
 import { FabiColorContribution } from './theme/fabi-color-contribution';
 import { FabiThemeContribution } from './theme/fabi-theme-contribution';
-import { FabiSidePanelHandler, FabiLeftPanelOpenContribution, FabiRightPanelContribution } from './shell/fabi-side-panel-handler';
+import { FabiSidePanelHandler, FabiLeftPanelOpenContribution } from './shell/fabi-side-panel-handler';
 import { FabiFontRemeasureContribution } from './shell/fabi-font-remeasure-contribution';
+import { FabiWorkbenchDockContribution } from './shell/fabi-workbench-dock';
 
 // --- Hauteur des en-têtes de sections (Explorer : Open Editors / Timeline / Outline…) ---
 // Theia positionne les *parts* d'un view-container en ABSOLU à partir d'une CONSTANTE
@@ -46,6 +50,8 @@ import { FabiFontRemeasureContribution } from './shell/fabi-font-remeasure-contr
 export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     // --- Page d'accueil Fabi (widget autonome) ---
     bind(FabiWelcomeWidget).toSelf();
+    bind(FabiRecentFiles).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiRecentFiles);
     bind(WidgetFactory).toDynamicValue(ctx => ({
         id: FabiWelcomeWidget.ID,
         createWidget: () => ctx.container.get(FabiWelcomeWidget)
@@ -73,12 +79,11 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     bind(FabiLeftPanelOpenContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiLeftPanelOpenContribution);
 
-    // --- Panneau droit : garder IA, retirer seulement Outline ---
-    bind(FabiRightPanelContribution).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(FabiRightPanelContribution);
-
     // Charge les webfonts puis recalcule les métriques de Monaco.
     bind(FabiFontRemeasureContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiFontRemeasureContribution);
+
+    bind(FabiWorkbenchDockContribution).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiWorkbenchDockContribution);
 
 });

@@ -1,7 +1,7 @@
 import * as React from '@theia/core/shared/react';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { Command, CommandContribution, CommandRegistry, MessageService } from '@theia/core/lib/common';
-import { ApplicationShell, FrontendApplicationContribution, Widget, WidgetManager } from '@theia/core/lib/browser';
+import { ApplicationShell, Widget, WidgetManager } from '@theia/core/lib/browser';
 import { TabBarToolbarContribution, TabBarToolbarRegistry } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { TerminalLocation } from '@theia/terminal/lib/browser/base/terminal-widget';
@@ -16,7 +16,7 @@ import { TerminalLocation } from '@theia/terminal/lib/browser/base/terminal-widg
  */
 export const FABI_CHAT_INSTANCE_FACTORY_ID = 'fabi-chat-instance';
 
-const NEW_CHAT = Command.toLocalizedCommand({ id: 'fabi.newChat', label: 'Nouveau chat Fabi AI' });
+const NEW_CHAT = Command.toLocalizedCommand({ id: 'fabi.newChat', label: 'Nouvelle conversation', iconClass: 'codicon codicon-add' });
 const NEW_TERMINAL = Command.toLocalizedCommand({ id: 'fabi.newTerminalTab', label: 'Nouveau terminal en zone de code' });
 
 /**
@@ -30,7 +30,7 @@ const NEW_TERMINAL = Command.toLocalizedCommand({ id: 'fabi.newTerminalTab', lab
  * (cf. SidePanelHandler.refresh : `tabBar.setHidden(isEmpty)`).
  */
 @injectable()
-export class FabiEditorActionsContribution implements CommandContribution, TabBarToolbarContribution, FrontendApplicationContribution {
+export class FabiEditorActionsContribution implements CommandContribution, TabBarToolbarContribution {
 
     @inject(ApplicationShell)
     protected readonly shell: ApplicationShell;
@@ -46,22 +46,6 @@ export class FabiEditorActionsContribution implements CommandContribution, TabBa
 
     protected chatCounter = 0;
 
-    onDidInitializeLayout(): void {
-        // Sidebar droite : on FERME son contenu (Outline & co.) → vide, Theia la
-        // rétracte d'elle-même. On ne déplace SURTOUT pas vers la zone d'édition :
-        // ça y déposait Outline / terminaux comme onglets (le bug à corriger).
-        for (const widget of [...this.shell.getWidgets('right')]) {
-            widget.close();
-        }
-        // Filet : une vue latérale (ex. Outline) qui aurait fui dans la zone
-        // d'édition lors d'une session précédente n'a rien à y faire → on la ferme.
-        for (const widget of [...this.shell.getWidgets('main')]) {
-            if (widget.id === 'outline-view') {
-                widget.close();
-            }
-        }
-    }
-
     registerCommands(commands: CommandRegistry): void {
         commands.registerCommand(NEW_CHAT, { execute: () => this.openNewChat() });
         // Commande conservée (palette) ; plus de bouton terminal dans la barre.
@@ -69,6 +53,14 @@ export class FabiEditorActionsContribution implements CommandContribution, TabBa
     }
 
     registerToolbarItems(registry: TabBarToolbarRegistry): void {
+        registry.registerItem({
+            id: 'fabi.agents.newConversation',
+            command: NEW_CHAT.id,
+            group: 'navigation',
+            priority: 10,
+            isVisible: widget => !!widget && this.shell.getAreaFor(widget) === 'main'
+                && (widget.id === 'chat-view-widget' || widget.id.startsWith(FABI_CHAT_INSTANCE_FACTORY_ID + ':'))
+        });
         registry.registerItem({
             id: 'fabi.editor.newChat',
             group: 'navigation',
@@ -122,10 +114,7 @@ export class FabiEditorActionsContribution implements CommandContribution, TabBa
         try {
             const uid = this.nextChatUid();
             const widget = await this.widgetManager.getOrCreateWidget(FABI_CHAT_INSTANCE_FACTORY_ID, { uid });
-            // Nouvelle instance → on l'ajoute en onglet après l'onglet courant de la
-            // zone d'édition. (Chaque uid = une clé distincte côté WidgetManager → un
-            // widget neuf, donc un nouvel onglet à chaque clic.)
-            await this.shell.addWidget(widget, { area: 'main', mode: 'tab-after' });
+            await this.shell.addWidget(widget, { area: 'main' });
             await this.shell.activateWidget(widget.id);
         } catch (err) {
             this.messageService.error('Fabi : impossible d’ouvrir un nouveau chat — ' + (err instanceof Error ? err.message : String(err)));

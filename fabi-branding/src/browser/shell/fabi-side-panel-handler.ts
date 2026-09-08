@@ -13,40 +13,41 @@
 //  - Tout le custom est encapsulé en try/catch → fallback layout natif si quoi que ce soit casse.
 
 import { injectable, inject } from '@theia/core/shared/inversify';
-import { Panel, BoxPanel, BoxLayout, Title, Widget } from '@theia/core/shared/@lumino/widgets';
+import { Panel, BoxPanel, BoxLayout, DockPanel, Title, Widget } from '@theia/core/shared/@lumino/widgets';
 import { SidePanelHandler } from '@theia/core/lib/browser/shell/side-panel-handler';
 import { ApplicationShell, FrontendApplicationContribution } from '@theia/core/lib/browser';
-import { BOTTOM_PANEL_TOGGLE_ID } from '@theia/core/lib/browser/shell/application-shell';
-import { StatusBar } from '@theia/core/lib/browser/status-bar/status-bar-types';
-import { CommandService } from '@theia/core/lib/common';
-import { CommonCommands } from '@theia/core/lib/browser/common-commands';
 import { FabiActivityBar, FabiActivityBarHost } from './fabi-activity-bar';
-
-const FABI_TERMINAL_TOGGLE_WIDGET_ID = 'fabi-terminal-toggle-tab';
-
-class FabiTerminalToggleWidget extends Widget {
-    constructor() {
-        super();
-        this.id = FABI_TERMINAL_TOGGLE_WIDGET_ID;
-        this.title.label = 'Terminal';
-        this.title.caption = 'Terminal';
-        this.title.iconClass = 'codicon codicon-terminal';
-        this.title.closable = false;
-        this.title.className = 'fabi-terminal-toggle-tab';
-    }
-}
 
 @injectable()
 export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivityBarHost {
 
     protected fabiActivityBar?: FabiActivityBar;
+    protected dockNavigation = false;
+
+    get activityBar(): FabiActivityBar | undefined { return this.fabiActivityBar; }
+
+    enableDockNavigation(): void { this.dockNavigation = true; this.refresh(); }
+
+    override refresh(): void {
+        super.refresh();
+        // Native Theia keeps its launcher column visible when collapsed. Our
+        // launcher lives in the dock, so the entire sidebar must disappear.
+        if (this.side === 'left' && this.dockNavigation) {
+            this.container.setHidden(!this.tabBar.currentTitle);
+        }
+    }
+
+    protected override onWidgetRemoved(sender: DockPanel, widget: Widget): void {
+        super.onWidgetRemoved(sender, widget);
+        this.fabiActivityBar?.refreshViews();
+    }
 
     /**
      * Le panneau gauche n'est JAMAIS replié : il reste toujours ouvert (au pire
      * compressé à sa largeur mini) pour que la barre d'icônes du bas reste visible.
      */
     override collapse(): Promise<void> {
-        if (this.side === 'left') {
+        if (this.side === 'left' && !this.dockNavigation) {
             return Promise.resolve();
         }
         return super.collapse();
@@ -57,6 +58,8 @@ export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivi
         if (this.tabBar.currentTitle !== title) {
             // Déclenche onCurrentTabChanged → déplie le panneau + active la vue.
             this.tabBar.currentTitle = title;
+        } else if (this.dockNavigation) {
+            void this.collapse();
         } else {
             // Déjà active : on (re)donne juste le focus à la vue.
             title.owner.activate();
@@ -65,7 +68,17 @@ export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivi
 
     protected override createContainer(): Panel {
         if (this.side !== 'left') {
-            return super.createContainer();
+            // Keep auxiliary views available through commands, without a second
+            // vertical launcher competing with the workbench dock.
+            const content = new BoxPanel({ direction: 'top-to-bottom', spacing: 0 });
+            BoxPanel.setStretch(this.toolBar, 0);
+            content.addWidget(this.toolBar);
+            BoxPanel.setStretch(this.dockPanel, 1);
+            content.addWidget(this.dockPanel);
+            const container = new BoxPanel({ direction: 'left-to-right', spacing: 0 });
+            container.id = 'theia-right-content-panel';
+            container.addWidget(content);
+            return container;
         }
         try {
             // Le contentPanel = l'ÎLOT (toolBar + dockPanel) + notre barre d'activité en bas.
@@ -105,10 +118,15 @@ export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivi
 @injectable()
 export class FabiLeftPanelOpenContribution implements FrontendApplicationContribution {
 
+    protected freshLayout = false;
+
     @inject(ApplicationShell)
     protected readonly shell: ApplicationShell;
 
+    initializeLayout(): void { this.freshLayout = true; }
+
     onDidInitializeLayout(): void {
+        if (!this.freshLayout) { return; }
         try {
             const tabBar = this.shell.leftPanelHandler.tabBar;
             if (!tabBar.currentTitle && tabBar.titles.length > 0) {
@@ -117,153 +135,5 @@ export class FabiLeftPanelOpenContribution implements FrontendApplicationContrib
         } catch (err) {
             console.error('[fabi] ouverture du panneau gauche par défaut :', err);
         }
-    }
-}
-
-@injectable()
-export class FabiRightPanelContribution implements FrontendApplicationContribution {
-
-    protected outlineFilterInstalled = false;
-    protected bottomToggleRemovalInstalled = false;
-    protected terminalTabInstalled = false;
-    protected terminalTabHandlerInstalled = false;
-    protected terminalTabRestoring = false;
-    protected previousRightTitle: Title<Widget> | null = null;
-
-    @inject(ApplicationShell)
-    protected readonly shell: ApplicationShell;
-
-    @inject(StatusBar)
-    protected readonly statusBar: StatusBar;
-
-    @inject(CommandService)
-    protected readonly commands: CommandService;
-
-    onDidInitializeLayout(): void {
-        this.installOutlineFilter();
-        this.installBottomToggleRemoval();
-        this.installTerminalTabButton();
-        this.installTerminalTabHandler();
-        this.removeOutlineView();
-        this.removeBottomPanelStatusToggle();
-    }
-
-    onStart(): void {
-        this.installOutlineFilter();
-        this.installBottomToggleRemoval();
-        this.installTerminalTabButton();
-        this.installTerminalTabHandler();
-        this.removeOutlineView();
-        this.removeBottomPanelStatusToggle();
-    }
-
-    protected installOutlineFilter(): void {
-        if (this.outlineFilterInstalled) {
-            return;
-        }
-        this.outlineFilterInstalled = true;
-        this.shell.rightPanelHandler.tabBar.tabAdded.connect(() => this.removeOutlineView());
-    }
-
-    protected installBottomToggleRemoval(): void {
-        if (this.bottomToggleRemovalInstalled) {
-            return;
-        }
-        this.bottomToggleRemovalInstalled = true;
-        this.shell.bottomPanel.widgetAdded.connect(() => this.removeBottomPanelStatusToggle());
-        this.shell.bottomPanel.widgetRemoved.connect(() => this.removeBottomPanelStatusToggle());
-    }
-
-    protected installTerminalTabButton(): void {
-        if (this.terminalTabInstalled || this.findTerminalTitle()) {
-            this.terminalTabInstalled = true;
-            return;
-        }
-        this.terminalTabInstalled = true;
-        void this.shell.addWidget(new FabiTerminalToggleWidget(), { area: 'right', rank: 101 }).then(() => {
-            this.removeOutlineView();
-            this.restorePreviousRightTitleIfTerminalIsCurrent();
-        });
-    }
-
-    protected installTerminalTabHandler(): void {
-        if (this.terminalTabHandlerInstalled) {
-            return;
-        }
-        this.terminalTabHandlerInstalled = true;
-        this.shell.rightPanelHandler.tabBar.currentChanged.connect((_sender, { currentTitle, previousTitle }) => {
-            if (this.terminalTabRestoring) {
-                return;
-            }
-            if (currentTitle?.owner.id === FABI_TERMINAL_TOGGLE_WIDGET_ID) {
-                let fallbackTitle: Title<Widget> | null | undefined;
-                if (previousTitle === null) {
-                    fallbackTitle = null;
-                } else if (this.isUsableRightTitle(previousTitle)) {
-                    fallbackTitle = previousTitle;
-                } else {
-                    fallbackTitle = this.previousRightTitle;
-                }
-                void this.commands.executeCommand(CommonCommands.TOGGLE_BOTTOM_PANEL.id);
-                this.restorePreviousRightTitle(fallbackTitle);
-                return;
-            }
-            if (this.isUsableRightTitle(currentTitle)) {
-                this.previousRightTitle = currentTitle;
-            }
-        });
-    }
-
-    protected restorePreviousRightTitleIfTerminalIsCurrent(): void {
-        const rightPanel = this.shell.rightPanelHandler;
-        if (rightPanel.tabBar.currentTitle?.owner.id === FABI_TERMINAL_TOGGLE_WIDGET_ID) {
-            this.restorePreviousRightTitle(this.previousRightTitle);
-        }
-    }
-
-    protected restorePreviousRightTitle(title: Title<Widget> | null | undefined): void {
-        const rightPanel = this.shell.rightPanelHandler;
-        const titles = Array.from(rightPanel.tabBar.titles);
-        let target: Title<Widget> | null = null;
-        if (title && titles.includes(title)) {
-            target = title;
-        } else if (title !== null && this.previousRightTitle && titles.includes(this.previousRightTitle)) {
-            target = this.previousRightTitle;
-        }
-        this.terminalTabRestoring = true;
-        try {
-            rightPanel.tabBar.currentTitle = target;
-            rightPanel.refresh();
-        } finally {
-            this.terminalTabRestoring = false;
-        }
-    }
-
-    protected findTerminalTitle(): Title<Widget> | undefined {
-        return Array.from(this.shell.rightPanelHandler.tabBar.titles)
-            .find(title => title.owner.id === FABI_TERMINAL_TOGGLE_WIDGET_ID);
-    }
-
-    protected isUsableRightTitle(title: Title<Widget> | null | undefined): title is Title<Widget> {
-        return !!title && title.owner.id !== FABI_TERMINAL_TOGGLE_WIDGET_ID && title.owner.id !== 'outline-view';
-    }
-
-    protected removeOutlineView(): void {
-        const rightPanel = this.shell.rightPanelHandler;
-        const titles = Array.from(rightPanel.tabBar.titles);
-        const outlineTitle = titles.find(title => title.owner.id === 'outline-view');
-        if (!outlineTitle) {
-            return;
-        }
-        const nextTitle = titles.find(title => title !== outlineTitle);
-        if (rightPanel.tabBar.currentTitle === outlineTitle) {
-            rightPanel.tabBar.currentTitle = nextTitle ?? null;
-        }
-        rightPanel.tabBar.removeTab(outlineTitle);
-        rightPanel.refresh();
-    }
-
-    protected removeBottomPanelStatusToggle(): void {
-        void this.statusBar.removeElement(BOTTOM_PANEL_TOGGLE_ID);
     }
 }

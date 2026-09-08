@@ -20,7 +20,7 @@ export class FabiTerminalFrontendContribution extends TerminalFrontendContributi
     /**
      * Tout passe par ici (commande « Nouveau terminal », profils via
      * `ShellTerminalProfile.start()` qui appelle `terminalService.newTerminal`,
-     * etc.). On force la localisation par défaut à `Editor`, sauf si l'appelant
+     * etc.). On utilise un onglet éditeur par défaut, sauf si l'appelant
      * a explicitement demandé une autre localisation (split, viewColumn…).
      */
     override async newTerminal(options: TerminalWidgetOptions): Promise<TerminalWidget> {
@@ -30,7 +30,7 @@ export class FabiTerminalFrontendContribution extends TerminalFrontendContributi
     /**
      * Theia pré-crée un terminal dans le panneau bas au tout premier démarrage
      * (layout vierge). On supprime ce pré-amorçage : les terminaux s'ouvrent à la
-     * demande, en onglet de la zone d'édition. Un layout déjà sauvegardé est
+     * demande. Un layout déjà sauvegardé est
      * restauré par le LayoutRestorer indépendamment de cette méthode.
      */
     override async initializeLayout(): Promise<void> {
