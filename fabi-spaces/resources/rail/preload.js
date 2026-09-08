@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('fabiSpaces', {
     setColor: (id, color) => ipcRenderer.send(C.SET_COLOR, id, color),
     setEmoji: (id, emoji) => ipcRenderer.send(C.SET_EMOJI, id, emoji),
     reorder: ids => ipcRenderer.send(C.REORDER, ids),
+    contextMenu: (id, y) => ipcRenderer.send('fabi-spaces:context-menu', id, y),
+    dismissMenu: () => ipcRenderer.send('fabi-spaces:dismiss-menu'),
+    onEdit: cb => ipcRenderer.on('fabi-spaces:edit', (_e, space) => cb(space)),
     toggleSidebar: () => ipcRenderer.send(C.TOGGLE_SIDEBAR),
     windowControl: action => ipcRenderer.send(C.WINDOW, action),
     // Modal de création

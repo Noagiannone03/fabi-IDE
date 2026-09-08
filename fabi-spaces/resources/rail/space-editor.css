@@ -1,0 +1,21 @@
+@font-face{font-family:'Fabi UI';src:url('fonts/GeistVariable.ttf');font-weight:100 900}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent;color:#dedfe6;font:12px 'Fabi UI',-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+#space-popover{position:absolute;left:48px;top:12px;width:240px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;padding:6px;border:1px solid #ffffff12;border-radius:12px;background:#25262b;box-shadow:0 12px 32px #10111466,0 2px 6px #10111433;transform-origin:top left}
+.menu-title{padding:8px 10px 9px;color:#92959f;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+button{border:0;border-radius:6px;padding:8px 10px;font:inherit;color:inherit;background:transparent;cursor:pointer;transition:background 120ms,color 120ms}
+button:hover,button:focus-visible{background:#ffffff0b}
+button:focus-visible,input:focus-visible{outline:1px solid #a4a8b8;outline-offset:-1px}
+[role=menuitem]{width:100%;display:flex;align-items:center;justify-content:space-between;text-align:left;min-height:34px}
+[role=menuitem] span{color:#858995;font-size:12px}
+.separator{height:1px;background:#ffffff0b;margin:5px 6px}
+.danger{color:#e4a0a6}
+form,#remove-confirm{padding:10px;display:grid;gap:12px}
+label,h2{font-size:12px;font-weight:500;margin:0}
+input{width:100%;padding:8px 10px;border:1px solid #ffffff15;border-radius:6px;background:#1b1c21;color:inherit;font:inherit}
+p{margin:0;min-height:15px;color:#efa4a4;font-size:11px}
+.explanation{color:#a6a9b3;line-height:1.6}
+footer{display:flex;justify-content:flex-end;gap:6px}
+button[type=submit]{background:#d5d7df;color:#24252a}
+@media(prefers-reduced-motion:reduce){button{transition:none}}

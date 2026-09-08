@@ -16,6 +16,7 @@ import '../../src/browser/style/fabi-ui-icons.css';         // EN DERNIER : rema
 import '../../src/browser/style/fabi-midnight.css';
 import '../../src/browser/style/fabi-native-midnight.css';
 import '../../src/browser/style/fabi-studio.css';
+import '../../src/browser/style/fabi-navigation.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
@@ -34,6 +35,7 @@ import { FabiThemeContribution } from './theme/fabi-theme-contribution';
 import { FabiSidePanelHandler, FabiLeftPanelOpenContribution } from './shell/fabi-side-panel-handler';
 import { FabiFontRemeasureContribution } from './shell/fabi-font-remeasure-contribution';
 import { FabiWorkbenchDockContribution } from './shell/fabi-workbench-dock';
+import { FabiDocumentMotion } from './shell/fabi-document-motion';
 
 // --- Hauteur des en-têtes de sections (Explorer : Open Editors / Timeline / Outline…) ---
 // Theia positionne les *parts* d'un view-container en ABSOLU à partir d'une CONSTANTE
@@ -85,5 +87,6 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
 
     bind(FabiWorkbenchDockContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiWorkbenchDockContribution);
+    bind(FrontendApplicationContribution).to(FabiDocumentMotion).inSingletonScope();
 
 });

@@ -1,17 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
-    <link rel="stylesheet" href="topbar.css" />
-    <title>Fabi — Space actif</title>
-</head>
+<html lang="fr"><head><meta charset="utf-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+<link rel="stylesheet" href="topbar.css" /><title>Fabi — Espaces de travail</title></head>
 <body>
-    <button id="manage" class="space-switcher" aria-label="Changer de Space" aria-expanded="false" aria-haspopup="dialog">
-        <span class="space-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" /></svg></span>
-        <span class="space-copy"><span class="space-caption">Space actif</span><strong id="activeName">Espace</strong></span>
-        <svg class="chevrons" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 9 3-3 3 3m-6 6 3 3 3-3" /></svg>
-    </button>
-    <script src="topbar.js"></script>
-</body>
-</html>
+<header title="Espaces de travail"><span class="space-mark" aria-label="Espaces de travail" role="img"></span></header>
+<nav id="spaces" aria-label="Espaces de travail"></nav>
+<footer><button id="create" title="Nouveau Space" aria-label="Nouveau Space">+</button></footer>
+<script src="topbar.js"></script></body></html>

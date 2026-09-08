@@ -13,7 +13,7 @@
 
 import { app, BaseWindow, WebContentsView, dialog, ipcMain, screen, Rectangle, IpcMainEvent } from 'electron';
 import { basename } from 'path';
-import { CHANNEL_REQUEST_RELOAD } from '@theia/core/lib/electron-common/electron-api';
+import { CHANNEL_REQUEST_RELOAD, CHANNEL_FOCUS_WINDOW } from '@theia/core/lib/electron-common/electron-api';
 import {
     SpaceDescriptor, SpacesState, SpacesIpc, SPACE_COLORS,
     NewSpaceModalInit, NewSpaceModalResult
@@ -24,9 +24,7 @@ import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './fro
 import { attachNativeView, reattachNativeView } from './native-view-layout';
 
 /** Largeur du rail au repos (colonne d'icônes d'espaces), en px CSS. */
-const RAIL_COLLAPSED = 0;    // La gestion des Spaces ne réserve aucune colonne quand elle est fermée.
-/** Largeur du rail déplié au survol (affiche les noms + la gestion, façon Arc). */
-const RAIL_EXPANDED = 250;
+const RAIL_COLLAPSED = 52;  // Narrow, connected Space tabs; no desktop thumbnails.
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
 const TOPBAR_HEIGHT = 32;
 /**
@@ -115,6 +113,12 @@ export class SpaceManager {
         // d'exposer la texture implicite 800x600 pendant le premier frame macOS.
         this.layout();
         this.host.show();
+        // Focusing a WebContentsView while its host is hidden does not reliably
+        // give Chromium an active surface on macOS. Restore focus after show so
+        // the first workspace can finish its animation-frame-based startup.
+        if (this.activeId) {
+            this.views.get(this.activeId)?.webContents.focus();
+        }
         console.log('[fabi-spaces] boot: fenêtre-hôte affichée ✅');
     }
 
@@ -178,7 +182,7 @@ export class SpaceManager {
     protected createChrome(): Promise<void> {
         // Sidebar d'espaces (gauche) + barre de titre (haut) : deux vues de chrome.
         this.railView = this.chromeView();
-        this.railView.setBackgroundColor('#191a1e');
+        this.railView.setBackgroundColor('#00000000');
         this.topbarView = this.chromeView();
         this.topbarView.setBackgroundColor('#191a1e');
 
@@ -274,19 +278,11 @@ export class SpaceManager {
     }
 
     protected railBounds(W: number, H: number): Rectangle {
-        // Garder un viewport valide même lorsque la vue native est masquée.
-        const railW = RAIL_EXPANDED;
-        const height = Math.max(0, Math.min(460, 132 + this.store.getSpaces().length * 54, H - TOPBAR_HEIGHT - 88));
-        return {
-            x: 0,
-            y: Math.max(TOPBAR_HEIGHT, H - 88 - height),
-            width: Math.min(W, railW),
-            height
-        };
+        return { x: 0, y: TOPBAR_HEIGHT, width: W, height: Math.max(1, H - TOPBAR_HEIGHT) };
     }
 
     protected topbarBounds(W: number, H: number): Rectangle {
-        return { x: 8, y: Math.max(0, H - 88), width: Math.min(208, W - 16), height: 64 };
+        return { x: 0, y: TOPBAR_HEIGHT, width: Math.min(RAIL_COLLAPSED, W), height: Math.max(1, H - TOPBAR_HEIGHT) };
     }
 
     /**
@@ -336,6 +332,8 @@ export class SpaceManager {
         this.host.contentView.addChildView(this.topbarView);
         this.topbarView.setBounds(this.topbarBounds(W, H));
 
+        if (this.railExpanded) { this.host.contentView.addChildView(this.railView); }
+
         // Modal de création : plein écran, AU-DESSUS de tout.
         if (this.modalView && !this.modalView.webContents.isDestroyed()) {
             this.modalView.setBounds({ x: 0, y: 0, width: W, height: H });
@@ -355,7 +353,7 @@ export class SpaceManager {
         }
         const space = this.store.get(id)!;
         const view = new WebContentsView({ webPreferences: spaceWebPreferences(this.opts) });
-        view.setBackgroundColor('#22262d');
+        view.setBackgroundColor('#191a1e');
         const { width, height } = this.contentBounds();
         // Même invariant que le chrome : dimensionner avant l'attachement afin que
         // le renderer soit créé avec le viewport réellement visible.
@@ -389,6 +387,14 @@ export class SpaceManager {
         };
         ipcMain.on(CHANNEL_REQUEST_RELOAD, onReload);
         wc.once('destroyed', () => ipcMain.removeListener(CHANNEL_REQUEST_RELOAD, onReload));
+        const onFocus = (event: IpcMainEvent, windowName?: string) => {
+            if (event.sender.id !== wc.id || windowName || this.activeId !== id || this.disposed) { return; }
+            if (this.host.isMinimized()) { this.host.restore(); }
+            this.host.focus();
+            wc.focus();
+        };
+        ipcMain.on(CHANNEL_FOCUS_WINDOW, onFocus);
+        wc.once('destroyed', () => ipcMain.removeListener(CHANNEL_FOCUS_WINDOW, onFocus));
 
         // À chaque (re)chargement du frontend Theia, on (re)pose la couleur de l'espace
         // sur :root → le CSS « îlots » s'en sert pour teinter l'IDE (effet « relié »).
@@ -412,14 +418,38 @@ export class SpaceManager {
     // Actions
     // ----------------------------------------------------------------------
 
-    /** Affiche un Space (le matérialise au besoin). Switch instantané via setVisible. */
+    protected readonly previewPending = new Set<string>();
+    protected openSequence = 0;
+
+    /** Capture only on departure, never on a timer or to disk. */
+    protected capturePreview(id: string): Promise<string | undefined> {
+        const view = this.views.get(id);
+        if (!view || this.previewPending.has(id) || view.webContents.isDestroyed() || view.webContents.isLoading()) { return Promise.resolve(undefined); }
+        this.previewPending.add(id);
+        return view.webContents.capturePage().then(image => {
+            if (this.disposed || !this.store.get(id) || image.isEmpty()) { return; }
+            return 'data:image/jpeg;base64,' + image.resize({ width: Math.min(1400, view.getBounds().width) }).toJPEG(80).toString('base64');
+        }).catch(() => undefined) // A closing or suspended view has no usable snapshot.
+            .finally(() => this.previewPending.delete(id));
+    }
+
+    /** Affiche un Space sans attendre sa capture ni bloquer les clics suivants. */
     async open(id: string): Promise<void> {
-        if (!this.store.get(id)) {
+        if (this.disposed || !this.store.get(id)) {
             return;
         }
+        const sequence = ++this.openSequence;
+        const previousId = this.activeId;
+        const departure = previousId && previousId !== id ? this.capturePreview(previousId) : Promise.resolve(undefined);
         this.ensureView(id);
         const activeView = this.views.get(id)!;
         await this.viewReady.get(activeView);
+        // Never hold a Space switch hostage to an occluded renderer's capture.
+        const snapshot = await Promise.race([departure, new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 70))]);
+        // A Space may have been removed or suspended while its renderer loaded.
+        // Never activate a stale view, even if no newer open request was made.
+        if (sequence !== this.openSequence || this.disposed || !this.store.get(id)
+            || this.views.get(id) !== activeView || activeView.webContents.isDestroyed()) { return; }
         if (id !== 'maestro') {
             this.maestroPreviewId = undefined;
         }
@@ -433,19 +463,55 @@ export class SpaceManager {
         }
         this.layout();
         this.applyAccent(id);
-        this.fadeInView(id);
+        activeView.webContents.focus();
+        if (previousId !== id) {
+            const ids = this.store.getSpaces().map(space => space.id);
+            this.fadeInView(id, !previousId || ids.indexOf(id) >= ids.indexOf(previousId) ? 1 : -1, snapshot);
+        }
         this.enforceSuspension();
         this.pushState();
     }
 
     /** Petit fondu d'entrée sur la vue qui devient active (« on voit que ça change »). */
-    protected fadeInView(id: string): void {
+    protected fadeInView(id: string, direction = 1, snapshot?: string): void {
         const view = this.views.get(id);
         if (!view || view.webContents.isDestroyed() || view.webContents.isLoading()) {
             return;
         }
         view.webContents.executeJavaScript(
-            `(()=>{try{document.body.animate([{opacity:0.55},{opacity:1}],{duration:200,easing:'ease-out'});}catch(e){}})();`,
+            `(()=>{try{
+                window.fabiSpaceTransition?.cancel();
+                window.fabiSpaceOverlay?.remove();
+                window.fabiSpaceReadyObserver?.disconnect();
+                clearTimeout(window.fabiSpaceReadyTimeout);
+                if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+                const reveal=()=>{
+                window.fabiSpaceReadyObserver?.disconnect();
+                clearTimeout(window.fabiSpaceReadyTimeout);
+                const surface=document.getElementById('theia-app-shell')||document.body;
+                window.fabiSpaceTransition=surface.animate([
+                    {opacity:.8,transform:'translateX(${direction * 30}px)'},
+                    {opacity:1,transform:'translateX(0)'}
+                ],{duration:480,easing:'cubic-bezier(.2,.8,.2,1)'});
+                };
+                const loading=document.querySelector('.theia-preload:not(.theia-hidden)');
+                if(loading){
+                    window.fabiSpaceReadyObserver=new MutationObserver(()=>{
+                        if(!loading.isConnected||loading.classList.contains('theia-hidden'))reveal();
+                    });
+                    window.fabiSpaceReadyObserver.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
+                    window.fabiSpaceReadyTimeout=setTimeout(()=>window.fabiSpaceReadyObserver?.disconnect(),30000);
+                }else reveal();
+                const snapshot=${JSON.stringify(snapshot ?? '')};
+                if(snapshot){
+                    const overlay=document.createElement('img');
+                    overlay.src=snapshot;overlay.alt='';overlay.setAttribute('aria-hidden','true');
+                    Object.assign(overlay.style,{position:'fixed',inset:'0',width:'100%',height:'100%',objectFit:'fill',pointerEvents:'none',zIndex:'90'});
+                    window.fabiSpaceOverlay=overlay;document.documentElement.append(overlay);
+                    const exit=overlay.animate([{opacity:1},{opacity:0}],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'});
+                    exit.finished.then(()=>overlay.remove(),()=>overlay.remove());
+                }
+            }catch(e){}})();`,
             true
         ).catch(() => { /* frontend pas prêt */ });
     }
@@ -682,7 +748,24 @@ export class SpaceManager {
         ipcMain.on(SpacesIpc.RENAME, (e, id: string, name: string) => { if (fromRail(e)) { this.rename(id, name); } });
         ipcMain.on(SpacesIpc.SET_COLOR, (e, id: string, color: string) => { if (fromRail(e)) { this.setColor(id, color); } });
         ipcMain.on(SpacesIpc.SET_EMOJI, (e, id: string, emoji: string) => { if (fromRail(e)) { this.setEmoji(id, emoji); } });
-        ipcMain.on(SpacesIpc.REORDER, (e, ids: string[]) => { if (fromRail(e)) { this.reorder(ids); } });
+        ipcMain.on(SpacesIpc.REORDER, (e, ids: string[]) => {
+            if (fromChrome(e) && Array.isArray(ids) && ids.every(id => typeof id === 'string')) { this.reorder(ids); }
+        });
+        ipcMain.on('fabi-spaces:context-menu', (e, id: unknown, y: unknown) => {
+            if (!fromChrome(e) || typeof id !== 'string') { return; }
+            const space = this.store.get(id);
+            if (!space || space.kind === 'maestro') { return; }
+            this.setExpanded(true);
+            this.railView.webContents.send('fabi-spaces:edit', {
+                ...space, menu: true, y: typeof y === 'number' && Number.isFinite(y) ? y : 12
+            });
+        });
+        ipcMain.on('fabi-spaces:dismiss-menu', e => {
+            if (fromRail(e)) {
+                this.setExpanded(false);
+                if (this.activeId) { this.views.get(this.activeId)?.webContents.focus(); }
+            }
+        });
         // Le toggle peut venir du rail OU de la topbar.
         ipcMain.on(SpacesIpc.TOGGLE_SIDEBAR, e => { if (fromChrome(e)) { this.setExpanded(!this.railExpanded); } });
         // La topbar ET le rail peuvent piloter la fenêtre (boutons Win/Linux, double-clic).
@@ -862,6 +945,7 @@ export class SpaceManager {
             }
         }
         this.views.clear();
+        this.previewPending.clear();
         for (const chrome of [this.railView, this.topbarView, this.modalView]) {
             if (chrome && !chrome.webContents.isDestroyed()) {
                 chrome.webContents.close();

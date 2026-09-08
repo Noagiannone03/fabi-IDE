@@ -1,6 +1,6 @@
 import * as React from '@theia/core/shared/react';
 import { injectable, inject } from '@theia/core/shared/inversify';
-import { BoxLayout, BoxPanel } from '@theia/core/shared/@lumino/widgets';
+import { Widget } from '@theia/core/shared/@lumino/widgets';
 import { ApplicationShell, FrontendApplicationContribution, ReactWidget } from '@theia/core/lib/browser';
 import { CommandService, MessageService } from '@theia/core/lib/common';
 import { FabiSidePanelHandler } from './fabi-side-panel-handler';
@@ -29,7 +29,7 @@ class DockTools extends ReactWidget {
         try {
             if (action === 'terminal') {
                 const terminals = [...this.shell.getWidgets('bottom'), ...this.shell.getWidgets('main')]
-                    .filter(widget => widget.id.startsWith('terminal-'));
+                    .filter(widget => widget.id.startsWith('terminal-') && !(widget as Widget & { exitStatus?: unknown }).exitStatus);
                 const terminal = terminals.find(widget => widget === this.shell.currentWidget) ?? terminals[0];
                 if (!terminal) {
                     await this.commands.executeCommand('fabi.newTerminalTab');
@@ -66,9 +66,7 @@ class DockTools extends ReactWidget {
         return <nav className="fabi-dock-tools" aria-label="Outils du Space" aria-busy={this.busy}>
             {[
                 ['terminal', 'terminal', 'Terminal', active.startsWith('terminal-')],
-                ['agents', 'comment-discussion', 'Agents', active === 'chat-view-widget' || active.startsWith('fabi-chat-instance:')],
-                ['workbench.action.showCommands', 'search', 'Commandes', false],
-                ['preferences:open', 'settings-gear', 'Réglages', false]
+                ['agents', 'comment-discussion', 'Agents', active === 'chat-view-widget' || active.startsWith('fabi-chat-instance:')]
             ].map(([action, icon, label, selected]) => <button key={String(action)}
                 className={'fabi-dock-tool' + (selected ? ' active' : '')}
                 title={String(label)} aria-label={String(label)} disabled={this.busy}
@@ -96,25 +94,50 @@ export class FabiWorkbenchDockContribution implements FrontendApplicationContrib
             }
         }
         const handler = this.shell.leftPanelHandler;
-        const layout = this.shell.layout;
-        if (!(handler instanceof FabiSidePanelHandler) || !(layout instanceof BoxLayout)) { return; }
-        const activity = handler.activityBar;
-        if (!activity) { return; }
-        const dock = new BoxPanel({ direction: 'left-to-right', spacing: 0 });
+        if (!(handler instanceof FabiSidePanelHandler)) { return; }
+        const dock = new DockTools(this.shell, this.commands, this.messages);
         dock.id = 'fabi-workbench-dock';
-        // Reparent the existing view launcher: plugin views and their order survive.
-        BoxPanel.setStretch(activity, 1);
-        dock.addWidget(activity);
-        const tools = new DockTools(this.shell, this.commands, this.messages);
-        BoxPanel.setStretch(tools, 0);
-        dock.addWidget(tools);
-        BoxPanel.setStretch(dock, 0);
-        layout.insertWidget(Math.max(0, layout.widgets.length - 1), dock);
-        // Lumino caches CSS size limits. Responsive padding / tool labels need a
-        // fit pass when the viewport changes, not only a resize of the parent.
-        const refit = () => { dock.fit(); this.shell.fit(); };
-        window.addEventListener('resize', refit);
-        dock.disposed.connect(() => window.removeEventListener('resize', refit));
+        // Independent overlay: no extra row is allocated in the Lumino shell.
+        Widget.attach(dock, this.shell.node);
+        const reveal = document.createElement('button');
+        reveal.className = 'fabi-sidebar-reveal';
+        reveal.title = 'Afficher les fichiers';
+        reveal.setAttribute('aria-label', 'Afficher les fichiers');
+        const glyph = document.createElement('span');
+        glyph.className = 'fabi-symbol ph-files';
+        glyph.setAttribute('aria-hidden', 'true');
+        reveal.append(glyph);
+        reveal.onclick = () => this.shell.expandPanel('left');
+        this.shell.node.append(reveal);
+        const editor = this.shell.mainPanel.node;
+        const position = () => {
+            const r = editor.getBoundingClientRect();
+            dock.node.style.left = Math.round(r.left + r.width / 2) + 'px';
+            dock.node.style.bottom = Math.max(12, window.innerHeight - r.bottom + 14) + 'px';
+        };
+        const observer = new ResizeObserver(position);
+        observer.observe(editor);
+        observer.observe(this.shell.node);
+        window.addEventListener('resize', position);
+        position();
+        const rest = (event: PointerEvent) => { if (!dock.node.contains(event.target as Node)) { dock.node.classList.add('fabi-dock-resting'); } };
+        let collapseTimer: number | undefined;
+        const show = () => { window.clearTimeout(collapseTimer); dock.node.classList.remove('fabi-dock-resting'); };
+        const settle = () => {
+            window.clearTimeout(collapseTimer);
+            collapseTimer = window.setTimeout(() => {
+                if (!dock.node.contains(document.activeElement) && !dock.node.matches(':hover')) {
+                    dock.node.classList.add('fabi-dock-resting');
+                }
+            }, 320);
+        };
+        this.shell.node.addEventListener('pointerdown', rest);
+        dock.node.addEventListener('pointerenter', show);
+        dock.node.addEventListener('focusin', show);
+        dock.node.addEventListener('pointerleave', settle);
+        dock.node.addEventListener('focusout', settle);
+        this.shell.disposed.connect(() => dock.dispose());
+        dock.disposed.connect(() => { window.clearTimeout(collapseTimer); reveal.remove(); observer.disconnect(); window.removeEventListener('resize', position); this.shell.node.removeEventListener('pointerdown', rest); });
         document.body.classList.add('fabi-dock-enabled');
         document.body.classList.toggle('fabi-native-spaces', window.location.protocol === 'file:');
         handler.enableDockNavigation();

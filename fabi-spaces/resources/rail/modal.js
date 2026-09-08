@@ -24,13 +24,11 @@
         folderPath: document.getElementById('folderPath'),
         changeFolder: document.getElementById('changeFolder'),
         iconGrid: document.getElementById('iconGrid'),
-        swatches: document.getElementById('swatches'),
         cancel: document.getElementById('cancelBtn'),
         create: document.getElementById('createBtn')
     };
 
     const st = { name: '', icon: 'folder', color: SPACE_COLORS[0], folder: '', nameEdited: false, submitted: false };
-    const colorNames = ['Bleu', 'Indigo', 'Violet', 'Rose', 'Rouge', 'Orange', 'Jaune', 'Vert', 'Cyan', 'Gris'];
 
     const baseName = p => (p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
     const isCodicon = v => !!v && CODICONS.includes(v);
@@ -49,11 +47,6 @@
 
     function applyColor() {
         document.documentElement.style.setProperty('--accent', st.color);
-        [...el.swatches.children].forEach(s => {
-            const selected = s.dataset.color === st.color;
-            s.classList.toggle('sel', selected);
-            s.setAttribute('aria-pressed', String(selected));
-        });
     }
 
     function refreshPreview() {
@@ -83,19 +76,6 @@
         }
     }
 
-    function renderSwatches() {
-        el.swatches.innerHTML = '';
-        for (const color of SPACE_COLORS) {
-            const s = document.createElement('button');
-            s.className = 'swatch';
-            s.dataset.color = color;
-            s.style.background = color;
-            s.title = colorNames[SPACE_COLORS.indexOf(color)];
-            s.setAttribute('aria-label', s.title);
-            s.addEventListener('click', () => { st.color = color; applyColor(); });
-            el.swatches.appendChild(s);
-        }
-    }
 
     function setFolder(path) {
         st.folder = path;
@@ -161,7 +141,6 @@
         el.folderPath.textContent = st.folder;
         el.folderPath.title = st.folder;
         renderIcons();
-        renderSwatches();
         applyColor();
         refreshPreview();
         el.name.focus(); el.name.select();

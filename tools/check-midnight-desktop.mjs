@@ -10,11 +10,12 @@ const browser = await puppeteer.connect({
 try {
     const pages = await browser.pages();
     const topbar = pages.find(page => page.url().includes('/rail/topbar.html'));
-    const workspace = pages.find(page => page.url().includes('/frontend/index.html'));
+    const workspace = pages.find(page => page.url().includes('/frontend/index.html') && !page.url().includes('maestro=1'));
     assert.ok(topbar && workspace, 'Native chrome and workspace must be running');
     const chrome = await topbar.evaluate(() => ({ width: innerWidth, height: innerHeight }));
-    assert.equal(chrome.height, 64, 'The Space selector must not inherit an emulated viewport');
-    assert.equal(chrome.width, 208);
+    assert.ok(chrome.height > 300);
+    assert.equal(chrome.width, 52);
+    await workspace.$eval('#fabi-workbench-dock', node => node.classList.remove('fabi-dock-resting'));
     const layout = await workspace.evaluate(() => {
         const bounds = element => {
             const r = element.getBoundingClientRect();
@@ -24,12 +25,16 @@ try {
             width: innerWidth,
             height: innerHeight,
             dock: bounds(document.getElementById('fabi-workbench-dock')),
+            editor: bounds(document.getElementById('theia-main-content-panel')),
+            activityInSidebar: !!document.querySelector('#theia-left-content-panel #fabi-activity-bar'),
             tools: [...document.querySelectorAll('.fabi-dock-tool')].map(bounds),
             rightLauncher: !!document.querySelector('#theia-right-content-panel .theia-app-sidebar-container')
         };
     });
     assert.equal(layout.rightLauncher, false);
-    assert.equal(layout.tools.length, 4);
+    assert.equal(layout.tools.length, 2);
+    assert.equal(layout.activityInSidebar, true);
+    assert.ok(layout.dock.y > layout.editor.y && layout.dock.bottom < layout.editor.bottom);
     assert.ok(layout.dock.bottom <= layout.height);
     assert.ok(layout.tools.every(r => r.x >= 0 && r.right <= layout.width && r.y === layout.tools[0].y));
     console.log({ chrome, layout });

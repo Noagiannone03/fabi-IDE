@@ -22,6 +22,8 @@ import { FabiWelcomeMessageProvider } from './fabi-welcome-provider';
 import { FabiChatHeaderContribution } from './fabi-chat-header';
 import { FabiAIChatContribution } from './fabi-ai-chat-contribution';
 import { FabiTerminalFrontendContribution } from './fabi-terminal-contribution';
+import { FabiTerminalWidget } from './fabi-terminal-widget';
+import { TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import { FabiPanelDockContribution } from './fabi-panel-dock';
 import { FabiEditorActionsContribution, FABI_CHAT_INSTANCE_FACTORY_ID } from './fabi-editor-actions';
 import { FabiTabRenameContribution } from './fabi-tab-rename';
@@ -155,6 +157,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // déclarées) → les rebind passent par-dessus de façon déterministe.
     rebind(AIChatContribution).to(FabiAIChatContribution).inSingletonScope();
     rebind(TerminalFrontendContribution).to(FabiTerminalFrontendContribution).inSingletonScope();
+    rebind(TerminalWidget).to(FabiTerminalWidget).inTransientScope();
 
     // Bouton d'onglet « ancrer dans la sidebar / le panneau » ←→ « zone de code ».
     bind(FabiPanelDockContribution).toSelf().inSingletonScope();

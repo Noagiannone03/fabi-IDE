@@ -1,35 +1,22 @@
 <!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; img-src 'self' data:; font-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';" />
-    <link rel="stylesheet" href="codicon.css" />
-    <link rel="stylesheet" href="rail.css" />
-    <title>Fabi Spaces</title>
-</head>
-<body>
-    <nav id="rail" class="rail" aria-label="Espaces de travail">
-        <div class="rail-head">
-            <button class="fox-btn" id="foxBtn" title="Fermer la gestion des Spaces" aria-label="Fermer la gestion des Spaces">
-                <img src="fox.svg" alt="Fabi" draggable="false" />
-            </button>
-            <span class="rail-title">Gérer les Spaces</span>
-        </div>
-        <div class="tiles" id="tiles"></div>
-        <div class="rail-spacer"></div>
-        <button class="add-row" id="addBtn" title="Nouvel espace">
-            <span class="plus">
-                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-                </svg>
-            </span>
-            <span class="add-label">Nouvel espace</span>
-        </button>
-    </nav>
-
-    <div id="ctxmenu" class="ctxmenu hidden" role="dialog" aria-label="Options du Space"></div>
-
-    <script src="rail.js"></script>
-</body>
-</html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; font-src 'self'; style-src 'self'; script-src 'self';">
+<link rel="stylesheet" href="space-editor.css"><title>Renommer l’espace</title></head>
+<body><section id="space-popover" aria-label="Actions de l’espace">
+<div id="space-menu" role="menu" aria-labelledby="menu-title" hidden>
+<div id="menu-title" class="menu-title"></div>
+<button id="rename-action" role="menuitem">Renommer<span aria-hidden="true">↵</span></button>
+<div class="separator" role="separator"></div>
+<button id="remove-action" role="menuitem" class="danger">Retirer l’espace…</button>
+</div>
+<section id="remove-confirm" hidden aria-labelledby="remove-title">
+<h2 id="remove-title">Retirer cet espace ?</h2>
+<p class="explanation">Les fichiers restent sur le disque. Les onglets et processus seront fermés. Enregistrez vos modifications avant de continuer.</p>
+<footer><button id="keep-space">Annuler</button><button id="confirm-remove" class="danger">Retirer</button></footer>
+</section>
+<form id="edit-form" hidden>
+<label for="space-name">Nom de l’espace</label>
+<input id="space-name" autocomplete="off" spellcheck="false" maxlength="100" required aria-describedby="edit-error">
+<p id="edit-error" role="alert"></p>
+<footer><button type="button" id="cancel">Annuler</button><button type="submit">Enregistrer</button></footer>
+</form></section><script src="space-editor.js"></script></body></html>

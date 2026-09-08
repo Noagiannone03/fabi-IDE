@@ -45,7 +45,7 @@ export class FabiTerminalFrontendContribution extends TerminalFrontendContributi
      */
     override toggleTerminal(): void {
         const all = [...this.shell.getWidgets('main'), ...this.shell.getWidgets('bottom')]
-            .filter((w): w is TerminalWidget => w instanceof TerminalWidget);
+            .filter((w): w is TerminalWidget => w instanceof TerminalWidget && !w.exitStatus);
         if (all.length === 0) {
             this.openTerminal();
             return;

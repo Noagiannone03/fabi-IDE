@@ -1,0 +1,88 @@
+/* Phosphor regular; original vectors are vendored with the MIT license. */
+.theia-preload { background:#191a1e !important;transition:opacity 420ms cubic-bezier(.2,.8,.2,1) !important;flex-direction:column;gap:22px; }
+.theia-preload::before { content:'Ouverture de l’espace';font:450 13px/20px 'Fabi UI',sans-serif;letter-spacing:.1px;color:#b9bbc4; }
+.theia-preload::after { content:'' !important;width:88px;height:2px;border-radius:2px;background:#a8abb5;opacity:.5;transform-origin:center;animation:fabi-space-loading 1600ms ease-in-out infinite !important; }
+@keyframes fabi-space-loading { 0%,100% { transform:scaleX(.28);opacity:.25; } 50% { transform:scaleX(1);opacity:.65; } }
+@media (prefers-reduced-motion:reduce) { .theia-preload::after { animation:none !important;transform:none;opacity:.5; } .theia-preload { transition:none !important; } }
+.fabi-symbol { display:inline-block; width:22px; height:22px; background:currentColor; mask:var(--phosphor-icon) center/contain no-repeat; }
+.ph-files { --phosphor-icon:url('./icons/phosphor/folder-simple.svg'); }
+.ph-search { --phosphor-icon:url('./icons/phosphor/magnifying-glass.svg'); }
+.ph-branch { --phosphor-icon:url('./icons/phosphor/git-branch.svg'); }
+.ph-debug { --phosphor-icon:url('./icons/phosphor/bug.svg'); }
+.ph-extensions { --phosphor-icon:url('./icons/phosphor/squares-four.svg'); }
+.ph-test { --phosphor-icon:url('./icons/phosphor/flask.svg'); }
+.ph-settings { --phosphor-icon:url('./icons/phosphor/sliders-horizontal.svg'); }
+.ph-more { --phosphor-icon:url('./icons/phosphor/dots-three.svg'); }
+.ph-terminal { --phosphor-icon:url('./icons/phosphor/terminal-window.svg'); }
+.ph-agents { --phosphor-icon:url('./icons/phosphor/chat-circle-dots.svg'); }
+#fabi-activity-bar { min-height:42px;max-height:42px;background:none; }
+#fabi-activity-bar .fabi-activity-inner { height:42px;justify-content:flex-start;padding:0 10px;gap:4px;border-bottom:1px solid #ffffff07; }
+#fabi-activity-bar .fabi-activity-item { color:#9395a2;opacity:1;border-radius:7px; }
+#fabi-activity-bar .fabi-activity-item.active { color:#e3e1ea;background:#ffffff09; }
+#fabi-activity-bar .fabi-symbol { width:20px;height:20px; }
+#fabi-workbench-dock,body.fabi-native-spaces #fabi-workbench-dock {
+    position:fixed !important; top:auto !important; width:auto !important;height:auto !important;
+    min-width:0 !important;max-width:none !important;min-height:0 !important;max-height:none !important;
+    padding:0 !important;transform:translateX(-50%);z-index:25;overflow:visible;
+    border:1px solid #ffffff0e;border-radius:16px;background:#242529e8;
+    backdrop-filter:blur(24px);box-shadow:0 6px 20px #08090c38;
+    --dock-ease:cubic-bezier(.2,.8,.2,1);
+    transition:border-radius 280ms var(--dock-ease),background-color 280ms ease,box-shadow 280ms ease;
+}
+/* Size interpolation is confined to this fixed overlay: it never resizes the editor. */
+#fabi-workbench-dock .fabi-dock-tools { width:206px;height:48px;padding:5px;gap:4px;background:transparent;border:0;border-radius:14px;box-shadow:none;transition:width 460ms var(--dock-ease),height 460ms var(--dock-ease); }
+#fabi-workbench-dock .fabi-dock-tool { display:flex;flex-direction:row;flex:1;gap:0;min-width:0;width:auto;height:100%;padding:0 7px;border-radius:10px;overflow:hidden; }
+#fabi-workbench-dock .fabi-dock-tool:hover { background:transparent !important; }
+#fabi-workbench-dock .fabi-dock-tile { flex:0 0 22px;width:22px;height:22px;background:none !important;box-shadow:none !important;color:#b9bbc4;transition:transform 460ms var(--dock-ease),color 220ms ease; }
+#fabi-workbench-dock .fabi-dock-tool:nth-child(2) .fabi-dock-tile { color:#b9bbc4; }
+#fabi-workbench-dock .fabi-dock-label { display:block;max-width:58px;margin-left:7px;white-space:nowrap;overflow:hidden;opacity:1;transform:translateX(0);font:450 11px/16px 'Fabi UI',sans-serif;color:#c0becb;transition:opacity 220ms ease 70ms,transform 460ms var(--dock-ease),max-width 460ms var(--dock-ease),margin-left 460ms var(--dock-ease); }
+#fabi-workbench-dock .fabi-dock-tool.active { background:transparent !important; }
+#fabi-workbench-dock .fabi-dock-tool.active::after { bottom:1px;width:3px;height:3px;background:#c4c6cf; }
+#fabi-workbench-dock .fabi-dock-tool:hover .fabi-dock-tile { transform:translateY(-1px) scale(1.04);color:#eeeeF2; }
+#fabi-workbench-dock .fabi-dock-tool:active .fabi-dock-tile { transform:scale(.96); }
+#fabi-workbench-dock .fabi-dock-tool:focus-visible { outline:1px solid #bfc0c8;outline-offset:-2px; }
+#fabi-workbench-dock .fabi-dock-tool:hover .fabi-dock-label { color:#eeeef2; }
+#fabi-workbench-dock.fabi-dock-resting { border-radius:14px;background:#242529e8;box-shadow:0 4px 14px #08090c28; }
+#fabi-workbench-dock.fabi-dock-resting .fabi-dock-tools { width:94px;height:40px; }
+#fabi-workbench-dock.fabi-dock-resting .fabi-dock-label { opacity:0;max-width:0;margin-left:0;transform:translateX(-3px);transition-delay:0ms; }
+#fabi-workbench-dock.fabi-dock-resting .fabi-dock-tile { transform:scale(.85); }
+.fabi-sidebar-reveal { display:none;position:fixed;top:7px;left:8px;width:30px;height:30px;place-items:center;z-index:20;border:0;border-radius:7px;background:#292a31;color:#d3d1dc;cursor:pointer; }
+body.fabi-sidebar-collapsed .fabi-sidebar-reveal { display:grid; }
+body.fabi-sidebar-collapsed #theia-main-content-panel .lm-TabBar.theia-app-centers { padding-left:42px !important; }
+.fabi-sidebar-reveal:focus-visible { outline:2px solid #bfbacb;outline-offset:2px; }
+@media (prefers-reduced-transparency:reduce) { #fabi-workbench-dock { backdrop-filter:none;background:#2b2c34; } }
+/* Quiet document tabs: one selected surface, no bevels or nested button outlines. */
+#theia-main-content-panel .lm-TabBar.theia-app-centers {
+    --theia-horizontal-toolbar-height:28px;
+    padding:8px 8px !important;
+    min-height:44px;
+    background:#191a1e !important;
+}
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-content { align-items:center; }
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab {
+    box-sizing:border-box;height:28px;line-height:28px;
+    margin:0 2px !important;padding:0 11px !important;
+    border:0 !important;border-radius:7px !important;
+    background:transparent !important;color:#93959e !important;
+    box-shadow:none !important;
+    transition:background-color 200ms ease,color 180ms ease,box-shadow 220ms ease,border-color 200ms ease;
+}
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab:hover { background:#ffffff05 !important;color:#dcdde3 !important; }
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.lm-mod-current {
+    background:#28292e !important;color:#e8e9ef !important;
+    box-shadow:none !important;
+}
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tabLabel { font-size:12px;font-weight:450; }
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-mod-current .lm-TabBar-tabLabel { font-weight:500; }
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tabCloseIcon { opacity:1;transition:opacity 160ms ease; }
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab:not(:hover):not(:focus-within):not(.theia-mod-dirty):not(.theia-mod-pinned) > .lm-TabBar-tabCloseIcon { opacity:0; }
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.theia-mod-dirty > .lm-TabBar-tabCloseIcon { opacity:1; }
+@media (prefers-reduced-motion:reduce) { #fabi-workbench-dock,#fabi-workbench-dock * { transition:none !important;animation:none !important; } }
+@media (prefers-reduced-motion:no-preference) {
+    .fabi-activity-item { transition:background-color 180ms ease,color 180ms ease,transform 200ms cubic-bezier(.22,1,.36,1); }
+    .fabi-activity-item:active { transform:scale(.94); }
+    .fabi-activity-menu,.lm-Menu { animation:fabi-menu-arrive 160ms cubic-bezier(.22,1,.36,1); }
+    .fabi-home-action > .codicon:last-child { transition:transform 180ms ease; }
+    .fabi-home-action:hover > .codicon:last-child { transform:translateX(3px); }
+    @keyframes fabi-menu-arrive { from { opacity:0;transform:translateY(4px); } to { opacity:1;transform:translateY(0); } }
+}

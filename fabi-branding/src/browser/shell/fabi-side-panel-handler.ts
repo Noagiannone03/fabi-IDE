@@ -34,6 +34,7 @@ export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivi
         // launcher lives in the dock, so the entire sidebar must disappear.
         if (this.side === 'left' && this.dockNavigation) {
             this.container.setHidden(!this.tabBar.currentTitle);
+            document.body.classList.toggle('fabi-sidebar-collapsed', !this.tabBar.currentTitle);
         }
     }
 
@@ -90,7 +91,7 @@ export class FabiSidePanelHandler extends SidePanelHandler implements FabiActivi
 
             this.fabiActivityBar = new FabiActivityBar(this);
             BoxPanel.setStretch(this.fabiActivityBar, 0);
-            contentBox.addWidget(this.fabiActivityBar);
+            contentBox.insertWidget(0, this.fabiActivityBar);
 
             const contentPanel = new BoxPanel({ layout: contentBox });
 
