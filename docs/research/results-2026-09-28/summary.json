@@ -1,0 +1,131 @@
+[
+  {
+    "case": "python_2048",
+    "input_tokens": 1973,
+    "suffix_tokens": 39,
+    "cold_prefill_seconds": 3.5269316313788295,
+    "warm_suffix_seconds": 0.8754414152354002,
+    "cold_followup_seconds": 3.7667225701734424,
+    "warm_cold_next_token_equal": true,
+    "decode_tokens": 48,
+    "decode_seconds": 7.633609232492745,
+    "decode_step_p50_seconds": 0.15787141537293792,
+    "decode_step_p95_seconds": 0.16685517402365804,
+    "followup_tokens": 48,
+    "followup_seconds": 7.6396355126053095,
+    "kv_bytes_before_followup": 198672384,
+    "kv_bytes_final": 207224832,
+    "peak_allocated_bytes": 61345110016,
+    "trace_shapes": [
+      [
+        48,
+        1973,
+        8
+      ],
+      [
+        48,
+        48,
+        8
+      ],
+      [
+        48,
+        39,
+        8
+      ],
+      [
+        48,
+        48,
+        8
+      ]
+    ],
+    "output": "The current code checks `if entry.expires_at < now`, which means an entry expiring **exactly at `now`** is **not** removed. To fix this, we should use `<=` instead of `<` to include",
+    "followup_output": "The issue is subtle but critical: **floating-point precision** and **ordering of time values** can cause `now` to be slightly less than or greater than `expires_at`, even when they are conceptually equal. Using `<=`",
+    "prompt_sha256": "5993763f060a1aca24e1cacbdf31ed56101a201a78a0cfa6d36a92350e937c82"
+  },
+  {
+    "case": "typescript_8192",
+    "input_tokens": 8114,
+    "suffix_tokens": 39,
+    "cold_prefill_seconds": 10.31297658663243,
+    "warm_suffix_seconds": 0.9174624448642135,
+    "cold_followup_seconds": null,
+    "warm_cold_next_token_equal": null,
+    "decode_tokens": 48,
+    "decode_seconds": 7.59043447766453,
+    "decode_step_p50_seconds": 0.15782909048721194,
+    "decode_step_p95_seconds": 0.1596867844928056,
+    "followup_tokens": 48,
+    "followup_seconds": 7.601064864546061,
+    "kv_bytes_before_followup": 802357248,
+    "kv_bytes_final": 810909696,
+    "peak_allocated_bytes": 62068988928,
+    "trace_shapes": [
+      [
+        48,
+        8114,
+        8
+      ],
+      [
+        48,
+        48,
+        8
+      ],
+      [
+        48,
+        39,
+        8
+      ],
+      [
+        48,
+        48,
+        8
+      ]
+    ],
+    "output": "To make the retry logic **cancellation-aware** using `AbortSignal`, we need to:\n\n1. Accept an `AbortSignal` as a parameter.\n2. Pass it to `run(job.payload)` so that the operation can be canceled",
+    "followup_output": "The issue likely stems from a **boundary case in comparison logic**, such as:\n\n- Incorrect handling of empty inputs (e.g., `[]`, `\"\"`, `null`)\n- Misordered comparisons (e.g., `a < b`",
+    "prompt_sha256": "db974233991827f2bb61916ead9a16d05ab61ed390be9af7a2dec596a3c680ad"
+  },
+  {
+    "case": "sql_16384",
+    "input_tokens": 16308,
+    "suffix_tokens": 39,
+    "cold_prefill_seconds": 19.25367048289627,
+    "warm_suffix_seconds": 0.9349695909768343,
+    "cold_followup_seconds": null,
+    "warm_cold_next_token_equal": null,
+    "decode_tokens": 48,
+    "decode_seconds": 7.649746250361204,
+    "decode_step_p50_seconds": 0.15857373923063278,
+    "decode_step_p95_seconds": 0.16151331327855586,
+    "followup_tokens": 48,
+    "followup_seconds": 7.637031256221235,
+    "kv_bytes_before_followup": 1607860224,
+    "kv_bytes_final": 1616412672,
+    "peak_allocated_bytes": 63048356864,
+    "trace_shapes": [
+      [
+        48,
+        16308,
+        8
+      ],
+      [
+        48,
+        48,
+        8
+      ],
+      [
+        48,
+        39,
+        8
+      ],
+      [
+        48,
+        48,
+        8
+      ]
+    ],
+    "output": "To make pagination **deterministic** when `created_at` values tie (i.e., multiple rows have the same `created_at`), we need to **break ties using a secondary key** \u2014 typically the `id`, which is",
+    "followup_output": "You're right \u2014 even with a composite index on `(tenant_id, created_at, id)`, **pagination can still be non-deterministic** if the query logic doesn't properly handle **boundary cases**, especially when:\n\n- `created",
+    "prompt_sha256": "5a70f08c01a5ab63ecdd6c0e2cdb00ccd2efd5e3376a9b5dc3615c287a1af915"
+  }
+]

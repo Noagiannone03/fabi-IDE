@@ -1,0 +1,31 @@
+{
+  "copy_edit_boundary_tests": {
+    "expired": true,
+    "equal": true,
+    "future": true,
+    "missing": true
+  },
+  "token_comparison": [
+    {
+      "case": "copy_edit",
+      "same_token_ids": true,
+      "same_common_prefix": true,
+      "first_mismatch_zero_based": null,
+      "lengths": [
+        87,
+        87
+      ]
+    },
+    {
+      "case": "new_algorithm",
+      "same_token_ids": false,
+      "same_common_prefix": false,
+      "first_mismatch_zero_based": 15,
+      "lengths": [
+        192,
+        193
+      ]
+    }
+  ],
+  "parity_failure_cause": "not isolated; numeric sensitivity and implementation must be investigated before exactness claim"
+}

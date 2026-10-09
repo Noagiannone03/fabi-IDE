@@ -1,0 +1,350 @@
+<|im_start|>system
+You are a coding assistant. Use the supplied repository excerpt. Be concise.<|im_end|>
+<|im_start|>user
+Repository excerpt:
+# file cache_0.py
+from dataclasses import dataclass
+@dataclass
+class Entry0:
+    value: str
+    expires_at: float
+def lookup_0(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_1.py
+from dataclasses import dataclass
+@dataclass
+class Entry1:
+    value: str
+    expires_at: float
+def lookup_1(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_2.py
+from dataclasses import dataclass
+@dataclass
+class Entry2:
+    value: str
+    expires_at: float
+def lookup_2(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_3.py
+from dataclasses import dataclass
+@dataclass
+class Entry3:
+    value: str
+    expires_at: float
+def lookup_3(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_4.py
+from dataclasses import dataclass
+@dataclass
+class Entry4:
+    value: str
+    expires_at: float
+def lookup_4(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_5.py
+from dataclasses import dataclass
+@dataclass
+class Entry5:
+    value: str
+    expires_at: float
+def lookup_5(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_6.py
+from dataclasses import dataclass
+@dataclass
+class Entry6:
+    value: str
+    expires_at: float
+def lookup_6(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_7.py
+from dataclasses import dataclass
+@dataclass
+class Entry7:
+    value: str
+    expires_at: float
+def lookup_7(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_8.py
+from dataclasses import dataclass
+@dataclass
+class Entry8:
+    value: str
+    expires_at: float
+def lookup_8(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_9.py
+from dataclasses import dataclass
+@dataclass
+class Entry9:
+    value: str
+    expires_at: float
+def lookup_9(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_10.py
+from dataclasses import dataclass
+@dataclass
+class Entry10:
+    value: str
+    expires_at: float
+def lookup_10(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_11.py
+from dataclasses import dataclass
+@dataclass
+class Entry11:
+    value: str
+    expires_at: float
+def lookup_11(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_12.py
+from dataclasses import dataclass
+@dataclass
+class Entry12:
+    value: str
+    expires_at: float
+def lookup_12(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_13.py
+from dataclasses import dataclass
+@dataclass
+class Entry13:
+    value: str
+    expires_at: float
+def lookup_13(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_14.py
+from dataclasses import dataclass
+@dataclass
+class Entry14:
+    value: str
+    expires_at: float
+def lookup_14(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_15.py
+from dataclasses import dataclass
+@dataclass
+class Entry15:
+    value: str
+    expires_at: float
+def lookup_15(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_16.py
+from dataclasses import dataclass
+@dataclass
+class Entry16:
+    value: str
+    expires_at: float
+def lookup_16(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_17.py
+from dataclasses import dataclass
+@dataclass
+class Entry17:
+    value: str
+    expires_at: float
+def lookup_17(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_18.py
+from dataclasses import dataclass
+@dataclass
+class Entry18:
+    value: str
+    expires_at: float
+def lookup_18(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_19.py
+from dataclasses import dataclass
+@dataclass
+class Entry19:
+    value: str
+    expires_at: float
+def lookup_19(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_20.py
+from dataclasses import dataclass
+@dataclass
+class Entry20:
+    value: str
+    expires_at: float
+def lookup_20(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_21.py
+from dataclasses import dataclass
+@dataclass
+class Entry21:
+    value: str
+    expires_at: float
+def lookup_21(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+    return entry.value
+
+# file cache_22.py
+from dataclasses import dataclass
+@dataclass
+class Entry22:
+    value: str
+    expires_at: float
+def lookup_22(entries, key, now):
+    entry = entries.get(key)
+    if entry is None:
+        return None
+    if entry.expires_at < now:
+        del entries[key]
+        return None
+
+Task: Fix expiry so an entry expiring exactly now is removed. Explain briefly and show the minimal patch.<|im_end|>
+<|im_start|>assistant

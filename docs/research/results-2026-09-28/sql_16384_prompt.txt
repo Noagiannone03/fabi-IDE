@@ -1,0 +1,1299 @@
+<|im_start|>system
+You are a coding assistant. Use the supplied repository excerpt. Be concise.<|im_end|>
+<|im_start|>user
+Repository excerpt:
+-- file tenant_0.sql
+CREATE TABLE events_0 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_0_tenant_time ON events_0(tenant_id, created_at);
+SELECT id, created_at FROM events_0 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_1.sql
+CREATE TABLE events_1 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_1_tenant_time ON events_1(tenant_id, created_at);
+SELECT id, created_at FROM events_1 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_2.sql
+CREATE TABLE events_2 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_2_tenant_time ON events_2(tenant_id, created_at);
+SELECT id, created_at FROM events_2 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_3.sql
+CREATE TABLE events_3 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_3_tenant_time ON events_3(tenant_id, created_at);
+SELECT id, created_at FROM events_3 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_4.sql
+CREATE TABLE events_4 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_4_tenant_time ON events_4(tenant_id, created_at);
+SELECT id, created_at FROM events_4 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_5.sql
+CREATE TABLE events_5 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_5_tenant_time ON events_5(tenant_id, created_at);
+SELECT id, created_at FROM events_5 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_6.sql
+CREATE TABLE events_6 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_6_tenant_time ON events_6(tenant_id, created_at);
+SELECT id, created_at FROM events_6 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_7.sql
+CREATE TABLE events_7 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_7_tenant_time ON events_7(tenant_id, created_at);
+SELECT id, created_at FROM events_7 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_8.sql
+CREATE TABLE events_8 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_8_tenant_time ON events_8(tenant_id, created_at);
+SELECT id, created_at FROM events_8 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_9.sql
+CREATE TABLE events_9 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_9_tenant_time ON events_9(tenant_id, created_at);
+SELECT id, created_at FROM events_9 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_10.sql
+CREATE TABLE events_10 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_10_tenant_time ON events_10(tenant_id, created_at);
+SELECT id, created_at FROM events_10 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_11.sql
+CREATE TABLE events_11 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_11_tenant_time ON events_11(tenant_id, created_at);
+SELECT id, created_at FROM events_11 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_12.sql
+CREATE TABLE events_12 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_12_tenant_time ON events_12(tenant_id, created_at);
+SELECT id, created_at FROM events_12 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_13.sql
+CREATE TABLE events_13 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_13_tenant_time ON events_13(tenant_id, created_at);
+SELECT id, created_at FROM events_13 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_14.sql
+CREATE TABLE events_14 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_14_tenant_time ON events_14(tenant_id, created_at);
+SELECT id, created_at FROM events_14 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_15.sql
+CREATE TABLE events_15 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_15_tenant_time ON events_15(tenant_id, created_at);
+SELECT id, created_at FROM events_15 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_16.sql
+CREATE TABLE events_16 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_16_tenant_time ON events_16(tenant_id, created_at);
+SELECT id, created_at FROM events_16 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_17.sql
+CREATE TABLE events_17 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_17_tenant_time ON events_17(tenant_id, created_at);
+SELECT id, created_at FROM events_17 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_18.sql
+CREATE TABLE events_18 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_18_tenant_time ON events_18(tenant_id, created_at);
+SELECT id, created_at FROM events_18 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_19.sql
+CREATE TABLE events_19 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_19_tenant_time ON events_19(tenant_id, created_at);
+SELECT id, created_at FROM events_19 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_20.sql
+CREATE TABLE events_20 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_20_tenant_time ON events_20(tenant_id, created_at);
+SELECT id, created_at FROM events_20 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_21.sql
+CREATE TABLE events_21 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_21_tenant_time ON events_21(tenant_id, created_at);
+SELECT id, created_at FROM events_21 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_22.sql
+CREATE TABLE events_22 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_22_tenant_time ON events_22(tenant_id, created_at);
+SELECT id, created_at FROM events_22 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_23.sql
+CREATE TABLE events_23 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_23_tenant_time ON events_23(tenant_id, created_at);
+SELECT id, created_at FROM events_23 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_24.sql
+CREATE TABLE events_24 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_24_tenant_time ON events_24(tenant_id, created_at);
+SELECT id, created_at FROM events_24 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_25.sql
+CREATE TABLE events_25 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_25_tenant_time ON events_25(tenant_id, created_at);
+SELECT id, created_at FROM events_25 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_26.sql
+CREATE TABLE events_26 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_26_tenant_time ON events_26(tenant_id, created_at);
+SELECT id, created_at FROM events_26 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_27.sql
+CREATE TABLE events_27 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_27_tenant_time ON events_27(tenant_id, created_at);
+SELECT id, created_at FROM events_27 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_28.sql
+CREATE TABLE events_28 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_28_tenant_time ON events_28(tenant_id, created_at);
+SELECT id, created_at FROM events_28 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_29.sql
+CREATE TABLE events_29 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_29_tenant_time ON events_29(tenant_id, created_at);
+SELECT id, created_at FROM events_29 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_30.sql
+CREATE TABLE events_30 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_30_tenant_time ON events_30(tenant_id, created_at);
+SELECT id, created_at FROM events_30 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_31.sql
+CREATE TABLE events_31 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_31_tenant_time ON events_31(tenant_id, created_at);
+SELECT id, created_at FROM events_31 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_32.sql
+CREATE TABLE events_32 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_32_tenant_time ON events_32(tenant_id, created_at);
+SELECT id, created_at FROM events_32 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_33.sql
+CREATE TABLE events_33 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_33_tenant_time ON events_33(tenant_id, created_at);
+SELECT id, created_at FROM events_33 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_34.sql
+CREATE TABLE events_34 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_34_tenant_time ON events_34(tenant_id, created_at);
+SELECT id, created_at FROM events_34 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_35.sql
+CREATE TABLE events_35 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_35_tenant_time ON events_35(tenant_id, created_at);
+SELECT id, created_at FROM events_35 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_36.sql
+CREATE TABLE events_36 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_36_tenant_time ON events_36(tenant_id, created_at);
+SELECT id, created_at FROM events_36 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_37.sql
+CREATE TABLE events_37 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_37_tenant_time ON events_37(tenant_id, created_at);
+SELECT id, created_at FROM events_37 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_38.sql
+CREATE TABLE events_38 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_38_tenant_time ON events_38(tenant_id, created_at);
+SELECT id, created_at FROM events_38 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_39.sql
+CREATE TABLE events_39 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_39_tenant_time ON events_39(tenant_id, created_at);
+SELECT id, created_at FROM events_39 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_40.sql
+CREATE TABLE events_40 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_40_tenant_time ON events_40(tenant_id, created_at);
+SELECT id, created_at FROM events_40 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_41.sql
+CREATE TABLE events_41 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_41_tenant_time ON events_41(tenant_id, created_at);
+SELECT id, created_at FROM events_41 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_42.sql
+CREATE TABLE events_42 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_42_tenant_time ON events_42(tenant_id, created_at);
+SELECT id, created_at FROM events_42 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_43.sql
+CREATE TABLE events_43 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_43_tenant_time ON events_43(tenant_id, created_at);
+SELECT id, created_at FROM events_43 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_44.sql
+CREATE TABLE events_44 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_44_tenant_time ON events_44(tenant_id, created_at);
+SELECT id, created_at FROM events_44 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_45.sql
+CREATE TABLE events_45 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_45_tenant_time ON events_45(tenant_id, created_at);
+SELECT id, created_at FROM events_45 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_46.sql
+CREATE TABLE events_46 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_46_tenant_time ON events_46(tenant_id, created_at);
+SELECT id, created_at FROM events_46 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_47.sql
+CREATE TABLE events_47 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_47_tenant_time ON events_47(tenant_id, created_at);
+SELECT id, created_at FROM events_47 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_48.sql
+CREATE TABLE events_48 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_48_tenant_time ON events_48(tenant_id, created_at);
+SELECT id, created_at FROM events_48 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_49.sql
+CREATE TABLE events_49 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_49_tenant_time ON events_49(tenant_id, created_at);
+SELECT id, created_at FROM events_49 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_50.sql
+CREATE TABLE events_50 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_50_tenant_time ON events_50(tenant_id, created_at);
+SELECT id, created_at FROM events_50 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_51.sql
+CREATE TABLE events_51 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_51_tenant_time ON events_51(tenant_id, created_at);
+SELECT id, created_at FROM events_51 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_52.sql
+CREATE TABLE events_52 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_52_tenant_time ON events_52(tenant_id, created_at);
+SELECT id, created_at FROM events_52 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_53.sql
+CREATE TABLE events_53 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_53_tenant_time ON events_53(tenant_id, created_at);
+SELECT id, created_at FROM events_53 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_54.sql
+CREATE TABLE events_54 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_54_tenant_time ON events_54(tenant_id, created_at);
+SELECT id, created_at FROM events_54 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_55.sql
+CREATE TABLE events_55 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_55_tenant_time ON events_55(tenant_id, created_at);
+SELECT id, created_at FROM events_55 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_56.sql
+CREATE TABLE events_56 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_56_tenant_time ON events_56(tenant_id, created_at);
+SELECT id, created_at FROM events_56 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_57.sql
+CREATE TABLE events_57 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_57_tenant_time ON events_57(tenant_id, created_at);
+SELECT id, created_at FROM events_57 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_58.sql
+CREATE TABLE events_58 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_58_tenant_time ON events_58(tenant_id, created_at);
+SELECT id, created_at FROM events_58 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_59.sql
+CREATE TABLE events_59 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_59_tenant_time ON events_59(tenant_id, created_at);
+SELECT id, created_at FROM events_59 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_60.sql
+CREATE TABLE events_60 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_60_tenant_time ON events_60(tenant_id, created_at);
+SELECT id, created_at FROM events_60 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_61.sql
+CREATE TABLE events_61 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_61_tenant_time ON events_61(tenant_id, created_at);
+SELECT id, created_at FROM events_61 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_62.sql
+CREATE TABLE events_62 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_62_tenant_time ON events_62(tenant_id, created_at);
+SELECT id, created_at FROM events_62 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_63.sql
+CREATE TABLE events_63 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_63_tenant_time ON events_63(tenant_id, created_at);
+SELECT id, created_at FROM events_63 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_64.sql
+CREATE TABLE events_64 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_64_tenant_time ON events_64(tenant_id, created_at);
+SELECT id, created_at FROM events_64 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_65.sql
+CREATE TABLE events_65 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_65_tenant_time ON events_65(tenant_id, created_at);
+SELECT id, created_at FROM events_65 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_66.sql
+CREATE TABLE events_66 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_66_tenant_time ON events_66(tenant_id, created_at);
+SELECT id, created_at FROM events_66 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_67.sql
+CREATE TABLE events_67 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_67_tenant_time ON events_67(tenant_id, created_at);
+SELECT id, created_at FROM events_67 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_68.sql
+CREATE TABLE events_68 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_68_tenant_time ON events_68(tenant_id, created_at);
+SELECT id, created_at FROM events_68 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_69.sql
+CREATE TABLE events_69 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_69_tenant_time ON events_69(tenant_id, created_at);
+SELECT id, created_at FROM events_69 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_70.sql
+CREATE TABLE events_70 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_70_tenant_time ON events_70(tenant_id, created_at);
+SELECT id, created_at FROM events_70 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_71.sql
+CREATE TABLE events_71 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_71_tenant_time ON events_71(tenant_id, created_at);
+SELECT id, created_at FROM events_71 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_72.sql
+CREATE TABLE events_72 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_72_tenant_time ON events_72(tenant_id, created_at);
+SELECT id, created_at FROM events_72 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_73.sql
+CREATE TABLE events_73 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_73_tenant_time ON events_73(tenant_id, created_at);
+SELECT id, created_at FROM events_73 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_74.sql
+CREATE TABLE events_74 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_74_tenant_time ON events_74(tenant_id, created_at);
+SELECT id, created_at FROM events_74 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_75.sql
+CREATE TABLE events_75 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_75_tenant_time ON events_75(tenant_id, created_at);
+SELECT id, created_at FROM events_75 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_76.sql
+CREATE TABLE events_76 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_76_tenant_time ON events_76(tenant_id, created_at);
+SELECT id, created_at FROM events_76 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_77.sql
+CREATE TABLE events_77 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_77_tenant_time ON events_77(tenant_id, created_at);
+SELECT id, created_at FROM events_77 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_78.sql
+CREATE TABLE events_78 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_78_tenant_time ON events_78(tenant_id, created_at);
+SELECT id, created_at FROM events_78 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_79.sql
+CREATE TABLE events_79 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_79_tenant_time ON events_79(tenant_id, created_at);
+SELECT id, created_at FROM events_79 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_80.sql
+CREATE TABLE events_80 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_80_tenant_time ON events_80(tenant_id, created_at);
+SELECT id, created_at FROM events_80 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_81.sql
+CREATE TABLE events_81 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_81_tenant_time ON events_81(tenant_id, created_at);
+SELECT id, created_at FROM events_81 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_82.sql
+CREATE TABLE events_82 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_82_tenant_time ON events_82(tenant_id, created_at);
+SELECT id, created_at FROM events_82 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_83.sql
+CREATE TABLE events_83 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_83_tenant_time ON events_83(tenant_id, created_at);
+SELECT id, created_at FROM events_83 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_84.sql
+CREATE TABLE events_84 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_84_tenant_time ON events_84(tenant_id, created_at);
+SELECT id, created_at FROM events_84 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_85.sql
+CREATE TABLE events_85 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_85_tenant_time ON events_85(tenant_id, created_at);
+SELECT id, created_at FROM events_85 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_86.sql
+CREATE TABLE events_86 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_86_tenant_time ON events_86(tenant_id, created_at);
+SELECT id, created_at FROM events_86 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_87.sql
+CREATE TABLE events_87 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_87_tenant_time ON events_87(tenant_id, created_at);
+SELECT id, created_at FROM events_87 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_88.sql
+CREATE TABLE events_88 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_88_tenant_time ON events_88(tenant_id, created_at);
+SELECT id, created_at FROM events_88 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_89.sql
+CREATE TABLE events_89 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_89_tenant_time ON events_89(tenant_id, created_at);
+SELECT id, created_at FROM events_89 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_90.sql
+CREATE TABLE events_90 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_90_tenant_time ON events_90(tenant_id, created_at);
+SELECT id, created_at FROM events_90 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_91.sql
+CREATE TABLE events_91 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_91_tenant_time ON events_91(tenant_id, created_at);
+SELECT id, created_at FROM events_91 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_92.sql
+CREATE TABLE events_92 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_92_tenant_time ON events_92(tenant_id, created_at);
+SELECT id, created_at FROM events_92 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_93.sql
+CREATE TABLE events_93 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_93_tenant_time ON events_93(tenant_id, created_at);
+SELECT id, created_at FROM events_93 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_94.sql
+CREATE TABLE events_94 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_94_tenant_time ON events_94(tenant_id, created_at);
+SELECT id, created_at FROM events_94 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_95.sql
+CREATE TABLE events_95 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_95_tenant_time ON events_95(tenant_id, created_at);
+SELECT id, created_at FROM events_95 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_96.sql
+CREATE TABLE events_96 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_96_tenant_time ON events_96(tenant_id, created_at);
+SELECT id, created_at FROM events_96 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_97.sql
+CREATE TABLE events_97 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_97_tenant_time ON events_97(tenant_id, created_at);
+SELECT id, created_at FROM events_97 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_98.sql
+CREATE TABLE events_98 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_98_tenant_time ON events_98(tenant_id, created_at);
+SELECT id, created_at FROM events_98 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_99.sql
+CREATE TABLE events_99 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_99_tenant_time ON events_99(tenant_id, created_at);
+SELECT id, created_at FROM events_99 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_100.sql
+CREATE TABLE events_100 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_100_tenant_time ON events_100(tenant_id, created_at);
+SELECT id, created_at FROM events_100 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_101.sql
+CREATE TABLE events_101 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_101_tenant_time ON events_101(tenant_id, created_at);
+SELECT id, created_at FROM events_101 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_102.sql
+CREATE TABLE events_102 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_102_tenant_time ON events_102(tenant_id, created_at);
+SELECT id, created_at FROM events_102 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_103.sql
+CREATE TABLE events_103 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_103_tenant_time ON events_103(tenant_id, created_at);
+SELECT id, created_at FROM events_103 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_104.sql
+CREATE TABLE events_104 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_104_tenant_time ON events_104(tenant_id, created_at);
+SELECT id, created_at FROM events_104 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_105.sql
+CREATE TABLE events_105 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_105_tenant_time ON events_105(tenant_id, created_at);
+SELECT id, created_at FROM events_105 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_106.sql
+CREATE TABLE events_106 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_106_tenant_time ON events_106(tenant_id, created_at);
+SELECT id, created_at FROM events_106 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_107.sql
+CREATE TABLE events_107 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_107_tenant_time ON events_107(tenant_id, created_at);
+SELECT id, created_at FROM events_107 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_108.sql
+CREATE TABLE events_108 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_108_tenant_time ON events_108(tenant_id, created_at);
+SELECT id, created_at FROM events_108 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_109.sql
+CREATE TABLE events_109 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_109_tenant_time ON events_109(tenant_id, created_at);
+SELECT id, created_at FROM events_109 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_110.sql
+CREATE TABLE events_110 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_110_tenant_time ON events_110(tenant_id, created_at);
+SELECT id, created_at FROM events_110 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_111.sql
+CREATE TABLE events_111 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_111_tenant_time ON events_111(tenant_id, created_at);
+SELECT id, created_at FROM events_111 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_112.sql
+CREATE TABLE events_112 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_112_tenant_time ON events_112(tenant_id, created_at);
+SELECT id, created_at FROM events_112 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_113.sql
+CREATE TABLE events_113 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_113_tenant_time ON events_113(tenant_id, created_at);
+SELECT id, created_at FROM events_113 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_114.sql
+CREATE TABLE events_114 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_114_tenant_time ON events_114(tenant_id, created_at);
+SELECT id, created_at FROM events_114 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_115.sql
+CREATE TABLE events_115 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_115_tenant_time ON events_115(tenant_id, created_at);
+SELECT id, created_at FROM events_115 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_116.sql
+CREATE TABLE events_116 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_116_tenant_time ON events_116(tenant_id, created_at);
+SELECT id, created_at FROM events_116 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_117.sql
+CREATE TABLE events_117 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_117_tenant_time ON events_117(tenant_id, created_at);
+SELECT id, created_at FROM events_117 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_118.sql
+CREATE TABLE events_118 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_118_tenant_time ON events_118(tenant_id, created_at);
+SELECT id, created_at FROM events_118 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_119.sql
+CREATE TABLE events_119 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_119_tenant_time ON events_119(tenant_id, created_at);
+SELECT id, created_at FROM events_119 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_120.sql
+CREATE TABLE events_120 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_120_tenant_time ON events_120(tenant_id, created_at);
+SELECT id, created_at FROM events_120 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_121.sql
+CREATE TABLE events_121 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_121_tenant_time ON events_121(tenant_id, created_at);
+SELECT id, created_at FROM events_121 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_122.sql
+CREATE TABLE events_122 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_122_tenant_time ON events_122(tenant_id, created_at);
+SELECT id, created_at FROM events_122 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_123.sql
+CREATE TABLE events_123 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_123_tenant_time ON events_123(tenant_id, created_at);
+SELECT id, created_at FROM events_123 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_124.sql
+CREATE TABLE events_124 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_124_tenant_time ON events_124(tenant_id, created_at);
+SELECT id, created_at FROM events_124 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_125.sql
+CREATE TABLE events_125 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_125_tenant_time ON events_125(tenant_id, created_at);
+SELECT id, created_at FROM events_125 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_126.sql
+CREATE TABLE events_126 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_126_tenant_time ON events_126(tenant_id, created_at);
+SELECT id, created_at FROM events_126 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_127.sql
+CREATE TABLE events_127 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_127_tenant_time ON events_127(tenant_id, created_at);
+SELECT id, created_at FROM events_127 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_128.sql
+CREATE TABLE events_128 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_128_tenant_time ON events_128(tenant_id, created_at);
+SELECT id, created_at FROM events_128 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_129.sql
+CREATE TABLE events_129 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_129_tenant_time ON events_129(tenant_id, created_at);
+SELECT id, created_at FROM events_129 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_130.sql
+CREATE TABLE events_130 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_130_tenant_time ON events_130(tenant_id, created_at);
+SELECT id, created_at FROM events_130 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_131.sql
+CREATE TABLE events_131 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_131_tenant_time ON events_131(tenant_id, created_at);
+SELECT id, created_at FROM events_131 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_132.sql
+CREATE TABLE events_132 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_132_tenant_time ON events_132(tenant_id, created_at);
+SELECT id, created_at FROM events_132 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_133.sql
+CREATE TABLE events_133 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_133_tenant_time ON events_133(tenant_id, created_at);
+SELECT id, created_at FROM events_133 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_134.sql
+CREATE TABLE events_134 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_134_tenant_time ON events_134(tenant_id, created_at);
+SELECT id, created_at FROM events_134 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_135.sql
+CREATE TABLE events_135 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_135_tenant_time ON events_135(tenant_id, created_at);
+SELECT id, created_at FROM events_135 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_136.sql
+CREATE TABLE events_136 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_136_tenant_time ON events_136(tenant_id, created_at);
+SELECT id, created_at FROM events_136 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_137.sql
+CREATE TABLE events_137 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_137_tenant_time ON events_137(tenant_id, created_at);
+SELECT id, created_at FROM events_137 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_138.sql
+CREATE TABLE events_138 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_138_tenant_time ON events_138(tenant_id, created_at);
+SELECT id, created_at FROM events_138 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_139.sql
+CREATE TABLE events_139 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_139_tenant_time ON events_139(tenant_id, created_at);
+SELECT id, created_at FROM events_139 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_140.sql
+CREATE TABLE events_140 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_140_tenant_time ON events_140(tenant_id, created_at);
+SELECT id, created_at FROM events_140 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_141.sql
+CREATE TABLE events_141 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_141_tenant_time ON events_141(tenant_id, created_at);
+SELECT id, created_at FROM events_141 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_142.sql
+CREATE TABLE events_142 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_142_tenant_time ON events_142(tenant_id, created_at);
+SELECT id, created_at FROM events_142 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_143.sql
+CREATE TABLE events_143 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_143_tenant_time ON events_143(tenant_id, created_at);
+SELECT id, created_at FROM events_143 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_144.sql
+CREATE TABLE events_144 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_144_tenant_time ON events_144(tenant_id, created_at);
+SELECT id, created_at FROM events_144 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_145.sql
+CREATE TABLE events_145 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_145_tenant_time ON events_145(tenant_id, created_at);
+SELECT id, created_at FROM events_145 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_146.sql
+CREATE TABLE events_146 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_146_tenant_time ON events_146(tenant_id, created_at);
+SELECT id, created_at FROM events_146 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_147.sql
+CREATE TABLE events_147 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_147_tenant_time ON events_147(tenant_id, created_at);
+SELECT id, created_at FROM events_147 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_148.sql
+CREATE TABLE events_148 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_148_tenant_time ON events_148(tenant_id, created_at);
+SELECT id, created_at FROM events_148 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_149.sql
+CREATE TABLE events_149 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_149_tenant_time ON events_149(tenant_id, created_at);
+SELECT id, created_at FROM events_149 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_150.sql
+CREATE TABLE events_150 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_150_tenant_time ON events_150(tenant_id, created_at);
+SELECT id, created_at FROM events_150 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_151.sql
+CREATE TABLE events_151 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_151_tenant_time ON events_151(tenant_id, created_at);
+SELECT id, created_at FROM events_151 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_152.sql
+CREATE TABLE events_152 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_152_tenant_time ON events_152(tenant_id, created_at);
+SELECT id, created_at FROM events_152 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_153.sql
+CREATE TABLE events_153 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_153_tenant_time ON events_153(tenant_id, created_at);
+SELECT id, created_at FROM events_153 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_154.sql
+CREATE TABLE events_154 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_154_tenant_time ON events_154(tenant_id, created_at);
+SELECT id, created_at FROM events_154 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_155.sql
+CREATE TABLE events_155 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_155_tenant_time ON events_155(tenant_id, created_at);
+SELECT id, created_at FROM events_155 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_156.sql
+CREATE TABLE events_156 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_156_tenant_time ON events_156(tenant_id, created_at);
+SELECT id, created_at FROM events_156 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_157.sql
+CREATE TABLE events_157 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_157_tenant_time ON events_157(tenant_id, created_at);
+SELECT id, created_at FROM events_157 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_158.sql
+CREATE TABLE events_158 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_158_tenant_time ON events_158(tenant_id, created_at);
+SELECT id, created_at FROM events_158 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_159.sql
+CREATE TABLE events_159 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_159_tenant_time ON events_159(tenant_id, created_at);
+SELECT id, created_at FROM events_159 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_160.sql
+CREATE TABLE events_160 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_160_tenant_time ON events_160(tenant_id, created_at);
+SELECT id, created_at FROM events_160 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_161.sql
+CREATE TABLE events_161 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_161_tenant_time ON events_161(tenant_id, created_at);
+SELECT id, created_at FROM events_161 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_162.sql
+CREATE TABLE events_162 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_162_tenant_time ON events_162(tenant_id, created_at);
+SELECT id, created_at FROM events_162 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_163.sql
+CREATE TABLE events_163 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_163_tenant_time ON events_163(tenant_id, created_at);
+SELECT id, created_at FROM events_163 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_164.sql
+CREATE TABLE events_164 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_164_tenant_time ON events_164(tenant_id, created_at);
+SELECT id, created_at FROM events_164 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_165.sql
+CREATE TABLE events_165 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_165_tenant_time ON events_165(tenant_id, created_at);
+SELECT id, created_at FROM events_165 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_166.sql
+CREATE TABLE events_166 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_166_tenant_time ON events_166(tenant_id, created_at);
+SELECT id, created_at FROM events_166 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_167.sql
+CREATE TABLE events_167 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_167_tenant_time ON events_167(tenant_id, created_at);
+SELECT id, created_at FROM events_167 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_168.sql
+CREATE TABLE events_168 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_168_tenant_time ON events_168(tenant_id, created_at);
+SELECT id, created_at FROM events_168 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_169.sql
+CREATE TABLE events_169 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_169_tenant_time ON events_169(tenant_id, created_at);
+SELECT id, created_at FROM events_169 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_170.sql
+CREATE TABLE events_170 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_170_tenant_time ON events_170(tenant_id, created_at);
+SELECT id, created_at FROM events_170 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_171.sql
+CREATE TABLE events_171 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_171_tenant_time ON events_171(tenant_id, created_at);
+SELECT id, created_at FROM events_171 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_172.sql
+CREATE TABLE events_172 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_172_tenant_time ON events_172(tenant_id, created_at);
+SELECT id, created_at FROM events_172 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_173.sql
+CREATE TABLE events_173 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_173_tenant_time ON events_173(tenant_id, created_at);
+SELECT id, created_at FROM events_173 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_174.sql
+CREATE TABLE events_174 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_174_tenant_time ON events_174(tenant_id, created_at);
+SELECT id, created_at FROM events_174 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_175.sql
+CREATE TABLE events_175 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_175_tenant_time ON events_175(tenant_id, created_at);
+SELECT id, created_at FROM events_175 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_176.sql
+CREATE TABLE events_176 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_176_tenant_time ON events_176(tenant_id, created_at);
+SELECT id, created_at FROM events_176 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_177.sql
+CREATE TABLE events_177 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_177_tenant_time ON events_177(tenant_id, created_at);
+SELECT id, created_at FROM events_177 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_178.sql
+CREATE TABLE events_178 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_178_tenant_time ON events_178(tenant_id, created_at);
+SELECT id, created_at FROM events_178 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_179.sql
+CREATE TABLE events_179 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_179_tenant_time ON events_179(tenant_id, created_at);
+SELECT id, created_at FROM events_179 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_180.sql
+CREATE TABLE events_180 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_180_tenant_time ON events_180(tenant_id, created_at);
+SELECT id, created_at FROM events_180 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_181.sql
+CREATE TABLE events_181 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_181_tenant_time ON events_181(tenant_id, created_at);
+SELECT id, created_at FROM events_181 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_182.sql
+CREATE TABLE events_182 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_182_tenant_time ON events_182(tenant_id, created_at);
+SELECT id, created_at FROM events_182 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_183.sql
+CREATE TABLE events_183 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_183_tenant_time ON events_183(tenant_id, created_at);
+SELECT id, created_at FROM events_183 WHERE tenant_id = 42
+ORDER BY created_at DESC LIMIT 50;
+
+-- file tenant_184.sql
+CREATE TABLE events_184 (id BIGINT PRIMARY KEY, tenant_id BIGINT NOT NULL,
+created_at TIMESTAMP NOT NULL, payload TEXT);
+CREATE INDEX events_184_tenant_time ON events_184(tenant_id, created_at);
+
+Task: Make pagination deterministic when created_at ties, with a suitable index. Show the query and migration.<|im_end|>
+<|im_start|>assistant

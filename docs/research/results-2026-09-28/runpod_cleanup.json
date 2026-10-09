@@ -1,0 +1,15 @@
+{
+  "pod_id": "e3l7s9ponfwbqi",
+  "gpu": "NVIDIA A100-SXM4-80GB",
+  "hourly_usd": 1.59,
+  "created_epoch": 1790585362.2225,
+  "deleted_epoch": 1790586229.9350913,
+  "elapsed_minutes": 14.461876519521077,
+  "compute_estimate_usd": 0.3832397277673086,
+  "delete_http": 204,
+  "verification_get_http": 404,
+  "balance_before": 5.5871570164,
+  "balance_after": 5.2350119275,
+  "current_spend_per_hour_after": 0,
+  "note": "Duration-derived compute estimate excludes possible disk fees and billing lag; balance change is account-wide."
+}

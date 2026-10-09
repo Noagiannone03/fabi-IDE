@@ -1,0 +1,720 @@
+<|im_start|>system
+You are a coding assistant. Use the supplied repository excerpt. Be concise.<|im_end|>
+<|im_start|>user
+Repository excerpt:
+// file queue_0.ts
+type Job0 = { id: string; attempts: number; payload: unknown };
+export async function execute0(job: Job0, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_1.ts
+type Job1 = { id: string; attempts: number; payload: unknown };
+export async function execute1(job: Job1, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_2.ts
+type Job2 = { id: string; attempts: number; payload: unknown };
+export async function execute2(job: Job2, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_3.ts
+type Job3 = { id: string; attempts: number; payload: unknown };
+export async function execute3(job: Job3, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_4.ts
+type Job4 = { id: string; attempts: number; payload: unknown };
+export async function execute4(job: Job4, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_5.ts
+type Job5 = { id: string; attempts: number; payload: unknown };
+export async function execute5(job: Job5, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_6.ts
+type Job6 = { id: string; attempts: number; payload: unknown };
+export async function execute6(job: Job6, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_7.ts
+type Job7 = { id: string; attempts: number; payload: unknown };
+export async function execute7(job: Job7, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_8.ts
+type Job8 = { id: string; attempts: number; payload: unknown };
+export async function execute8(job: Job8, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_9.ts
+type Job9 = { id: string; attempts: number; payload: unknown };
+export async function execute9(job: Job9, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_10.ts
+type Job10 = { id: string; attempts: number; payload: unknown };
+export async function execute10(job: Job10, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_11.ts
+type Job11 = { id: string; attempts: number; payload: unknown };
+export async function execute11(job: Job11, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_12.ts
+type Job12 = { id: string; attempts: number; payload: unknown };
+export async function execute12(job: Job12, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_13.ts
+type Job13 = { id: string; attempts: number; payload: unknown };
+export async function execute13(job: Job13, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_14.ts
+type Job14 = { id: string; attempts: number; payload: unknown };
+export async function execute14(job: Job14, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_15.ts
+type Job15 = { id: string; attempts: number; payload: unknown };
+export async function execute15(job: Job15, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_16.ts
+type Job16 = { id: string; attempts: number; payload: unknown };
+export async function execute16(job: Job16, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_17.ts
+type Job17 = { id: string; attempts: number; payload: unknown };
+export async function execute17(job: Job17, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_18.ts
+type Job18 = { id: string; attempts: number; payload: unknown };
+export async function execute18(job: Job18, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_19.ts
+type Job19 = { id: string; attempts: number; payload: unknown };
+export async function execute19(job: Job19, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_20.ts
+type Job20 = { id: string; attempts: number; payload: unknown };
+export async function execute20(job: Job20, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_21.ts
+type Job21 = { id: string; attempts: number; payload: unknown };
+export async function execute21(job: Job21, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_22.ts
+type Job22 = { id: string; attempts: number; payload: unknown };
+export async function execute22(job: Job22, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_23.ts
+type Job23 = { id: string; attempts: number; payload: unknown };
+export async function execute23(job: Job23, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_24.ts
+type Job24 = { id: string; attempts: number; payload: unknown };
+export async function execute24(job: Job24, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_25.ts
+type Job25 = { id: string; attempts: number; payload: unknown };
+export async function execute25(job: Job25, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_26.ts
+type Job26 = { id: string; attempts: number; payload: unknown };
+export async function execute26(job: Job26, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_27.ts
+type Job27 = { id: string; attempts: number; payload: unknown };
+export async function execute27(job: Job27, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_28.ts
+type Job28 = { id: string; attempts: number; payload: unknown };
+export async function execute28(job: Job28, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_29.ts
+type Job29 = { id: string; attempts: number; payload: unknown };
+export async function execute29(job: Job29, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_30.ts
+type Job30 = { id: string; attempts: number; payload: unknown };
+export async function execute30(job: Job30, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_31.ts
+type Job31 = { id: string; attempts: number; payload: unknown };
+export async function execute31(job: Job31, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_32.ts
+type Job32 = { id: string; attempts: number; payload: unknown };
+export async function execute32(job: Job32, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_33.ts
+type Job33 = { id: string; attempts: number; payload: unknown };
+export async function execute33(job: Job33, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_34.ts
+type Job34 = { id: string; attempts: number; payload: unknown };
+export async function execute34(job: Job34, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_35.ts
+type Job35 = { id: string; attempts: number; payload: unknown };
+export async function execute35(job: Job35, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_36.ts
+type Job36 = { id: string; attempts: number; payload: unknown };
+export async function execute36(job: Job36, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_37.ts
+type Job37 = { id: string; attempts: number; payload: unknown };
+export async function execute37(job: Job37, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_38.ts
+type Job38 = { id: string; attempts: number; payload: unknown };
+export async function execute38(job: Job38, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_39.ts
+type Job39 = { id: string; attempts: number; payload: unknown };
+export async function execute39(job: Job39, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_40.ts
+type Job40 = { id: string; attempts: number; payload: unknown };
+export async function execute40(job: Job40, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_41.ts
+type Job41 = { id: string; attempts: number; payload: unknown };
+export async function execute41(job: Job41, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_42.ts
+type Job42 = { id: string; attempts: number; payload: unknown };
+export async function execute42(job: Job42, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_43.ts
+type Job43 = { id: string; attempts: number; payload: unknown };
+export async function execute43(job: Job43, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_44.ts
+type Job44 = { id: string; attempts: number; payload: unknown };
+export async function execute44(job: Job44, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_45.ts
+type Job45 = { id: string; attempts: number; payload: unknown };
+export async function execute45(job: Job45, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_46.ts
+type Job46 = { id: string; attempts: number; payload: unknown };
+export async function execute46(job: Job46, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_47.ts
+type Job47 = { id: string; attempts: number; payload: unknown };
+export async function execute47(job: Job47, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_48.ts
+type Job48 = { id: string; attempts: number; payload: unknown };
+export async function execute48(job: Job48, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_49.ts
+type Job49 = { id: string; attempts: number; payload: unknown };
+export async function execute49(job: Job49, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_50.ts
+type Job50 = { id: string; attempts: number; payload: unknown };
+export async function execute50(job: Job50, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_51.ts
+type Job51 = { id: string; attempts: number; payload: unknown };
+export async function execute51(job: Job51, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_52.ts
+type Job52 = { id: string; attempts: number; payload: unknown };
+export async function execute52(job: Job52, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_53.ts
+type Job53 = { id: string; attempts: number; payload: unknown };
+export async function execute53(job: Job53, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_54.ts
+type Job54 = { id: string; attempts: number; payload: unknown };
+export async function execute54(job: Job54, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_55.ts
+type Job55 = { id: string; attempts: number; payload: unknown };
+export async function execute55(job: Job55, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_56.ts
+type Job56 = { id: string; attempts: number; payload: unknown };
+export async function execute56(job: Job56, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_57.ts
+type Job57 = { id: string; attempts: number; payload: unknown };
+export async function execute57(job: Job57, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_58.ts
+type Job58 = { id: string; attempts: number; payload: unknown };
+export async function execute58(job: Job58, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_59.ts
+type Job59 = { id: string; attempts: number; payload: unknown };
+export async function execute59(job: Job59, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_60.ts
+type Job60 = { id: string; attempts: number; payload: unknown };
+export async function execute60(job: Job60, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_61.ts
+type Job61 = { id: string; attempts: number; payload: unknown };
+export async function execute61(job: Job61, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_62.ts
+type Job62 = { id: string; attempts: number; payload: unknown };
+export async function execute62(job: Job62, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_63.ts
+type Job63 = { id: string; attempts: number; payload: unknown };
+export async function execute63(job: Job63, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_64.ts
+type Job64 = { id: string; attempts: number; payload: unknown };
+export async function execute64(job: Job64, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_65.ts
+type Job65 = { id: string; attempts: number; payload: unknown };
+export async function execute65(job: Job65, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_66.ts
+type Job66 = { id: string; attempts: number; payload: unknown };
+export async function execute66(job: Job66, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_67.ts
+type Job67 = { id: string; attempts: number; payload: unknown };
+export async function execute67(job: Job67, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_68.ts
+type Job68 = { id: string; attempts: number; payload: unknown };
+export async function execute68(job: Job68, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_69.ts
+type Job69 = { id: string; attempts: number; payload: unknown };
+export async function execute69(job: Job69, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_70.ts
+type Job70 = { id: string; attempts: number; payload: unknown };
+export async function execute70(job: Job70, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_71.ts
+type Job71 = { id: string; attempts: number; payload: unknown };
+export async function execute71(job: Job71, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_72.ts
+type Job72 = { id: string; attempts: number; payload: unknown };
+export async function execute72(job: Job72, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_73.ts
+type Job73 = { id: string; attempts: number; payload: unknown };
+export async function execute73(job: Job73, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_74.ts
+type Job74 = { id: string; attempts: number; payload: unknown };
+export async function execute74(job: Job74, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_75.ts
+type Job75 = { id: string; attempts: number; payload: unknown };
+export async function execute75(job: Job75, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_76.ts
+type Job76 = { id: string; attempts: number; payload: unknown };
+export async function execute76(job: Job76, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_77.ts
+type Job77 = { id: string; attempts: number; payload: unknown };
+export async function execute77(job: Job77, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_78.ts
+type Job78 = { id: string; attempts: number; payload: unknown };
+export async function execute78(job: Job78, run: (x: unknown) => Promise<void>) {
+  for (let n = 0; n < 3; n++) {
+    try { await run(job.payload); return; }
+    catch (error) { job.attempts++; if (n === 2) throw error; }
+  }
+}
+
+// file queue_79.ts
+type Job79 = { id: string; attempts: number; payload: unknown };
+export async function execute79(job: Job79, run: (x: unknown) =>
+Task: Make retries cancellation-aware with AbortSignal. Explain the minimal API change and show code.<|im_end|>
+<|im_start|>assistant
