@@ -23,7 +23,7 @@
         api.dismissMenu();
     };
     api.onEdit(space => {
-        if (!space || space.kind === 'maestro') { return; }
+        if (!space) { return; }
         editingId = space.id;
         anchorY = Number.isFinite(space.y) ? space.y : 12;
         input.value = space.name;

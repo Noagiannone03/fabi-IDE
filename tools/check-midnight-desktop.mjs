@@ -26,14 +26,15 @@ try {
             height: innerHeight,
             dock: bounds(document.getElementById('fabi-workbench-dock')),
             editor: bounds(document.getElementById('theia-main-content-panel')),
-            activityInSidebar: !!document.querySelector('#theia-left-content-panel #fabi-activity-bar'),
+            activityBar: !!document.querySelector('#fabi-activity-bar'),
             tools: [...document.querySelectorAll('.fabi-dock-tool')].map(bounds),
             rightLauncher: !!document.querySelector('#theia-right-content-panel .theia-app-sidebar-container')
         };
     });
     assert.equal(layout.rightLauncher, false);
-    assert.equal(layout.tools.length, 2);
-    assert.equal(layout.activityInSidebar, true);
+    // Projets, Rechercher, Git, Terminal (+ « … » quand d'autres vues existent).
+    assert.ok(layout.tools.length >= 4);
+    assert.equal(layout.activityBar, false);
     assert.ok(layout.dock.y > layout.editor.y && layout.dock.bottom < layout.editor.bottom);
     assert.ok(layout.dock.bottom <= layout.height);
     assert.ok(layout.tools.every(r => r.x >= 0 && r.right <= layout.width && r.y === layout.tools[0].y));

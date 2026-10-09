@@ -160,9 +160,7 @@ samp,
 }
 
 #theia-statusBar .element,
-.fabi-cx-status,
-.fabi-maestro-stat,
-.fabi-maestro-pill {
+.fabi-cx-status {
     font-variant-numeric: tabular-nums;
 }
 

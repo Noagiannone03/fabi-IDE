@@ -38,7 +38,7 @@ try {
     await page.setContent('<html><head></head><body></body></html>');
     for (const file of scripts) { await page.addScriptTag({ path: file }); }
     await page.addStyleTag({ path: require.resolve('@lumino/widgets/style/widget.css') });
-    for (const file of ['fabi-activity-bar.css', 'fabi-midnight.css', 'fabi-studio.css', 'fabi-navigation.css']) {
+    for (const file of ['fabi-midnight.css', 'fabi-studio.css', 'fabi-navigation.css']) {
         await page.addStyleTag({ path: resolve(root, 'fabi-branding/src/browser/style', file) });
     }
     await page.addStyleTag({ content: 'html,body{margin:0;width:100%;height:100%}#layout-test{position:absolute;inset:0}.test-status{min-height:24px;max-height:24px}' });
@@ -51,9 +51,6 @@ try {
         const sidebar = new BoxPanel({ direction: 'top-to-bottom', spacing: 0 });
         const tree = new Widget();
         tree.node.style.minWidth = '224px';
-        const activity = new Widget();
-        activity.id = 'fabi-activity-bar';
-        sidebar.addWidget(activity);
         BoxPanel.setStretch(tree, 1);
         sidebar.addWidget(tree);
         const editor = new Widget();
@@ -65,11 +62,14 @@ try {
         BoxPanel.setStretch(content, 1);
         shell.addWidget(content);
         shell.addWidget(status);
-        class Handler { enableDockNavigation() {} }
+        class Handler {
+            constructor() { this.tabBar = { titles: [], tabAdded: { connect() {} } }; }
+            enableDockNavigation() {}
+        }
         class Tools extends Widget {
             constructor() {
                 super();
-                this.node.innerHTML = '<nav class="fabi-dock-tools">' + ['Terminal', 'Agents'].map(label => '<button class="fabi-dock-tool">' + label + '</button>').join('') + '</nav>';
+                this.node.innerHTML = '<nav class="fabi-dock-tools">' + ['Projets', 'Rechercher', 'Git', 'Terminal'].map(label => '<button class="fabi-dock-tool">' + label + '</button>').join('') + '</nav>';
             }
         }
         shell.mainPanel = editor;
@@ -77,8 +77,8 @@ try {
         shell.getWidgets = () => [];
         Widget.attach(shell, document.body);
         const mountDock = new Function('Widget', 'FabiSidePanelHandler', 'DockTools', executable + '; return mount;')(Widget, Handler, Tools);
-        mountDock.call({ shell });
-        window.layoutTest = { shell, sidebar, editor, status, activity };
+        mountDock.call({ shell, moveSecondaryViewsRight() {} });
+        window.layoutTest = { shell, sidebar, editor, status };
     }, executable);
     for (const [width, height] of [[1440, 900], [900, 600], [640, 400]]) {
         await page.setViewport({ width, height });
@@ -91,11 +91,10 @@ try {
                 window.dispatchEvent(new Event('resize'));
             }, hidden);
             const bounds = await page.evaluate(() => {
-                const { editor, status, activity } = window.layoutTest;
+                const { editor, status } = window.layoutTest;
                 const rect = node => { const r = node.getBoundingClientRect(); return { x:r.x,y:r.y,right:r.right,bottom:r.bottom,width:r.width }; };
-                return { dock:rect(document.getElementById('fabi-workbench-dock')),editor:rect(editor.node),status:rect(status.node),activityInSidebar:activity.parent===window.layoutTest.sidebar };
+                return { dock:rect(document.getElementById('fabi-workbench-dock')),editor:rect(editor.node),status:rect(status.node) };
             });
-            assert.equal(bounds.activityInSidebar, true);
             assert.equal(bounds.editor.bottom, bounds.status.y, 'No empty dock row');
             assert.ok(bounds.dock.y > bounds.editor.y && bounds.dock.bottom < bounds.editor.bottom);
             assert.ok(bounds.dock.x >= bounds.editor.x && bounds.dock.right <= bounds.editor.right);

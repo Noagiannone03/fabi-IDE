@@ -9,15 +9,6 @@ body {
 .fabi-symbol { width: 23px; height: 23px; flex-shrink: 0; }
 #fabi-workbench-dock { padding: 8px max(12px, calc((100vw - 560px) / 2)); }
 body.fabi-native-spaces #fabi-workbench-dock { padding-left: max(228px, calc((100vw - 560px) / 2)); }
-#fabi-workbench-dock #fabi-activity-bar {
-    background: #202126; border-radius: 14px 0 0 14px;
-    box-shadow: inset 0 1px 0 #ffffff08, inset 0 -1px 0 #00000025;
-}
-#fabi-workbench-dock .fabi-activity-inner { gap: 4px; padding: 0 8px; }
-#fabi-workbench-dock .fabi-activity-item { border-radius: 8px; color: #a1a2ab; opacity: 1; }
-#fabi-workbench-dock .fabi-activity-item.active { color: #e4ded0; background: #343439; box-shadow: inset 0 1px 0 #ffffff0d, 0 2px 3px #00000022; }
-#fabi-workbench-dock .fabi-activity-item:hover { color: #eeebe4; background: #ffffff09; }
-#fabi-workbench-dock .fabi-activity-item .fabi-symbol { width: 21px; height: 21px; }
 #fabi-dock-tools { min-width: 248px; max-width: 248px; }
 .fabi-dock-tools { padding: 0 7px; gap: 6px; border-left: 1px solid #ffffff0a; border-radius: 0 14px 14px 0; background: #202126; }
 .fabi-dock-tool { position: relative; flex: 0 0 54px; width: 54px; height: 48px; gap: 2px; flex-direction: column; background: none !important; border-radius: 9px; }
@@ -30,7 +21,7 @@ body.fabi-native-spaces #fabi-workbench-dock { padding-left: max(228px, calc((10
 .fabi-dock-tool.active::after { content: ''; position: absolute; bottom: 1px; width: 10px; height: 2px; border-radius: 2px; background: #d3ccbf; }
 .fabi-dock-tool .fabi-symbol { width: 21px; height: 21px; }
 #theia-main-content-panel { border: 1px solid #ffffff09 !important; border-radius: 13px !important; box-shadow: 0 5px 24px #090a0c18 !important; }
-#theia-main-content-panel > .lm-TabBar { background: #191a1e !important; }
+#theia-main-content-panel > .lm-TabBar { background: #1a1b1f !important; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers { padding: 5px 6px !important; min-height: 43px; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab { border-radius: 8px !important; padding: 0 13px !important; font-size: 12px; margin: 0 3px !important; color: #91929c; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.lm-mod-current { background: #2b2c32 !important; color: #e5dfd4 !important; box-shadow: inset 0 1px 0 #ffffff0c, 0 2px 5px #00000016 !important; }

@@ -1,5 +1,5 @@
 /* Phosphor regular; original vectors are vendored with the MIT license. */
-.theia-preload { background:#191a1e !important;transition:opacity 420ms cubic-bezier(.2,.8,.2,1) !important;flex-direction:column;gap:22px; }
+.theia-preload { background:#0c0d0f !important;transition:opacity 420ms cubic-bezier(.2,.8,.2,1) !important;flex-direction:column;gap:22px; }
 .theia-preload::before { content:'Ouverture de l’espace';font:450 13px/20px 'Fabi UI',sans-serif;letter-spacing:.1px;color:#b9bbc4; }
 .theia-preload::after { content:'' !important;width:88px;height:2px;border-radius:2px;background:#a8abb5;opacity:.5;transform-origin:center;animation:fabi-space-loading 1600ms ease-in-out infinite !important; }
 @keyframes fabi-space-loading { 0%,100% { transform:scaleX(.28);opacity:.25; } 50% { transform:scaleX(1);opacity:.65; } }
@@ -15,37 +15,42 @@
 .ph-more { --phosphor-icon:url('./icons/phosphor/dots-three.svg'); }
 .ph-terminal { --phosphor-icon:url('./icons/phosphor/terminal-window.svg'); }
 .ph-agents { --phosphor-icon:url('./icons/phosphor/chat-circle-dots.svg'); }
-#fabi-activity-bar { min-height:42px;max-height:42px;background:none; }
-#fabi-activity-bar .fabi-activity-inner { height:42px;justify-content:flex-start;padding:0 10px;gap:4px;border-bottom:1px solid #ffffff07; }
-#fabi-activity-bar .fabi-activity-item { color:#9395a2;opacity:1;border-radius:7px; }
-#fabi-activity-bar .fabi-activity-item.active { color:#e3e1ea;background:#ffffff09; }
-#fabi-activity-bar .fabi-symbol { width:20px;height:20px; }
 #fabi-workbench-dock,body.fabi-native-spaces #fabi-workbench-dock {
     position:fixed !important; top:auto !important; width:auto !important;height:auto !important;
     min-width:0 !important;max-width:none !important;min-height:0 !important;max-height:none !important;
-    padding:0 !important;transform:translateX(-50%);z-index:25;overflow:visible;
+    padding:0 !important;transform:translateX(-50%);z-index:25;overflow:visible !important;
     border:1px solid #ffffff0e;border-radius:16px;background:#242529e8;
     backdrop-filter:blur(24px);box-shadow:0 6px 20px #08090c38;
     --dock-ease:cubic-bezier(.2,.8,.2,1);
     transition:border-radius 280ms var(--dock-ease),background-color 280ms ease,box-shadow 280ms ease;
 }
-/* Size interpolation is confined to this fixed overlay: it never resizes the editor. */
-#fabi-workbench-dock .fabi-dock-tools { width:206px;height:48px;padding:5px;gap:4px;background:transparent;border:0;border-radius:14px;box-shadow:none;transition:width 460ms var(--dock-ease),height 460ms var(--dock-ease); }
-#fabi-workbench-dock .fabi-dock-tool { display:flex;flex-direction:row;flex:1;gap:0;min-width:0;width:auto;height:100%;padding:0 7px;border-radius:10px;overflow:hidden; }
-#fabi-workbench-dock .fabi-dock-tool:hover { background:transparent !important; }
-#fabi-workbench-dock .fabi-dock-tile { flex:0 0 22px;width:22px;height:22px;background:none !important;box-shadow:none !important;color:#b9bbc4;transition:transform 460ms var(--dock-ease),color 220ms ease; }
-#fabi-workbench-dock .fabi-dock-tool:nth-child(2) .fabi-dock-tile { color:#b9bbc4; }
-#fabi-workbench-dock .fabi-dock-label { display:block;max-width:58px;margin-left:7px;white-space:nowrap;overflow:hidden;opacity:1;transform:translateX(0);font:450 11px/16px 'Fabi UI',sans-serif;color:#c0becb;transition:opacity 220ms ease 70ms,transform 460ms var(--dock-ease),max-width 460ms var(--dock-ease),margin-left 460ms var(--dock-ease); }
-#fabi-workbench-dock .fabi-dock-tool.active { background:transparent !important; }
-#fabi-workbench-dock .fabi-dock-tool.active::after { bottom:1px;width:3px;height:3px;background:#c4c6cf; }
-#fabi-workbench-dock .fabi-dock-tool:hover .fabi-dock-tile { transform:translateY(-1px) scale(1.04);color:#eeeeF2; }
-#fabi-workbench-dock .fabi-dock-tool:active .fabi-dock-tile { transform:scale(.96); }
+/* Icon dock: Projets · Recherche · Git · Terminal · « … ». Sized by its content; it never resizes the editor. */
+#fabi-workbench-dock .fabi-dock-tools { display:flex;align-items:center;height:48px;padding:5px;gap:2px;background:transparent;border:0;border-radius:14px;box-shadow:none;transition:height 460ms var(--dock-ease),padding 460ms var(--dock-ease); }
+#fabi-workbench-dock .fabi-dock-tool { position:relative;display:grid;place-items:center;flex:0 0 38px;width:38px;height:38px;padding:0;border:0;border-radius:10px;background:transparent !important;color:#b9bbc4;cursor:pointer; }
+#fabi-workbench-dock .fabi-dock-tile { width:22px;height:22px;display:grid;place-items:center;background:none !important;box-shadow:none !important;color:inherit;transition:transform 460ms var(--dock-ease),color 220ms ease; }
+#fabi-workbench-dock .fabi-dock-tool:hover .fabi-dock-tile { transform:translateY(-1px) scale(1.06);color:#eeeef2; }
+#fabi-workbench-dock .fabi-dock-tool:active .fabi-dock-tile { transform:scale(.94); }
+#fabi-workbench-dock .fabi-dock-tool.active { color:#eeeef2; }
+#fabi-workbench-dock .fabi-dock-tool.active::after { content:'';position:absolute;bottom:1px;left:50%;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:#c4c6cf; }
 #fabi-workbench-dock .fabi-dock-tool:focus-visible { outline:1px solid #bfc0c8;outline-offset:-2px; }
-#fabi-workbench-dock .fabi-dock-tool:hover .fabi-dock-label { color:#eeeef2; }
+#fabi-workbench-dock .fabi-dock-tool:disabled { cursor:progress; }
 #fabi-workbench-dock.fabi-dock-resting { border-radius:14px;background:#242529e8;box-shadow:0 4px 14px #08090c28; }
-#fabi-workbench-dock.fabi-dock-resting .fabi-dock-tools { width:94px;height:40px; }
-#fabi-workbench-dock.fabi-dock-resting .fabi-dock-label { opacity:0;max-width:0;margin-left:0;transform:translateX(-3px);transition-delay:0ms; }
+#fabi-workbench-dock.fabi-dock-resting .fabi-dock-tools { height:40px;padding:1px 5px; }
 #fabi-workbench-dock.fabi-dock-resting .fabi-dock-tile { transform:scale(.85); }
+/* Popover « … » : outils secondaires, ouverts dans le panneau de droite. */
+.fabi-dock-more { position:relative; }
+.fabi-dock-backdrop { position:fixed;inset:0;z-index:0; }
+.fabi-dock-menu { position:absolute;bottom:calc(100% + 12px);left:50%;transform:translateX(-50%);z-index:1;min-width:210px;padding:6px;display:flex;flex-direction:column;gap:2px;border:1px solid #ffffff10;border-radius:12px;background:#27282e;box-shadow:0 14px 40px #07080980; }
+.fabi-dock-menu-item { display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#d7d7df;font:450 12px 'Fabi UI',sans-serif;text-align:left;cursor:pointer; }
+.fabi-dock-menu-item .fabi-symbol { width:17px;height:17px;color:#a9aab5; }
+.fabi-dock-menu-icon { width:17px;font-size:15px;color:#a9aab5; }
+.fabi-dock-menu-item:hover,.fabi-dock-menu-item:focus-visible { background:#ffffff0b;outline:none; }
+.fabi-dock-menu-item.active { background:#ffffff0e;color:#f1f0f5; }
+/* Recherche façon Spotlight : l'ouverture rapide de Theia, centrée et aérée. */
+/* Monaco centre et dimensionne lui-même le widget : on ne touche qu'à sa hauteur. */
+.quick-input-widget { top:18vh !important;border:1px solid #ffffff10 !important; }
+.quick-input-widget .quick-input-box .monaco-inputbox { min-height:40px;border-radius:10px !important; }
+.quick-input-widget .quick-input-box input { font-size:16px !important;padding:8px 10px !important; }
 .fabi-sidebar-reveal { display:none;position:fixed;top:7px;left:8px;width:30px;height:30px;place-items:center;z-index:20;border:0;border-radius:7px;background:#292a31;color:#d3d1dc;cursor:pointer; }
 body.fabi-sidebar-collapsed .fabi-sidebar-reveal { display:grid; }
 body.fabi-sidebar-collapsed #theia-main-content-panel .lm-TabBar.theia-app-centers { padding-left:42px !important; }
@@ -56,7 +61,7 @@ body.fabi-sidebar-collapsed #theia-main-content-panel .lm-TabBar.theia-app-cente
     --theia-horizontal-toolbar-height:28px;
     padding:8px 8px !important;
     min-height:44px;
-    background:#191a1e !important;
+    background:#1a1b1f !important;
 }
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-content { align-items:center; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab {
@@ -79,9 +84,7 @@ body.fabi-sidebar-collapsed #theia-main-content-panel .lm-TabBar.theia-app-cente
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.theia-mod-dirty > .lm-TabBar-tabCloseIcon { opacity:1; }
 @media (prefers-reduced-motion:reduce) { #fabi-workbench-dock,#fabi-workbench-dock * { transition:none !important;animation:none !important; } }
 @media (prefers-reduced-motion:no-preference) {
-    .fabi-activity-item { transition:background-color 180ms ease,color 180ms ease,transform 200ms cubic-bezier(.22,1,.36,1); }
-    .fabi-activity-item:active { transform:scale(.94); }
-    .fabi-activity-menu,.lm-Menu { animation:fabi-menu-arrive 160ms cubic-bezier(.22,1,.36,1); }
+    .fabi-dock-menu,.lm-Menu { animation:fabi-menu-arrive 160ms cubic-bezier(.22,1,.36,1); }
     .fabi-home-action > .codicon:last-child { transition:transform 180ms ease; }
     .fabi-home-action:hover > .codicon:last-child { transform:translateX(3px); }
     @keyframes fabi-menu-arrive { from { opacity:0;transform:translateY(4px); } to { opacity:1;transform:translateY(0); } }

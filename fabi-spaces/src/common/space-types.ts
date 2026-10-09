@@ -23,20 +23,6 @@ export const SPACE_COLORS = [
 export type SpaceColor = typeof SPACE_COLORS[number] | string;
 
 /**
- * Nature d'un Space.
- *  - `workspace` (défaut) : un dossier ouvert dans un frontend Theia complet.
- *  - `maestro` : le tableau de bord de supervision des agents IA. Pas d'éditeur,
- *    pas d'explorateur — le frontend Theia est chargé en « mode maestro » (cf.
- *    `?maestro=1` dans l'URL) et n'affiche QUE le widget Maestro.
- */
-export type SpaceKind = 'workspace' | 'maestro';
-
-/** Id stable du Space Maestro (unique, épinglé, jamais supprimable). */
-export const MAESTRO_SPACE_ID = 'maestro';
-/** Accent réservé à Maestro = l'orange de marque Fabi (hors palette des espaces). */
-export const MAESTRO_ACCENT = '#EC5B2B';
-
-/**
  * Descripteur persistant d'un Space. C'est ce qui est sérialisé dans `spaces.json`
  * et envoyé au rail. Ne contient AUCUN handle natif (vue, fenêtre) — uniquement de
  * l'état sérialisable.
@@ -57,11 +43,6 @@ export interface SpaceDescriptor {
     workspacePath: string;
     /** Horodatage de dernière activation (ms epoch), pour l'ordre « récents » / la suspension. */
     lastActive: number;
-    /**
-     * Nature du Space. Absent / `workspace` → espace de travail classique.
-     * `maestro` → le tableau de bord de supervision (cf. SpaceKind).
-     */
-    kind?: SpaceKind;
 }
 
 /** Données envoyées au modal de création à son ouverture. */
@@ -93,6 +74,8 @@ export interface SpacesState {
     activeName: string | undefined;
     /** Icône du Space actif (codicon name ou emoji) — affichée dans le badge du haut. */
     activeIcon: string | undefined;
+    /** Agents à regarder (fini sans être vu, ou en attente de validation), par Space. */
+    attention: Record<string, number>;
 }
 
 /**
@@ -114,6 +97,10 @@ export namespace SpacesIpc {
     export const REORDER = 'fabi-spaces:reorder';        // (orderedIds[])
     export const TOGGLE_SIDEBAR = 'fabi-spaces:toggle-sidebar'; // () déplie/replie la sidebar
     export const WINDOW = 'fabi-spaces:window';          // ('minimize'|'maximize'|'close') contrôles fenêtre hôte
+
+    // --- Frontend d'un Space → main (cf. frontend-preload.js) ---
+    export const ATTENTION = 'fabi-spaces:attention';         // (count) agents à regarder dans CE Space
+    export const ACTIVATE_SELF = 'fabi-spaces:activate-self'; // () afficher CE Space (clic sur une notification)
 
     // --- Modal de création d'un Space (popup centré) ---
     export const MODAL_OPEN = 'fabi-spaces:modal-open';        // main → modal : {folder, defaultName, color}

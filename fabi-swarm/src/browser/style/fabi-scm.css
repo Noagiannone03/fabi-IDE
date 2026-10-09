@@ -1,0 +1,11 @@
+/* Champ de commit : bouton ✨ « rédiger avec l'IA » posé dans le coin du champ. */
+.fabi-commit-input { position: relative; }
+.fabi-commit-input .theia-scm-input-message { padding-right: 34px !important; }
+.fabi-commit-generate {
+    position: absolute; top: 4px; right: 4px;
+    width: 24px; height: 24px; display: grid; place-items: center;
+    border: 0; border-radius: 6px; background: transparent; color: #a3a4b0;
+    cursor: pointer; transition: background-color 160ms ease, color 160ms ease;
+}
+.fabi-commit-generate:hover:not(:disabled) { background: #ffffff10; color: #EC5B2B; }
+.fabi-commit-generate:disabled { cursor: progress; opacity: .7; }

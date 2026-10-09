@@ -8,7 +8,7 @@
 import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { SpaceDescriptor, SPACE_COLORS, MAESTRO_SPACE_ID, MAESTRO_ACCENT } from '../common/space-types';
+import { SpaceDescriptor, SPACE_COLORS } from '../common/space-types';
 
 interface PersistedState {
     version: 1;
@@ -34,12 +34,22 @@ export class SpaceStore {
                 const raw = JSON.parse(readFileSync(this.file, 'utf8'));
                 if (raw && Array.isArray(raw.spaces)) {
                     this.state = { version: 1, spaces: raw.spaces, activeId: raw.activeId };
+                    this.dropMaestro();
                     this.migratePalette();
                 }
             }
         } catch (err) {
             console.error('[fabi-spaces] spaces.json illisible, on repart de zéro :', err);
             this.state = { version: 1, spaces: [] };
+        }
+    }
+
+    /** L'ancien Space « Maestro » (tableau de bord retiré) disparaît des fichiers existants. */
+    protected dropMaestro(): void {
+        const before = this.state.spaces.length;
+        this.state.spaces = this.state.spaces.filter(s => (s as { kind?: string }).kind !== 'maestro');
+        if (this.state.spaces.length !== before) {
+            this.scheduleSave();
         }
     }
 
@@ -55,10 +65,6 @@ export class SpaceStore {
         const inPalette = (c: string | undefined): boolean => !!c && palette.includes(c.toUpperCase());
         let changed = false;
         this.state.spaces.forEach((s, i) => {
-            // Maestro garde son accent de marque (hors palette) — on ne le réassigne jamais.
-            if (s.kind === 'maestro') {
-                return;
-            }
             if (!inPalette(s.color)) {
                 s.color = SPACE_COLORS[i % SPACE_COLORS.length];
                 changed = true;
@@ -66,48 +72,6 @@ export class SpaceStore {
         });
         if (changed) {
             this.scheduleSave();
-        }
-    }
-
-    /**
-     * Garantit la présence du Space Maestro : épinglé, toujours EN TÊTE, accent de
-     * marque, non supprimable. Appelé au boot (et après tout réordonnancement). Si
-     * un Maestro existe déjà (relance), on ré-impose ses propriétés canoniques et
-     * sa position en tête (au cas où un état legacy l'aurait déplacé/altéré).
-     */
-    ensureMaestro(): void {
-        const existing = this.get(MAESTRO_SPACE_ID);
-        if (existing) {
-            existing.kind = 'maestro';
-            existing.color = MAESTRO_ACCENT;
-            existing.workspacePath = '';
-            if (!existing.name) {
-                existing.name = 'Maestro';
-            }
-            this.pinMaestroFront();
-            this.scheduleSave();
-            return;
-        }
-        this.state.spaces.unshift({
-            id: MAESTRO_SPACE_ID,
-            name: 'Maestro',
-            emoji: 'pulse',
-            color: MAESTRO_ACCENT,
-            workspacePath: '',
-            lastActive: Date.now(),
-            kind: 'maestro'
-        });
-        this.scheduleSave();
-    }
-
-    /** Remet le Space Maestro en première position s'il ne l'est pas déjà. */
-    protected pinMaestroFront(): void {
-        if (this.state.spaces[0]?.id === MAESTRO_SPACE_ID) {
-            return;
-        }
-        const maestro = this.get(MAESTRO_SPACE_ID);
-        if (maestro) {
-            this.state.spaces = [maestro, ...this.state.spaces.filter(s => s.id !== MAESTRO_SPACE_ID)];
         }
     }
 
@@ -202,8 +166,6 @@ export class SpaceStore {
             }
         }
         this.state.spaces = next;
-        // Maestro reste épinglé en tête, quel que soit l'ordre demandé par le rail.
-        this.pinMaestroFront();
         this.scheduleSave();
     }
 }

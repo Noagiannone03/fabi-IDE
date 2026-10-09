@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import * as net from 'node:net';
-import { MaestroAgent, MaestroHooksStatus, MaestroSource, MaestroStatus, MaestroWaitingKind } from '../common/fabi-maestro-protocol';
+import { MaestroAgent, MaestroStatus, MaestroWaitingKind } from '../common/fabi-maestro-protocol';
 
 /**
  * Source du client de hook, EMBARQUÉE (écrite à l'install). Évite toute
@@ -42,20 +42,10 @@ function main() {
     process.stdin.on('end', function () {
         let payload;
         try { payload = JSON.parse(raw); } catch (e) { return; }
-        const event = String(payload.hook_event_name || '');
-        const interactive = event === 'PermissionRequest';
         const socket = net.createConnection(socketPath);
-        let response = '';
-        const timeout = interactive ? (source === 'claude' ? 86400000 : 3600000) : 2500;
-        socket.setTimeout(timeout);
+        socket.setTimeout(2500);
         socket.on('connect', function () {
-            socket.write(JSON.stringify({ source: source, payload: payload, runtime: { pid: process.ppid, tty: ttyForParent(), receivedAt: Date.now() } }) + '\\n');
-            if (!interactive) { socket.end(); }
-        });
-        socket.on('data', function (c) { response += c.toString('utf8'); });
-        socket.on('end', function () {
-            const line = response.trim();
-            if (line) { process.stdout.write(line.charAt(line.length - 1) === '\\n' ? line : line + '\\n'); }
+            socket.end(JSON.stringify({ source: source, payload: payload, runtime: { pid: process.ppid, tty: ttyForParent(), terminal: process.env.FABI_AGENT_TERMINAL, receivedAt: Date.now() } }) + '\\n');
         });
         socket.on('timeout', function () { socket.destroy(); });
         socket.on('error', function () {});
@@ -68,7 +58,7 @@ main();
 interface HookEnvelope {
     source?: string;
     payload?: Record<string, unknown>;
-    runtime?: { pid?: number; tty?: string; receivedAt?: number };
+    runtime?: { pid?: number; tty?: string; terminal?: string; receivedAt?: number };
 }
 
 interface HookSession {
@@ -82,7 +72,8 @@ interface HookSession {
     preview?: string;
     updatedAt: number;
     pid?: number;
-    socket?: net.Socket;
+    /** Widget du terminal d'agent Fabi (env FABI_AGENT_TERMINAL), si lancé depuis Fabi. */
+    terminal?: string;
 }
 
 const MANAGED_MARKER = 'fabi-maestro-hook-client.js';
@@ -156,14 +147,10 @@ export class MaestroHookBridge {
         }
     }
 
-    /** Ferme le serveur ET toutes les permissions interactives encore pendantes. */
+    /** Ferme le serveur et les connexions de hooks encore ouvertes. */
     async stop(): Promise<void> {
         const server = this.server;
         this.server = undefined;
-        for (const session of this.sessions.values()) {
-            session.socket?.destroy();
-            session.socket = undefined;
-        }
         this.sessions.clear();
         for (const socket of this.sockets) {
             socket.destroy();
@@ -196,11 +183,13 @@ export class MaestroHookBridge {
             if (agent.source === 'fabi') {
                 return agent;
             }
-            const hook = hooks.find(candidate =>
-                !used.has(this.key(candidate.source, candidate.id))
-                && candidate.source === agent.source
-                && this.sameDirectory(candidate.directory, agent.directory)
-            );
+            const free = (candidate: HookSession) =>
+                !used.has(this.key(candidate.source, candidate.id)) && candidate.source === agent.source;
+            // Rattachement exact (terminal lancé par Fabi), sinon heuristique par dossier.
+            const hook = hooks.find(candidate => free(candidate) && !!candidate.terminal
+                && candidate.terminal === agent.surface?.widgetId)
+                ?? hooks.find(candidate => free(candidate) && !candidate.terminal
+                    && this.sameDirectory(candidate.directory, agent.directory));
             if (!hook) {
                 return agent;
             }
@@ -212,7 +201,6 @@ export class MaestroHookBridge {
                 status: hook.status,
                 waitingKind: hook.waitingKind,
                 pendingPermission: hook.pendingPermission,
-                pendingPermissionId: hook.socket ? `hook:${hook.source}:${hook.id}` : undefined,
                 preview: hook.preview || agent.preview,
                 model: hook.model || agent.model,
                 updatedAt: hook.updatedAt,
@@ -221,53 +209,8 @@ export class MaestroHookBridge {
         });
     }
 
-    respond(source: MaestroSource, id: string, allow: boolean): boolean {
-        if (source !== 'claude' && source !== 'codex') {
-            return false;
-        }
-        const session = this.sessions.get(this.key(source, id));
-        if (!session?.socket) {
-            return false;
-        }
-        const directive = source === 'claude'
-            ? {
-                continue: true,
-                suppressOutput: true,
-                hookSpecificOutput: {
-                    hookEventName: 'PermissionRequest',
-                    decision: allow
-                        ? { behavior: 'allow' }
-                        : { behavior: 'deny', message: 'Permission refusée depuis Fabi Maestro', interrupt: false }
-                }
-            }
-            : {
-                continue: true,
-                hookSpecificOutput: {
-                    hookEventName: 'PermissionRequest',
-                    decision: allow
-                        ? { behavior: 'allow' }
-                        : { behavior: 'deny', message: 'Permission refusée depuis Fabi Maestro' }
-                }
-            };
-        session.socket.end(`${JSON.stringify(directive)}\n`);
-        session.socket = undefined;
-        session.pendingPermission = undefined;
-        session.waitingKind = undefined;
-        session.status = allow ? 'generating' : 'idle';
-        session.updatedAt = Date.now();
-        this.onChange();
-        return true;
-    }
-
-    async status(): Promise<MaestroHooksStatus> {
-        const [claude, codex] = await Promise.all([
-            this.fileContains(join(homedir(), '.claude', 'settings.json'), MANAGED_MARKER),
-            this.fileContains(join(homedir(), '.codex', 'hooks.json'), MANAGED_MARKER)
-        ]);
-        return { claude, codex, bridge: this.isRunning() };
-    }
-
-    async install(): Promise<MaestroHooksStatus> {
+    /** Installe (ou met à jour) les hooks gérés dans ~/.claude et ~/.codex. */
+    async install(): Promise<void> {
         const helper = await this.installHelper();
         const node = process.execPath;
         // En app Electron, process.execPath est le binaire Electron. Le mode Node
@@ -277,7 +220,6 @@ export class MaestroHookBridge {
             this.installClaude(`${command} --source claude`),
             this.installCodex(`${command} --source codex`)
         ]);
-        return this.status();
     }
 
     protected accept(socket: net.Socket): void {
@@ -313,10 +255,6 @@ export class MaestroHookBridge {
         const event = typeof payload.hook_event_name === 'string' ? payload.hook_event_name : '';
         const key = this.key(source, id);
         if (event === 'SessionEnd') {
-            const previous = this.sessions.get(key)?.socket;
-            if (previous && previous !== socket) {
-                previous.destroy();
-            }
             this.sessions.delete(key);
             socket.end();
             this.onChange();
@@ -331,6 +269,7 @@ export class MaestroHookBridge {
         current.directory = typeof payload.cwd === 'string' ? payload.cwd : current.directory;
         current.model = typeof payload.model === 'string' ? payload.model : current.model;
         current.pid = envelope.runtime?.pid || current.pid;
+        current.terminal = envelope.runtime?.terminal || current.terminal;
         current.updatedAt = envelope.runtime?.receivedAt || Date.now();
         current.preview = this.preview(payload) || current.preview;
         current.waitingKind = undefined;
@@ -356,8 +295,6 @@ export class MaestroHookBridge {
                 current.status = 'waiting';
                 current.waitingKind = 'permission';
                 current.pendingPermission = this.permissionDetail(payload);
-                current.socket?.destroy();
-                current.socket = socket;
                 break;
             case 'Notification':
                 if (payload.notification_type === 'permission_prompt') {
@@ -384,9 +321,7 @@ export class MaestroHookBridge {
                 break;
         }
         this.sessions.set(key, current);
-        if (event !== 'PermissionRequest') {
-            socket.end();
-        }
+        socket.end();
         this.onChange();
     }
 
@@ -420,7 +355,7 @@ export class MaestroHookBridge {
     protected async installClaude(command: string): Promise<void> {
         const file = join(homedir(), '.claude', 'settings.json');
         const root = await this.readJson(file);
-        const hooks = (root.hooks && typeof root.hooks === 'object' ? root.hooks : {}) as Record<string, unknown>;
+        const hooks = this.withoutManagedHooks(root.hooks);
         const specs: Array<[string, string | undefined, number | undefined]> = [
             ['SessionStart', undefined, undefined],
             ['SessionEnd', undefined, undefined],
@@ -431,12 +366,10 @@ export class MaestroHookBridge {
             ['PreToolUse', '*', undefined],
             ['PostToolUse', '*', undefined],
             ['PostToolUseFailure', '*', undefined],
-            ['PermissionRequest', '*', 86400],
             ['PreCompact', undefined, undefined]
         ];
         for (const [event, matcher, timeout] of specs) {
             const groups = Array.isArray(hooks[event]) ? hooks[event] as Array<Record<string, unknown>> : [];
-            const cleaned = this.removeManagedGroups(groups);
             const hook: Record<string, unknown> = { type: 'command', command };
             if (timeout) {
                 hook.timeout = timeout;
@@ -445,7 +378,7 @@ export class MaestroHookBridge {
             if (matcher) {
                 group.matcher = matcher;
             }
-            hooks[event] = [...cleaned, group];
+            hooks[event] = [...groups, group];
         }
         root.hooks = hooks;
         await this.writeJson(file, root);
@@ -454,27 +387,44 @@ export class MaestroHookBridge {
     protected async installCodex(command: string): Promise<void> {
         const hooksFile = join(homedir(), '.codex', 'hooks.json');
         const root = await this.readJson(hooksFile);
-        const hooks = (root.hooks && typeof root.hooks === 'object' ? root.hooks : {}) as Record<string, unknown>;
+        const hooks = this.withoutManagedHooks(root.hooks);
         const specs: Array<[string, string | undefined, number]> = [
             ['SessionStart', 'startup|resume', 45],
             ['UserPromptSubmit', undefined, 45],
-            ['PermissionRequest', undefined, 3600],
             ['Stop', undefined, 45]
         ];
         for (const [event, matcher, timeout] of specs) {
             const groups = Array.isArray(hooks[event]) ? hooks[event] as Array<Record<string, unknown>> : [];
-            const cleaned = this.removeManagedGroups(groups);
             const group: Record<string, unknown> = {
                 hooks: [{ type: 'command', command, timeout }]
             };
             if (matcher) {
                 group.matcher = matcher;
             }
-            hooks[event] = [...cleaned, group];
+            hooks[event] = [...groups, group];
         }
         root.hooks = hooks;
         await this.writeJson(hooksFile, root);
         await this.enableCodexHooks(join(homedir(), '.codex', 'config.toml'));
+    }
+
+    /**
+     * Retire nos entrées de TOUS les événements avant de réinstaller : un événement
+     * qu'on ne gère plus (ex. l'ancien PermissionRequest bloquant) disparaît aussi.
+     */
+    protected withoutManagedHooks(raw: unknown): Record<string, unknown> {
+        const hooks = (raw && typeof raw === 'object' ? { ...raw } : {}) as Record<string, unknown>;
+        for (const [event, groups] of Object.entries(hooks)) {
+            if (Array.isArray(groups)) {
+                const kept = this.removeManagedGroups(groups as Array<Record<string, unknown>>);
+                if (kept.length) {
+                    hooks[event] = kept;
+                } else {
+                    delete hooks[event];
+                }
+            }
+        }
+        return hooks;
     }
 
     protected removeManagedGroups(groups: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
@@ -530,10 +480,6 @@ export class MaestroHookBridge {
         const temporary = `${file}.fabi-${process.pid}.tmp`;
         await fs.writeFile(temporary, contents, { mode: 0o600 });
         await fs.rename(temporary, file);
-    }
-
-    protected fileContains(file: string, needle: string): Promise<boolean> {
-        return fs.readFile(file, 'utf8').then(value => value.includes(needle)).catch(() => false);
     }
 
     protected shellQuote(value: string): string {

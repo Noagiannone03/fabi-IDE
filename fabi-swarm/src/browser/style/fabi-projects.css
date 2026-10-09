@@ -1,0 +1,165 @@
+/* Barre « Projets » : dossier (carte) → Agents IA (au premier plan) + Code (replié).
+   DA Fabi : gris en paliers nets (cf. fabi-depth.css), l'orange de marque réservé
+   à ce qui réclame l'attention. */
+
+/* --- Logos des CLI d'agents (masques SVG teintés à la couleur de la marque) --- */
+.fabi-agent-logo {
+    display: inline-block; flex: 0 0 auto; width: 16px; height: 16px;
+    background: var(--fabi-agent-color, #c9c9d2);
+    mask: var(--fabi-agent-icon) center / contain no-repeat;
+    -webkit-mask: var(--fabi-agent-icon) center / contain no-repeat;
+}
+.fabi-agent-logo[data-cli=claude] { --fabi-agent-icon: url('./icons/agents/claude.svg'); --fabi-agent-color: #D97757; }
+.fabi-agent-logo[data-cli=codex] { --fabi-agent-icon: url('./icons/agents/codex.svg'); --fabi-agent-color: #ececf1; }
+.fabi-agent-logo[data-cli=opencode] { --fabi-agent-icon: url('./icons/agents/opencode.svg'); --fabi-agent-color: #cfd0d8; }
+.fabi-agent-logo[data-cli=gemini] { --fabi-agent-icon: url('./icons/agents/gemini.svg'); --fabi-agent-color: #8E9EFF; }
+
+/* --- Carte du dossier racine --- */
+.theia-TreeNode.fabi-project-root {
+    min-height: 46px;
+    margin: 8px 6px 4px 0;
+    border-radius: 10px !important;
+    background: var(--fabi-surface-2, #232429) !important;
+    box-shadow: inset 0 0 0 1px #ffffff0b;
+}
+.theia-TreeNode.fabi-project-root:hover { background: #26272d !important; }
+.fabi-project-tile {
+    flex: 0 0 auto; width: 28px; height: 28px; margin-right: 10px;
+    display: grid; place-items: center; border-radius: 8px;
+    background: color-mix(in srgb, var(--fabi-space-accent, #8c8d98) 22%, #1a1b1f);
+    color: var(--fabi-space-accent, #d7d7df);
+}
+.fabi-project-tile .codicon { font-size: 15px; }
+.fabi-project-caption { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; min-width: 0; line-height: 16px; }
+.theia-TreeNode.fabi-project-root.theia-mod-selected { outline: none !important; }
+.fabi-project-name { font-size: 13px; font-weight: 600; color: #ecebf1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-project-path { font-size: 10.5px; color: #7d7e89; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fabi-project-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 6px; }
+.fabi-project-badge {
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    display: grid; place-items: center;
+    background: #EC5B2B; color: #fff; font-size: 10px; font-weight: 650;
+}
+.fabi-project-add {
+    width: 24px; height: 24px; display: grid; place-items: center;
+    border: 0; border-radius: 7px; background: #ffffff08; color: #b4b5bf;
+    cursor: pointer; transition: background-color 160ms ease, color 160ms ease;
+}
+.fabi-project-add:hover { background: #ffffff14; color: #f2f1f6; }
+
+/* --- Sections « Agents IA » / « Code » --- */
+.theia-TreeNode.fabi-project-section {
+    min-height: 28px; margin-top: 4px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
+    color: #7d7e89;
+}
+.theia-TreeNode.fabi-project-section + .theia-TreeNode.fabi-project-section,
+.theia-TreeNode.fabi-new-agent-node + .theia-TreeNode.fabi-project-section { margin-top: 8px; }
+.fabi-section-glyph { width: 16px; font-size: 12px; margin-right: 6px; color: #7d7e89; }
+.fabi-section-count {
+    margin-left: auto; margin-right: 10px; min-width: 18px; height: 16px; padding: 0 5px;
+    border-radius: 8px; display: grid; place-items: center;
+    background: #ffffff0c; color: #a3a4ae; font-size: 10px; font-weight: 600; letter-spacing: 0;
+}
+
+/* --- Ligne d'agent : avatar (logo + pastille de statut), titre, statut --- */
+.theia-TreeNode.fabi-agent-node { min-height: 42px; margin-right: 6px; border-radius: 8px !important; }
+.fabi-agent-avatar {
+    position: relative; flex: 0 0 auto; width: 28px; height: 28px; margin-right: 10px;
+    display: grid; place-items: center; border-radius: 8px; background: #ffffff09;
+}
+.fabi-agent-avatar .fabi-agent-logo { width: 15px; height: 15px; }
+.fabi-agent-avatar .codicon { font-size: 14px; color: #c9c9d2; }
+.fabi-agent-caption { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; min-width: 0; line-height: 16px; }
+.fabi-agent-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #dcdbe3; font-size: 12.5px; }
+.fabi-agent-subtitle { font-size: 10.5px; color: #7d7e89; }
+.fabi-agent-unread .fabi-agent-title { color: #f6f5f9; font-weight: 600; }
+
+/* Pastille posée sur l'avatar (comme Superset : couleur = état, animation = urgence). */
+.fabi-agent-status {
+    position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px;
+    border-radius: 50%; background: #5d5e68; box-shadow: 0 0 0 2px var(--fabi-surface, #1a1b1f);
+}
+.fabi-agent-working .fabi-agent-status { background: #EC5B2B; animation: fabi-agent-pulse 1100ms ease-in-out infinite; }
+.fabi-agent-working .fabi-agent-subtitle { color: #F08A62; }
+.fabi-agent-permission .fabi-agent-status { background: #FFC58A; animation: fabi-agent-pulse 1400ms ease-in-out infinite; }
+.fabi-agent-permission .fabi-agent-subtitle { color: #FFC58A; }
+.fabi-agent-done .fabi-agent-status { background: #30D158; }
+.fabi-agent-error .fabi-agent-status { background: #FF453A; }
+.fabi-agent-error .fabi-agent-subtitle { color: #FF6B61; }
+.fabi-agent-dot { width: 7px; height: 7px; margin-right: 10px; border-radius: 50%; background: #EC5B2B; box-shadow: 0 0 0 3px #EC5B2B26; }
+
+/* « + Nouvel agent » : toujours visible en fin de section. */
+.theia-TreeNode.fabi-new-agent-node { min-height: 34px; margin-right: 6px; border-radius: 8px !important; color: #8c8d98; }
+.theia-TreeNode.fabi-new-agent-node:hover { color: #e4e3ea; }
+.fabi-new-agent-glyph {
+    width: 28px; height: 28px; margin-right: 10px; display: grid; place-items: center;
+    border-radius: 8px; border: 1px dashed #ffffff22; font-size: 13px;
+}
+
+@keyframes fabi-agent-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* --- Sélecteur « Nouvel agent IA » (façon Spotlight) --- */
+.fabi-agent-picker-backdrop {
+    position: fixed; inset: 0; z-index: 10000;
+    display: flex; justify-content: center; align-items: flex-start; padding-top: 16vh;
+    background: #06070980; backdrop-filter: blur(3px);
+    animation: fabi-picker-fade 160ms ease-out;
+}
+.fabi-agent-picker {
+    width: min(620px, calc(100vw - 48px)); padding: 22px 22px 14px;
+    border: 1px solid #ffffff12; border-radius: 18px;
+    background: #1c1d22; box-shadow: 0 30px 90px #000000a0, inset 0 1px 0 #ffffff0a;
+    font-family: var(--fabi-ui-font-family, 'Fabi UI', sans-serif);
+    animation: fabi-picker-rise 220ms cubic-bezier(.2, .8, .2, 1);
+}
+.fabi-agent-picker header { margin-bottom: 18px; }
+.fabi-agent-picker-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: #7d7e89; }
+.fabi-agent-picker h2 { margin: 4px 0 0; font-size: 19px; font-weight: 500; letter-spacing: -.3px; color: #b9bac4; }
+.fabi-agent-picker h2 strong { color: #f1f0f5; font-weight: 600; }
+.fabi-agent-picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
+.fabi-agent-tile {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    padding: 18px 10px 14px; border: 1px solid #ffffff0c; border-radius: 14px;
+    background: #222329; color: #e4e3ea; cursor: pointer; font: inherit;
+    transition: background-color 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.fabi-agent-tile:hover:not(:disabled), .fabi-agent-tile.selected { background: #2a2b32; border-color: #ffffff1f; }
+.fabi-agent-tile.selected { box-shadow: 0 0 0 2px #EC5B2B66; transform: translateY(-1px); }
+.fabi-agent-tile:disabled { cursor: default; }
+.fabi-agent-tile-mark { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 13px; background: #ffffff08; }
+.fabi-agent-tile-mark .fabi-agent-logo { width: 24px; height: 24px; }
+.fabi-agent-tile-name { font-size: 13px; font-weight: 600; }
+.fabi-agent-tile-vendor { font-size: 11px; color: #85868f; }
+.fabi-agent-tile.missing { opacity: .55; }
+.fabi-agent-tile.missing .fabi-agent-logo { background: #8c8d98; }
+.fabi-agent-tile-install {
+    max-width: 100%; margin-top: 2px; padding: 2px 6px; border-radius: 5px;
+    background: #00000040; color: #a3a4ae; font-size: 9.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; user-select: text;
+}
+.fabi-agent-picker footer { display: flex; gap: 16px; justify-content: center; margin-top: 16px; font-size: 11px; color: #6f707b; }
+.fabi-agent-picker kbd { display: inline-block; min-width: 16px; margin-right: 3px; padding: 0 4px; border-radius: 4px; background: #ffffff0d; color: #a3a4ae; font: inherit; text-align: center; }
+
+/* --- Écran de démarrage d'un agent (au lieu de la commande tapée) --- */
+.fabi-agent-boot {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    background: var(--fabi-editor, #16171a); color: #e4e3ea;
+    font-family: var(--fabi-ui-font-family, 'Fabi UI', sans-serif);
+    transition: opacity 240ms ease;
+}
+.fabi-agent-boot.leaving { opacity: 0; }
+.fabi-agent-boot .fabi-agent-logo { width: 34px; height: 34px; margin-bottom: 6px; animation: fabi-agent-breathe 1600ms ease-in-out infinite; }
+.fabi-agent-boot strong { font-size: 15px; font-weight: 600; }
+.fabi-agent-boot span { font-size: 12px; color: #85868f; }
+.fabi-agent-boot i { width: 96px; height: 2px; margin-top: 10px; border-radius: 2px; background: #a8abb5; opacity: .5; animation: fabi-space-loading 1600ms ease-in-out infinite; }
+
+@keyframes fabi-agent-breathe { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(.92); opacity: .7; } }
+@keyframes fabi-picker-fade { from { opacity: 0; } }
+@keyframes fabi-picker-rise { from { opacity: 0; transform: translateY(8px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) {
+    .fabi-agent-working .fabi-agent-status, .fabi-agent-permission .fabi-agent-status,
+    .fabi-agent-boot .fabi-agent-logo, .fabi-agent-boot i,
+    .fabi-agent-picker-backdrop, .fabi-agent-picker { animation: none; }
+}

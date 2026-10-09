@@ -87,9 +87,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .lm-Widget.dialogOverlay .dialogControl .theia-button { margin: 0; }
 #theia-statusBar { min-height: 24px; font-size: 11px; color: #92929e !important; }
 #theia-statusBar .element { border-radius: 4px; padding: 0 6px; }
-.fabi-activity-item { width: 31px; height: 31px; border-radius: 7px; }
-.fabi-activity-item .fabi-activity-icon { font-size: 17px; filter: none; }
-.fabi-activity-item.active { background: #ffffff08; color: #d6d3e4; }
 .chat-input-widget {
     --fabi-ai-island: #212228;
     --fabi-ai-island-hover: #282930;
@@ -133,16 +130,6 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
     background: #191a1e;
     overflow: visible;
 }
-#fabi-workbench-dock #fabi-activity-bar {
-    min-width: 52px;
-    min-height: 48px;
-    max-height: 48px;
-    background: #24252b;
-    border-radius: 10px 0 0 10px;
-    box-shadow: inset 0 1px 0 #ffffff0b, inset 0 -1px 0 #00000020;
-}
-#fabi-workbench-dock .fabi-activity-inner { height: 48px; justify-content: center; }
-#fabi-workbench-dock .fabi-activity-item { width: 34px; height: 34px; }
 body.fabi-dock-enabled .fabi-editor-action { display: none !important; }
 #fabi-dock-tools { min-width: 180px; max-width: 180px; min-height: 48px; max-height: 48px; overflow: visible; }
 .fabi-dock-label { display: none; }
@@ -177,8 +164,7 @@ body.fabi-dock-enabled .fabi-editor-action { display: none !important; }
 }
 .fabi-dock-tool:hover, .fabi-dock-tool.active { background: #35353f; color: #e1dfe9; }
 .fabi-dock-tool:active { transform: translateY(1px); }
-.fabi-dock-tool:focus-visible,
-#fabi-workbench-dock .fabi-activity-item:focus-visible { outline: 2px solid #b9b4d6 !important; outline-offset: 2px; }
+.fabi-dock-tool:focus-visible { outline: 2px solid #b9b4d6 !important; outline-offset: 2px; }
 .fabi-dock-tool:disabled { cursor: progress; opacity: .55; }
 .fabi-dock-tool .codicon { font-size: 17px; }
 @media (prefers-reduced-motion: reduce) {
@@ -257,6 +243,3 @@ body {
 body .lm-TabBar.theia-app-sides .lm-TabBar-tab .lm-TabBar-tabIcon,
 body .lm-TabBar.theia-app-sides .lm-TabBar-tab .lm-TabBar-tabIcon.codicon,
 body .lm-TabBar.theia-app-sides .lm-TabBar-tab .codicon::before { font-size: 18px !important; }
-.fabi-activity-menu { background: #24252b; border-color: #ffffff12; border-radius: 8px; box-shadow: 0 12px 34px #08090b66; scrollbar-width: thin; }
-.fabi-activity-menu-item { border-radius: 4px; font-size: 12px; color: #d7d7df; }
-.fabi-activity-menu-item:focus-visible { outline: 2px solid #b9b4d6 !important; outline-offset: -2px; background: #383442; }

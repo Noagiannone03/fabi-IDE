@@ -1,15 +1,10 @@
-// Protocole partagé frontend ⇄ backend du tableau de bord « Maestro ».
+// Protocole frontend ⇄ backend de la supervision des agents IA.
 //
-// Maestro = la vue de SUPERVISION de tous les agents IA de l'IDE, affichée dans
-// un Space dédié (cf. fabi-spaces, kind: 'maestro'). Elle agrège deux sources :
-//   1. Les chats « Fabi AI » = les sessions du sidecar OpenCode (toutes workspaces
-//      confondues), avec leur statut live (génère / en attente / au repos).
-//   2. (Phase 2) Les agents CLI externes (Claude Code, Codex) tournant dans un
-//      terminal, détectés par process + transcript.
-//
-// Le service backend (FabiMaestroService) tient un modèle agrégé en mémoire,
-// alimenté par UN flux SSE global d'OpenCode + un polling de la liste de sessions,
-// et le pousse au frontend (FabiMaestroClient) — zéro polling côté UI.
+// Le service backend (FabiMaestroService) agrège deux sources et pousse l'état
+// à chaque frontend de Space (barre « Projets ») — zéro polling côté UI :
+//   1. Les chats « Fabi AI » = les sessions du sidecar OpenCode (flux SSE global) ;
+//   2. Les agents CLI (Claude Code, Codex) tournant dans un terminal, rattachés
+//      via les hooks de ces CLI + l'arbre de process du terminal.
 
 export const FABI_MAESTRO_SERVICE_PATH = '/services/fabi-maestro';
 /** Endpoint sans callback client, utilisé par les reporters des workspaces. */
@@ -29,12 +24,6 @@ export type MaestroSource = 'fabi' | 'claude' | 'codex';
  */
 export type MaestroStatus = 'generating' | 'waiting' | 'idle' | 'error';
 export type MaestroWaitingKind = 'permission' | 'input';
-
-export interface MaestroHooksStatus {
-    claude: boolean;
-    codex: boolean;
-    bridge: boolean;
-}
 
 /** Surface native réellement ouverte dans un frontend de Space. */
 export interface MaestroSurface {
@@ -82,8 +71,6 @@ export interface MaestroAgent {
     updatedAt: number;
     /** Détail de la permission en attente (commande shell, URL…) si status `waiting`. */
     pendingPermission?: string;
-    /** Id de la permission OpenCode en attente, pour autoriser/refuser depuis Maestro. */
-    pendingPermissionId?: string;
     /** Nature de l'attente remontée par les hooks CLI. */
     waitingKind?: MaestroWaitingKind;
     /** Résumé d'édition cumulé (fichiers/+/-), si fourni par OpenCode. */
@@ -92,26 +79,6 @@ export interface MaestroAgent {
     surface?: MaestroSurface;
     /** Indique une association heuristique (transcript CLI ↔ terminal). */
     approximate?: boolean;
-}
-
-/** Référence courte d'un outil appelé dans un message (carte d'outil). */
-export interface MaestroToolRef {
-    name: string;
-    title?: string;
-    /** 'pending' | 'running' | 'completed' | 'error' */
-    state?: string;
-}
-
-/** Un message rendu dans le détail d'une conversation. */
-export interface MaestroMessage {
-    id?: string;
-    role: 'user' | 'assistant';
-    /** Texte (markdown pour Fabi AI). */
-    text: string;
-    /** Outils appelés dans ce message. */
-    tools?: MaestroToolRef[];
-    /** Horodatage (ms epoch). */
-    ts?: number;
 }
 
 /** État complet poussé au frontend à chaque changement (idempotent). */
@@ -137,55 +104,13 @@ export interface FabiMaestroService {
     setClient(client: FabiMaestroClient | undefined): void;
 
     /**
-     * Démarre la supervision (idempotent) — appelé quand le dashboard s'ouvre.
-     * Retourne l'état courant pour l'amorçage immédiat.
-     */
-    start(): Promise<MaestroSnapshot>;
-
-    /** État agrégé courant (amorçage / re-synchronisation). */
-    getSnapshot(): Promise<MaestroSnapshot>;
-
-    /**
      * Heartbeat d'un frontend de workspace. La liste remplace atomiquement le
      * précédent rapport de ce propriétaire. Une liste vide le retire.
      */
     reportOpenSurfaces(ownerId: string, surfaces: MaestroSurface[]): Promise<void>;
-
-    /** Historique d'une conversation (pour le panneau de détail). */
-    getConversation(key: string): Promise<MaestroMessage[]>;
-
-    /**
-     * Envoie un message à l'agent. Fabi AI → prompt OpenCode (la réponse arrive
-     * en live via les snapshots) ; Claude/Codex → écrit dans le PTY (phase 2).
-     */
-    send(key: string, text: string): Promise<void>;
-
-    /** Interrompt le tour en cours de l'agent. */
-    abort(key: string): Promise<void>;
-
-    /** Répond à une permission Fabi/OpenCode en attente. */
-    replyPermission(key: string, allow: boolean): Promise<void>;
-
-    /** État d'installation du bridge de hooks CLI. */
-    getHooksStatus(): Promise<MaestroHooksStatus>;
-
-    /**
-     * Installe les hooks gérés dans ~/.claude et ~/.codex. Cette mutation globale
-     * n'est exécutée qu'après une action explicite de l'utilisateur dans Maestro.
-     */
-    installHooks(): Promise<MaestroHooksStatus>;
 }
 
-/**
- * Canaux Electron dédiés au routage Maestro. Le preload n'expose que cette
- * petite surface, jamais ipcRenderer directement.
- */
+/** Canal Electron (frontend de Space → main) : id du Space qui héberge ce frontend. */
 export namespace MaestroHostIpc {
     export const CONTEXT = 'fabi-maestro:host-context';
-    export const OPEN_SURFACE = 'fabi-maestro:open-surface';
-    export const PREVIEW_SURFACE = 'fabi-maestro:preview-surface';
-    export const CLEAR_PREVIEW = 'fabi-maestro:clear-preview';
-    export const SEND_TO_SURFACE = 'fabi-maestro:send-to-surface';
-    export const ACTIVATE_SURFACE = 'fabi-maestro:activate-surface';
-    export const WRITE_TERMINAL = 'fabi-maestro:write-terminal';
 }

@@ -11,7 +11,7 @@ try {
     assert.ok(chrome, 'The native Spaces rail must be available');
     active=await chrome.$eval('[aria-current=page]',e=>e.dataset.spaceId);
     for(const candidate of pages.filter(p=>p.url().includes('/frontend/index.html'))){
-        if(await candidate.evaluate(id=>window.fabiMaestroHost.getContext().spaceId===id,active)){page=candidate;break;}
+        if(await candidate.evaluate(id=>window.fabiSpaceHost.getContext().spaceId===id,active)){page=candidate;break;}
     }
     assert.ok(page);
     await page.waitForSelector('.theia-TreeNodeSegment',{timeout:25000});
@@ -26,8 +26,8 @@ try {
     assert.ok(readme,'Existing README must be visible in the explorer');
     await readme.click();
     await page.waitForFunction(()=>window.fabiWorkflowShell.getWidgets('main').some(w=>w.isVisible&&w.title.label==='README.md'),{polling:50,timeout:10000});
-    await page.click('.fabi-dock-tool[aria-label="Agents"]');
-    await page.waitForFunction(()=>window.fabiWorkflowShell.getWidgets('main').some(w=>w.isVisible&&(w.id==='chat-view-widget'||w.id.startsWith('fabi-chat-instance:'))),{polling:50,timeout:10000});
+    await page.click('.fabi-dock-tool[aria-label="Terminal"]');
+    await page.waitForFunction(()=>window.fabiWorkflowShell.getWidgets('main').some(w=>w.isVisible&&w.id.startsWith('terminal-')),{polling:50,timeout:10000});
     await page.waitForFunction(()=>document.querySelector('.fabi-dock-tools').getAttribute('aria-busy')==='false',{polling:50,timeout:10000});
     await readme.click();
     await page.waitForFunction(()=>window.fabiWorkflowShell.getWidgets('main').some(w=>w.isVisible&&w.title.label==='README.md'),{polling:50,timeout:10000});
@@ -41,7 +41,7 @@ try {
         await chrome.waitForFunction(id=>document.querySelector('[aria-current=page]')?.dataset.spaceId===id,{polling:50},active);
         assert.equal(await page.evaluate(id=>window.fabiWorkflowShell.getWidgets('main').some(w=>w.id===id&&w.isVisible),editorId),true);
     }
-    console.log('Native README → Agent → README and Space round-trip passed without focus emulation.');
+    console.log('Native README → Terminal → README and Space round-trip passed without focus emulation.');
 } finally {
     try {
         if (chrome && active && !chrome.isClosed()) {

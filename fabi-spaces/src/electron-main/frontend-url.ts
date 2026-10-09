@@ -23,12 +23,9 @@ export interface FrontendUrlContext {
 /**
  * URL à charger dans la WebContentsView d'un Space.
  * @param workspacePath dossier à ouvrir ; vide → Theia restaure le dernier workspace.
- * @param opts.maestro  si vrai, ajoute `&maestro=1` → le frontend Theia boote en
- *   « mode maestro » (cf. MaestroModeContribution dans fabi-swarm) : aucun éditeur
- *   ni explorateur, uniquement le tableau de bord de supervision des agents.
  */
-export function buildFrontendUrl(ctx: FrontendUrlContext, workspacePath: string, opts?: { maestro?: boolean }): string {
-    const query = `port=${ctx.backendPort}${opts?.maestro ? '&maestro=1' : ''}`;
+export function buildFrontendUrl(ctx: FrontendUrlContext, workspacePath: string): string {
+    const query = `port=${ctx.backendPort}`;
     const uri = FileUri.create(ctx.frontendHtmlPath).withQuery(query);
     const withWs = workspacePath ? uri.withFragment(encodeURI(workspacePath)) : uri;
     return withWs.toString(true);

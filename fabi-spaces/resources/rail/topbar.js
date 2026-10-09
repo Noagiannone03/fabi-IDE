@@ -15,7 +15,7 @@
     };
     nav.addEventListener('dragover', event => {
         const target = event.target.closest('.desktop');
-        if (!draggedId || !target || target.dataset.kind === 'maestro') { return; }
+        if (!draggedId || !target) { return; }
         event.preventDefault(); event.dataTransfer.dropEffect = 'move';
         for (const button of buttons.values()) { button.classList.remove('drop-before', 'drop-after'); }
         dropTarget = target.dataset.spaceId;
@@ -64,16 +64,15 @@
                 button.addEventListener('click', () => api.open(space.id));
                 button.addEventListener('contextmenu', event => {
                     event.preventDefault();
-                    if (button.dataset.kind !== 'maestro') { api.contextMenu(space.id, event.clientY); }
+                    api.contextMenu(space.id, event.clientY);
                 });
                 button.addEventListener('keydown', event => {
                     if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
                         event.preventDefault();
-                        if (button.dataset.kind !== 'maestro') { api.contextMenu(space.id, button.getBoundingClientRect().top); }
+                        api.contextMenu(space.id, button.getBoundingClientRect().top);
                     }
                 });
                 button.addEventListener('dragstart', event => {
-                    if (button.dataset.kind === 'maestro') { event.preventDefault(); return; }
                     draggedId = space.id;
                     button.classList.add('dragging');
                     event.dataTransfer.effectAllowed = 'move';
@@ -83,10 +82,21 @@
                 buttons.set(space.id, button);
             }
             const name = space.name || 'Espace';
-            button.dataset.kind = space.kind || 'workspace';
-            button.draggable = space.kind !== 'maestro';
+            button.draggable = true;
             button.querySelector('.desktop-name').textContent = name;
-            button.title = name + (space.workspacePath ? '\n' + space.workspacePath : '');
+            // Pastille : agents de ce Space qui ont fini (ou attendent) sans avoir été vus.
+            const attention = (state.attention && state.attention[space.id]) || 0;
+            let badge = button.querySelector('.desktop-badge');
+            if (attention && !badge) {
+                badge = document.createElement('span');
+                badge.className = 'desktop-badge';
+                button.append(badge);
+            }
+            if (badge) {
+                if (attention) { badge.textContent = attention > 9 ? '9+' : String(attention); } else { badge.remove(); }
+            }
+            button.title = name + (space.workspacePath ? '\n' + space.workspacePath : '')
+                + (attention ? '\n' + attention + (attention > 1 ? ' agents à regarder' : ' agent à regarder') : '');
             button.setAttribute('aria-label', name);
             button.setAttribute('aria-current', state.activeId === space.id ? 'page' : 'false');
             if (/^#[0-9a-f]{6}$/i.test(space.color || '')) { button.style.setProperty('--space-color', space.color); }

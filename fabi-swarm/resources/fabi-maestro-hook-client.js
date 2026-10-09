@@ -58,6 +58,7 @@ function main() {
                 runtime: {
                     pid: process.ppid,
                     tty: ttyForParent(),
+                    terminal: process.env.FABI_AGENT_TERMINAL,
                     receivedAt: Date.now()
                 }
             }) + '\n');

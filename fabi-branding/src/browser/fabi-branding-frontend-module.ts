@@ -10,13 +10,13 @@ import '../../src/browser/style/index.css';
 import '../../src/browser/style/fabi-ui-polish.css';
 import '../../src/browser/style/fabi-explorer-type.css';
 import '../../src/browser/style/fabi-islands.css';
-import '../../src/browser/style/fabi-activity-bar.css';
 import '../../src/browser/style/fabi-space-accent.css';
 import '../../src/browser/style/fabi-ui-icons.css';         // EN DERNIER : remappe les codicons en icônes Fluent rondes
 import '../../src/browser/style/fabi-midnight.css';
 import '../../src/browser/style/fabi-native-midnight.css';
 import '../../src/browser/style/fabi-studio.css';
 import '../../src/browser/style/fabi-navigation.css';
+import '../../src/browser/style/fabi-depth.css';         // EN DERNIER : hiérarchie de gris des îlots
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
@@ -32,7 +32,8 @@ import { FabiRecentFiles } from './welcome/fabi-recent-files';
 import { FabiAboutDialog } from './about/fabi-about-dialog';
 import { FabiColorContribution } from './theme/fabi-color-contribution';
 import { FabiThemeContribution } from './theme/fabi-theme-contribution';
-import { FabiSidePanelHandler, FabiLeftPanelOpenContribution } from './shell/fabi-side-panel-handler';
+import { FabiSidePanelHandler, FabiLeftPanelOpenContribution, FabiRightPanelCloseContribution } from './shell/fabi-side-panel-handler';
+import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { FabiFontRemeasureContribution } from './shell/fabi-font-remeasure-contribution';
 import { FabiWorkbenchDockContribution } from './shell/fabi-workbench-dock';
 import { FabiDocumentMotion } from './shell/fabi-document-motion';
@@ -73,13 +74,16 @@ export default new ContainerModule((bind, _unbind, _isBound, rebind) => {
     rebind(AboutDialog).to(FabiAboutDialog).inSingletonScope();
     rebind(AboutDialogProps).toConstantValue({ title: 'Fabi' });
 
-    // --- Barre d'activité gauche : icônes horizontales en bas (façon Cursor) ---
+    // --- Panneaux latéraux sans colonne d'activité (tout se lance du dock) ---
     // Transient (PAS singleton) : la factory instancie un handler distinct gauche/droite.
     rebind(SidePanelHandler).to(FabiSidePanelHandler);
 
     // --- Panneau gauche toujours ouvert (explorateur visible par défaut) ---
     bind(FabiLeftPanelOpenContribution).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiLeftPanelOpenContribution);
+    bind(FabiRightPanelCloseContribution).toSelf().inSingletonScope();
+    bind(CommandContribution).toService(FabiRightPanelCloseContribution);
+    bind(TabBarToolbarContribution).toService(FabiRightPanelCloseContribution);
 
     // Charge les webfonts puis recalcule les métriques de Monaco.
     bind(FabiFontRemeasureContribution).toSelf().inSingletonScope();

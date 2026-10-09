@@ -1,11 +1,12 @@
 import '../../src/browser/style/fabi-swarm.css';
 import '../../src/browser/style/fabi-welcome.css';
 import '../../src/browser/style/fabi-agent-midnight.css';
-import '../../src/browser/style/fabi-maestro.css';
+import '../../src/browser/style/fabi-projects.css';
+import '../../src/browser/style/fabi-scm.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';
-import { FrontendApplicationContribution, WidgetFactory } from '@theia/core/lib/browser';
+import { FrontendApplicationContribution, RemoteConnectionProvider, ServiceConnectionProvider, WidgetFactory } from '@theia/core/lib/browser';
 import { TabBarToolbarContribution } from '@theia/core/lib/browser/shell/tab-bar-toolbar';
 import { AIChatInputWidget } from '@theia/ai-chat-ui/lib/browser/chat-input-widget';
 import { ChatViewWidget } from '@theia/ai-chat-ui/lib/browser/chat-view-widget';
@@ -42,20 +43,36 @@ import { FabiCodeRevertToolbarContribution, FabiCodeCheckpointCommands } from '.
 import { ChatResponsePartRenderer } from '@theia/ai-chat-ui/lib/browser/chat-response-part-renderer';
 import { FabiToolPartRenderer, FabiThinkingPartRenderer } from './fabi-code-tool-renderer';
 import { FabiMaestroFrontend } from './maestro/fabi-maestro-frontend';
-import { MaestroWidget } from './maestro/maestro-widget';
-import { MaestroConversationWidget, MAESTRO_CONVERSATION_FACTORY_ID } from './maestro/maestro-conversation-widget';
-import { MaestroModeContribution } from './maestro/maestro-mode';
 import { MaestroSurfaceReporter } from './maestro/maestro-surface-reporter';
 import { AIConfigurationContainerWidget } from '@theia/ai-ide/lib/browser/ai-configuration/ai-configuration-widget';
 import { FabiAIConfigurationContainerWidget } from './fabi-ai-configuration-widget';
 import { FabiModelStorageSettingsWidget } from './fabi-model-storage-settings';
 import { ChatService } from '@theia/ai-chat/lib/common/chat-service';
 import { FabiChatService } from './fabi-chat-service';
+import { createFileTreeContainer } from '@theia/filesystem/lib/browser';
+import { FileNavigatorWidget } from '@theia/navigator/lib/browser/navigator-widget';
+import { FileNavigatorTree } from '@theia/navigator/lib/browser/navigator-tree';
+import { FileNavigatorModel } from '@theia/navigator/lib/browser/navigator-model';
+import { FILE_NAVIGATOR_PROPS } from '@theia/navigator/lib/browser/navigator-container';
+import { NavigatorDecoratorService } from '@theia/navigator/lib/browser/navigator-decorator-service';
+import { EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS } from '@theia/navigator/lib/browser/navigator-widget-factory';
+import { FabiAgentTerminals } from './agents/fabi-agent-terminals';
+import { FabiAgentsModel } from './agents/fabi-agents-model';
+import { FabiAgentPicker } from './agents/fabi-agent-picker';
+import { FabiProjectsLayout } from './agents/fabi-projects-layout';
+import { FabiNavigatorModel, FabiNavigatorTree, FabiNavigatorWidget } from './agents/fabi-project-tree';
+import { ScmCommitWidget } from '@theia/scm/lib/browser/scm-commit-widget';
+import { FabiScmCommitWidget } from './fabi-scm-commit-widget';
+import { FabiAgentCliService, FABI_AGENT_CLI_PATH } from '../common/fabi-agent-cli-protocol';
 
 // Renomme le panneau IA « AI Chat » → « Fabi AI ». LABEL est le champ statique
 // utilisé par ChatViewWidget pour son titre/caption ; on le change au chargement
 // du module (avant toute création de widget).
 ChatViewWidget.LABEL = 'Fabi AI';
+
+// Le panneau de gauche n'est plus un explorateur de fichiers mais la barre
+// « Projets » (dossiers → Agents IA + Code), cf. agents/fabi-project-tree.
+EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label = 'Projets';
 
 // Ce module est chargé APRÈS @theia/ai-ide (déclaré en dépendance de fabi-swarm) :
 // Theia ordonne les ContainerModule topologiquement → nos rebind/unbind passent
@@ -196,24 +213,42 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(CommandContribution).toService(FabiTabRenameContribution);
     bind(MenuContribution).toService(FabiTabRenameContribution);
 
-    // === Tableau de bord Maestro (supervision des agents IA) ===
-    // Façade RPC (proxy + client de snapshots), injectée UNIQUEMENT par le widget
-    // → la supervision ne démarre que dans le Space Maestro. Le widget plein écran
-    // et la bascule « mode maestro » (shell masqué) ne s'activent que sur ?maestro=1.
+    // === Supervision des agents IA (statuts poussés par le backend) ===
+    // Snapshots des agents + publication des surfaces (onglets) de CE frontend.
     bind(FabiMaestroFrontend).toSelf().inSingletonScope();
-    bind(MaestroWidget).toSelf();
-    bind(WidgetFactory).toDynamicValue(ctx => ({
-        id: MaestroWidget.ID,
-        createWidget: () => ctx.container.get(MaestroWidget)
-    })).inSingletonScope();
-    // Vue de conversation Fabi affichée dans la zone principale de Maestro.
-    bind(MaestroConversationWidget).toSelf();
-    bind(WidgetFactory).toDynamicValue(ctx => ({
-        id: MAESTRO_CONVERSATION_FACTORY_ID,
-        createWidget: () => ctx.container.get(MaestroConversationWidget)
-    })).inSingletonScope();
-    bind(MaestroModeContribution).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(MaestroModeContribution);
     bind(MaestroSurfaceReporter).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(MaestroSurfaceReporter);
+
+    // === Barre « Projets » : chaque dossier = Agents IA + Code ===
+    // Terminaux d'agents (lancement Claude/Codex…, reprise de conversation) et
+    // modèle des agents par dossier (statut, non lu, notifications).
+    bind(FabiAgentPicker).toSelf().inSingletonScope();
+    bind(FabiProjectsLayout).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiProjectsLayout);
+    bind(FabiAgentTerminals).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiAgentTerminals);
+    bind(CommandContribution).toService(FabiAgentTerminals);
+    bind(FabiAgentsModel).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(FabiAgentsModel);
+    // L'explorateur de Theia, recâblé avec nos sous-classes (même conteneur que
+    // `createFileNavigatorContainer`, seules les trois classes changent).
+    rebind(FileNavigatorWidget).toDynamicValue(ctx => {
+        const child = createFileTreeContainer(ctx.container, {
+            tree: FabiNavigatorTree,
+            model: FabiNavigatorModel,
+            widget: FabiNavigatorWidget,
+            decoratorService: NavigatorDecoratorService,
+            props: FILE_NAVIGATOR_PROPS
+        });
+        child.bind(FileNavigatorTree).toService(FabiNavigatorTree);
+        child.bind(FileNavigatorModel).toService(FabiNavigatorModel);
+        child.bind(FileNavigatorWidget).toService(FabiNavigatorWidget);
+        return child.get(FabiNavigatorWidget);
+    });
+
+    // === CLI d'agents : détection (sélecteur) + message de commit par l'IA (✨ du champ Git) ===
+    bind(FabiAgentCliService).toDynamicValue(ctx =>
+        ctx.container.get<ServiceConnectionProvider>(RemoteConnectionProvider).createProxy(FABI_AGENT_CLI_PATH)
+    ).inSingletonScope();
+    rebind(ScmCommitWidget).to(FabiScmCommitWidget);
 });

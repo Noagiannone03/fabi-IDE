@@ -19,7 +19,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { exec } from 'node:child_process';
 import { ILogger } from '@theia/core';
-import { MaestroAgent, MaestroMessage, MaestroStatus, MaestroSource, MaestroSurface } from '../common/fabi-maestro-protocol';
+import { MaestroAgent, MaestroStatus, MaestroSurface } from '../common/fabi-maestro-protocol';
 
 /** Au-delà, un transcript inactif n'est plus listé. */
 const RECENT_MS = 12 * 60 * 60 * 1000;
@@ -29,8 +29,6 @@ const ACTIVE_MS = 12_000;
 const MAX_FILES = 40;
 /** Octets lus en tête/queue pour l'aperçu (évite de charger des transcripts énormes). */
 const EDGE_BYTES = 48 * 1024;
-/** Plafond de lecture pour le détail complet d'une conversation. */
-const DETAIL_MAX_BYTES = 2 * 1024 * 1024;
 
 interface ScanFile { file: string; mtime: number; }
 interface ProcessRow { pid: number; ppid: number; command: string; }
@@ -41,8 +39,6 @@ export class ExternalAgentMonitor {
     protected readonly claudeRoot = join(homedir(), '.claude', 'projects');
     protected readonly codexRoot = join(homedir(), '.codex', 'sessions');
 
-    /** Cache id de session → chemin du transcript (pour getConversation). */
-    protected readonly fileById = new Map<string, string>();
 
     constructor(protected readonly logger?: ILogger) { }
 
@@ -94,22 +90,6 @@ export class ExternalAgentMonitor {
         });
     }
 
-    /** Historique d'une conversation externe (clé `claude:<id>` ou `codex:<id>`). */
-    async getConversation(source: MaestroSource, id: string): Promise<MaestroMessage[]> {
-        const file = this.fileById.get(`${source}:${id}`);
-        if (!file) {
-            return [];
-        }
-        try {
-            const text = await this.readCapped(file, DETAIL_MAX_BYTES);
-            const lines = this.jsonLines(text);
-            return source === 'claude' ? this.parseClaudeMessages(lines) : this.parseCodexMessages(lines);
-        } catch (err) {
-            this.logger?.warn(`[maestro] getConversation ${source}:${id}: ${String(err)}`);
-            return [];
-        }
-    }
-
     // ----------------------------------------------------------- Claude
 
     protected async scanClaude(alive: boolean): Promise<MaestroAgent[]> {
@@ -138,7 +118,6 @@ export class ExternalAgentMonitor {
                 }
             }
             sessionId = sessionId ?? this.basenameNoExt(file);
-            this.fileById.set(`claude:${sessionId}`, file);
             agents.push({
                 key: `claude:${sessionId}`,
                 source: 'claude',
@@ -174,38 +153,6 @@ export class ExternalAgentMonitor {
         return undefined;
     }
 
-    protected parseClaudeMessages(lines: Array<Record<string, unknown>>): MaestroMessage[] {
-        const out: MaestroMessage[] = [];
-        for (const d of lines) {
-            const type = d.type;
-            if (type !== 'user' && type !== 'assistant') {
-                continue;
-            }
-            const msg = d.message as { content?: unknown } | undefined;
-            if (!msg) {
-                continue;
-            }
-            const text = this.claudeText(msg.content);
-            const tools: MaestroMessage['tools'] = [];
-            if (Array.isArray(msg.content)) {
-                for (const b of msg.content) {
-                    if (b && typeof b === 'object' && (b as { type?: string }).type === 'tool_use') {
-                        const tu = b as { name?: string; input?: { description?: string; file_path?: string } };
-                        tools.push({ name: tu.name || 'tool', title: tu.input?.file_path || tu.input?.description });
-                    }
-                }
-            }
-            if (!text && tools.length === 0) {
-                continue;
-            }
-            const ts = typeof d.timestamp === 'string' ? Date.parse(d.timestamp) : undefined;
-            out.push({ role: type === 'user' ? 'user' : 'assistant', text: text || '', tools: tools.length ? tools : undefined, ts });
-        }
-        return out;
-    }
-
-    // ----------------------------------------------------------- Codex
-
     protected async scanCodex(alive: boolean): Promise<MaestroAgent[]> {
         const files = await this.recentFiles(this.codexRoot, name => name.startsWith('rollout-') && name.endsWith('.jsonl'), 3);
         const agents: MaestroAgent[] = [];
@@ -223,7 +170,6 @@ export class ExternalAgentMonitor {
             }
             id = id ?? this.codexIdFromName(file);
             const lastText = this.codexLastText([...head, ...tail]);
-            this.fileById.set(`codex:${id}`, file);
             agents.push({
                 key: `codex:${id}`,
                 source: 'codex',
@@ -261,30 +207,6 @@ export class ExternalAgentMonitor {
             }
         }
         return last;
-    }
-
-    protected parseCodexMessages(lines: Array<Record<string, unknown>>): MaestroMessage[] {
-        const out: MaestroMessage[] = [];
-        for (const d of lines) {
-            const payload = d.payload as Record<string, unknown> | undefined;
-            if (!payload) {
-                continue;
-            }
-            const role = payload.role === 'user' ? 'user' : payload.role === 'assistant' ? 'assistant' : undefined;
-            let text: string | undefined;
-            if (typeof payload.message === 'string') {
-                text = payload.message;
-            } else if (Array.isArray(payload.content)) {
-                text = payload.content
-                    .map(b => (b as { text?: string })?.text).filter((t): t is string => typeof t === 'string').join('\n');
-            }
-            if (!role || !text || !text.trim()) {
-                continue;
-            }
-            const ts = typeof d.timestamp === 'string' ? Date.parse(d.timestamp) : undefined;
-            out.push({ role, text: text.trim(), ts });
-        }
-        return out;
     }
 
     protected codexIdFromName(file: string): string {
@@ -431,20 +353,6 @@ export class ExternalAgentMonitor {
         }
     }
 
-    protected async readCapped(file: string, maxBytes: number): Promise<string> {
-        const fh = await fs.open(file, 'r');
-        try {
-            const size = (await fh.stat()).size;
-            const len = Math.min(maxBytes, size);
-            const buf = Buffer.alloc(len);
-            await fh.read(buf, 0, len, size - len); // queue (les plus récents)
-            return buf.toString('utf8');
-        } finally {
-            await fh.close();
-        }
-    }
-
-    /** Découpe en lignes et parse chaque JSON, en ignorant d'éventuelles lignes partielles aux bords. */
     protected jsonLines(text: string, opts?: { dropFirst?: boolean; dropLast?: boolean }): Array<Record<string, unknown>> {
         const lines = text.split('\n');
         if (opts?.dropFirst) { lines.shift(); }

@@ -20,8 +20,7 @@ import { ILogger } from '@theia/core';
 import { BackendApplicationContribution } from '@theia/core/lib/node';
 import { FabiCodeService } from '../common/fabi-code-protocol';
 import {
-    FabiMaestroService, FabiMaestroClient, MaestroSnapshot, MaestroAgent, MaestroMessage, MaestroStatus, MaestroSurface,
-    MaestroHooksStatus
+    FabiMaestroService, FabiMaestroClient, MaestroSnapshot, MaestroAgent, MaestroStatus, MaestroSurface
 } from '../common/fabi-maestro-protocol';
 import { ExternalAgentMonitor } from './fabi-external-agents';
 import { MaestroHookBridge } from './fabi-maestro-hooks';
@@ -51,7 +50,8 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     @inject(ILogger) protected readonly logger: ILogger;
     @inject(FabiCodeService) protected readonly fabiCode: FabiCodeService;
 
-    protected client: FabiMaestroClient | undefined;
+    /** Un client par frontend abonné : Maestro ET chaque Space (barre « Projets »). */
+    protected readonly clients = new Set<FabiMaestroClient>();
     protected started = false;
     protected disposed = false;
 
@@ -79,23 +79,19 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     protected readonly surfaces = new Map<string, { updatedAt: number; items: MaestroSurface[] }>();
 
     setClient(client: FabiMaestroClient | undefined): void {
-        this.client = client;
         if (client) {
+            this.clients.add(client);
             // Rendu immédiat à l'attache.
-            this.safePush(this.snapshot());
+            this.pushTo(client, this.snapshot());
         }
     }
 
+    /** Appelé par le handler RPC à la fermeture de la connexion du frontend. */
+    removeClient(client: FabiMaestroClient): void {
+        this.clients.delete(client);
+    }
+
     // ---- API RPC ----
-
-    async start(): Promise<MaestroSnapshot> {
-        this.beginSupervision();
-        return this.snapshot();
-    }
-
-    async getSnapshot(): Promise<MaestroSnapshot> {
-        return this.snapshot();
-    }
 
     async reportOpenSurfaces(ownerId: string, surfaces: MaestroSurface[]): Promise<void> {
         this.beginSupervision();
@@ -109,99 +105,6 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
         }
         await this.scanExternal();
         this.schedulePush();
-    }
-
-    async getConversation(key: string): Promise<MaestroMessage[]> {
-        const parsed = this.parseKey(key);
-        if (parsed.source === 'claude' || parsed.source === 'codex') {
-            return this.extMonitor ? this.extMonitor.getConversation(parsed.source, parsed.id) : [];
-        }
-        const rec = this.fabi.get(parsed.id);
-        try {
-            const raw = await this.http('GET', `/session/${encodeURIComponent(parsed.id)}/message`, undefined, rec?.directory);
-            return this.parseMessages(raw);
-        } catch (err) {
-            this.logger.warn(`[maestro] getConversation ${key}: ${String(err)}`);
-            return [];
-        }
-    }
-
-    async send(key: string, text: string): Promise<void> {
-        const parsed = this.parseKey(key);
-        if (parsed.source !== 'fabi') {
-            throw new Error('Maestro : envoi non supporté pour cette source (phase 2).');
-        }
-        const rec = this.fabi.get(parsed.id);
-        // Marque « génère » tout de suite (le SSE global confirmera/affinera).
-        if (rec) {
-            rec.status = 'generating';
-            rec.updatedAt = Date.now();
-            this.schedulePush();
-        }
-        // POST /message d'OpenCode est BLOQUANT jusqu'à la fin du tour. On NE l'attend
-        // PAS (sinon l'appel RPC resterait ouvert tout le tour) : la progression
-        // (statut + aperçu + messages) arrive en live via NOTRE flux SSE global. On
-        // poste via NOTRE http → aucune interférence avec le flux SSE du chat.
-        void this.http('POST', `/session/${encodeURIComponent(parsed.id)}/message`,
-            { parts: [{ type: 'text', text }] }, rec?.directory)
-            .catch(err => this.logger.warn(`[maestro] send ${key}: ${String(err)}`));
-    }
-
-    async abort(key: string): Promise<void> {
-        const parsed = this.parseKey(key);
-        if (parsed.source !== 'fabi') {
-            return;
-        }
-        const rec = this.fabi.get(parsed.id);
-        try {
-            await this.http('POST', `/session/${encodeURIComponent(parsed.id)}/abort`, {}, rec?.directory);
-        } catch (err) {
-            this.logger.warn(`[maestro] abort ${key}: ${String(err)}`);
-        }
-    }
-
-    async replyPermission(key: string, allow: boolean): Promise<void> {
-        const parsed = this.parseKey(key);
-        if (parsed.source === 'claude' || parsed.source === 'codex') {
-            if (this.hooks?.respond(parsed.source, parsed.id, allow)) {
-                await this.scanExternal();
-            }
-            return;
-        }
-        if (parsed.source !== 'fabi') {
-            return;
-        }
-        const rec = this.fabi.get(parsed.id);
-        if (!rec?.pendingPermissionId) {
-            return;
-        }
-        try {
-            await this.fabiCode.replyPermission(
-                rec.pendingPermissionId,
-                allow ? 'once' : 'reject',
-                rec.directory
-            );
-            rec.pendingPermission = undefined;
-            rec.pendingPermissionId = undefined;
-            rec.status = allow ? 'generating' : 'idle';
-            rec.updatedAt = Date.now();
-            this.schedulePush();
-        } catch (err) {
-            this.logger.warn(`[maestro] permission ${key}: ${String(err)}`);
-        }
-    }
-
-    async getHooksStatus(): Promise<MaestroHooksStatus> {
-        return this.hooks
-            ? this.hooks.status()
-            : { claude: false, codex: false, bridge: false };
-    }
-
-    async installHooks(): Promise<MaestroHooksStatus> {
-        if (!this.hooks) {
-            throw new Error('Bridge de hooks Maestro non démarré.');
-        }
-        return this.hooks.install();
     }
 
     // ---- Cycle de vie backend ----
@@ -239,7 +142,7 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
         const hooks = this.hooks;
         this.hooks = undefined;
         await hooks?.stop().catch(err => this.logger.warn(`[maestro] arrêt du bridge: ${String(err)}`));
-        this.client = undefined;
+        this.clients.clear();
         this.extMonitor = undefined;
         this.external = [];
         this.fabi.clear();
@@ -699,7 +602,8 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
             model: rec.model,
             updatedAt: rec.updatedAt,
             pendingPermission: rec.pendingPermission,
-            pendingPermissionId: rec.pendingPermissionId,
+            // Une permission OpenCode porte un id ; une question attend une réponse libre.
+            waitingKind: rec.status === 'waiting' ? (rec.pendingPermissionId ? 'permission' : 'input') : undefined,
             edits: rec.edits,
             surface
         };
@@ -720,55 +624,6 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     }
 
     // ---- Parsing des messages (détail) ----
-
-    protected parseMessages(raw: string): MaestroMessage[] {
-        let arr: Array<{ info?: Record<string, unknown>; parts?: Array<Record<string, unknown>> }>;
-        try {
-            const parsed = JSON.parse(raw);
-            arr = Array.isArray(parsed) ? parsed : [];
-        } catch {
-            return [];
-        }
-        const out: MaestroMessage[] = [];
-        for (const entry of arr) {
-            const info = entry.info ?? {};
-            const role = info.role === 'assistant' ? 'assistant' : info.role === 'user' ? 'user' : undefined;
-            if (!role) {
-                continue;
-            }
-            const parts = Array.isArray(entry.parts) ? entry.parts : [];
-            let text = '';
-            const tools: MaestroMessage['tools'] = [];
-            for (const p of parts) {
-                const ptype = typeof p.type === 'string' ? p.type : '';
-                if (ptype === 'text' && typeof p.text === 'string') {
-                    text += (text ? '\n' : '') + p.text;
-                } else if (ptype === 'tool' && typeof p.tool === 'string') {
-                    const state = p.state as { status?: string; title?: string } | undefined;
-                    tools.push({ name: p.tool, title: state?.title, state: state?.status });
-                }
-            }
-            if (!text && tools.length === 0) {
-                continue;
-            }
-            const time = info.time as { created?: number } | undefined;
-            out.push({
-                id: typeof info.id === 'string' ? info.id : undefined,
-                role,
-                text,
-                tools: tools.length ? tools : undefined,
-                ts: time?.created
-            });
-        }
-        return out;
-    }
-
-    // ---- Utilitaires ----
-
-    protected parseKey(key: string): { source: string; id: string } {
-        const i = key.indexOf(':');
-        return i < 0 ? { source: 'fabi', id: key } : { source: key.slice(0, i), id: key.slice(i + 1) };
-    }
 
     protected cleanTitle(title: string): string {
         const t = (title ?? '').trim();
@@ -843,11 +698,17 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
     }
 
     protected safePush(snapshot: MaestroSnapshot): void {
+        for (const client of this.clients) {
+            this.pushTo(client, snapshot);
+        }
+    }
+
+    protected pushTo(client: FabiMaestroClient, snapshot: MaestroSnapshot): void {
         try {
-            this.client?.onSnapshot(snapshot);
+            // Le proxy RPC renvoie une promesse : un frontend mort la rejette.
+            void Promise.resolve(client.onSnapshot(snapshot)).catch(() => this.clients.delete(client));
         } catch {
-            // Client mort (frontend fermé/suspendu) → on l'oublie ; il se ré-attachera.
-            this.client = undefined;
+            this.clients.delete(client);
         }
     }
 

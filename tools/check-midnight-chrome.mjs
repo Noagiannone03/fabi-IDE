@@ -133,7 +133,7 @@ try {
     // Minimal native markup to test the actual stylesheet cascade, not shell behavior.
     await page.setViewport({ width: 900, height: 700, deviceScaleFactor: 1 });
     const styles = ['fabi-type.css', 'index.css', 'fabi-ui-polish.css', 'fabi-explorer-type.css',
-        'fabi-islands.css', 'fabi-activity-bar.css', 'fabi-space-accent.css', 'fabi-ui-icons.css', 'fabi-midnight.css', 'fabi-native-midnight.css', 'fabi-studio.css', 'fabi-navigation.css'];
+        'fabi-islands.css', 'fabi-space-accent.css', 'fabi-ui-icons.css', 'fabi-midnight.css', 'fabi-native-midnight.css', 'fabi-studio.css', 'fabi-navigation.css'];
     const nativeStyles = ['node_modules/@theia/preferences/src/browser/style/index.css', 'node_modules/@theia/messages/src/browser/style/notifications.css'];
     await page.setContent(nativeStyles.map(file => `<link rel="stylesheet" href="${pathToFileURL(resolve(root, file)).href}">`).join('') +
         styles.map(file => `<link rel="stylesheet" href="${pathToFileURL(resolve(root, 'fabi-branding/src/browser/style', file)).href}">`).join('') + `
@@ -167,24 +167,23 @@ try {
     await page.evaluate(() => {
         const dock = document.createElement('div');
         dock.id = 'fabi-workbench-dock';
-        dock.innerHTML = '<nav class="fabi-dock-tools"><button class="fabi-dock-tool"><span class="fabi-dock-tile">T</span><span class="fabi-dock-label">Terminal</span></button><button class="fabi-dock-tool"><span class="fabi-dock-tile">A</span><span class="fabi-dock-label">Agents</span></button></nav>';
+        dock.innerHTML = '<nav class="fabi-dock-tools"><button class="fabi-dock-tool"><span class="fabi-dock-tile">T</span></button><button class="fabi-dock-tool"><span class="fabi-dock-tile">G</span></button></nav>';
         document.body.append(dock);
     });
-    const dockWidth = () => page.$eval('.fabi-dock-tools', el => el.getBoundingClientRect().width);
-    await page.waitForFunction(() => document.querySelector('.fabi-dock-tools').getBoundingClientRect().width === 206);
+    const dockHeight = () => page.$eval('.fabi-dock-tools', el => el.getBoundingClientRect().height);
+    await page.waitForFunction(() => document.querySelector('.fabi-dock-tools').getBoundingClientRect().height === 48);
     await page.$eval('#fabi-workbench-dock', el => el.classList.add('fabi-dock-resting'));
     assert.ok(await page.$eval('.fabi-dock-tools', el => getComputedStyle(el).transitionDuration.includes('0.46s')));
     await page.$eval('#fabi-workbench-dock', el => {
         void el.offsetWidth;
         el.getAnimations({ subtree: true }).forEach(animation => animation.finish());
     });
-    assert.equal(await dockWidth(), 94);
-    assert.equal(await page.$eval('.fabi-dock-label', el => getComputedStyle(el).opacity), '0');
+    assert.equal(await dockHeight(), 40);
     assert.equal(await page.$$eval('.fabi-dock-tile', nodes => nodes.every(el => el.getBoundingClientRect().width > 18)), true);
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
     assert.equal(await page.$eval('.fabi-dock-tools', el => getComputedStyle(el).transitionDuration), '0s');
     await page.$eval('#fabi-workbench-dock', el => el.classList.remove('fabi-dock-resting'));
-    assert.equal(await dockWidth(), 206);
+    assert.equal(await dockHeight(), 48);
     assert.deepEqual(errors, []);
     console.log('Static chrome and CSS cascade: validation, focus, compact layout, single submit, Space navigation, tabs, dialogs, settings and notifications passed. Native IPC and full shell not tested.');
 } finally { await browser.close(); }

@@ -16,12 +16,10 @@ interface MaestroHostContext {
 
 interface MaestroHostBridge {
     getContext(): MaestroHostContext;
-    onActivateSurface(handler: (widgetId: string) => void): { dispose(): void };
-    onWriteTerminal(handler: (widgetId: string, text: string) => void): { dispose(): void };
 }
 
 function hostBridge(): MaestroHostBridge | undefined {
-    return (window as unknown as { fabiMaestroHost?: MaestroHostBridge }).fabiMaestroHost;
+    return (window as unknown as { fabiSpaceHost?: MaestroHostBridge }).fabiSpaceHost;
 }
 
 /**
@@ -42,14 +40,16 @@ export class MaestroSurfaceReporter implements FrontendApplicationContribution {
     protected timer: ReturnType<typeof setInterval> | undefined;
     protected reporting = false;
 
+    /** Propriétaire des surfaces publiées par CE frontend (id du Space, sinon racine). */
+    get owner(): string {
+        return this.ownerId;
+    }
+
     constructor(@inject(RemoteConnectionProvider) connectionProvider: ServiceConnectionProvider) {
         this.service = connectionProvider.createProxy<FabiMaestroService>(FABI_MAESTRO_REPORTER_PATH);
     }
 
     async onDidInitializeLayout(): Promise<void> {
-        if (new URLSearchParams(window.location.search).get('maestro') === '1') {
-            return;
-        }
         const host = hostBridge();
         const root = this.workspace.tryGetRoots()[0]?.resource.path.toString();
         const context = host?.getContext();
@@ -60,18 +60,6 @@ export class MaestroSurfaceReporter implements FrontendApplicationContribution {
             this.shell.onDidRemoveWidget(() => void this.report()),
             this.shell.onDidChangeCurrentWidget(() => void this.report())
         ]);
-        if (host) {
-            this.toDispose.push(host.onActivateSurface(widgetId => {
-                void this.shell.activateWidget(widgetId);
-            }));
-            this.toDispose.push(host.onWriteTerminal((widgetId, text) => {
-                const terminal = this.terminals.getById(widgetId);
-                if (terminal) {
-                    terminal.sendText(text.endsWith('\r') || text.endsWith('\n') ? text : `${text}\r`);
-                    void this.shell.activateWidget(widgetId);
-                }
-            }));
-        }
         await this.report();
         this.timer = setInterval(() => void this.report(), 2000);
     }

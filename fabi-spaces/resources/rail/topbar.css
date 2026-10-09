@@ -1,6 +1,6 @@
 @font-face { font-family:'Fabi UI';src:url('fonts/GeistVariable.ttf') format('truetype');font-weight:100 900;font-display:swap; }
 * { box-sizing:border-box; }
-html,body { margin:0;width:100%;height:100%;overflow:hidden;background:#141519;color:#92939c;font:12px 'Fabi UI',sans-serif; }
+html,body { margin:0;width:100%;height:100%;overflow:hidden;background:#08090a;color:#92939c;font:12px 'Fabi UI',sans-serif; }
 body { display:flex;flex-direction:column;padding:12px 0 12px;gap:12px; }
 header { height:26px;display:grid;place-items:center;padding-right:5px; }
 .space-mark { width:17px;height:17px;background:#898b95;mask:url('icons/stack.svg') center/contain no-repeat; }
@@ -12,14 +12,18 @@ button { font:inherit;color:inherit;border:0;background:none;cursor:pointer; }
 .desktop.dragging { opacity:.4; }
 .desktop.drop-before { box-shadow:inset 0 2px #babdc8; }
 .desktop.drop-after { box-shadow:inset 0 -2px #babdc8; }
-.desktop[aria-current=page] { color:#e9e9ef;background:#191a1e; }
+.desktop[aria-current=page] { color:#e9e9ef;background:#0c0d0f; }
 .desktop[aria-current=page] .desktop-name { font-weight:600; }
 /* Concave shoulders meet the workspace edge: one continuous plane, no tile outline. */
 .desktop[aria-current=page]::before,.desktop[aria-current=page]::after { content:'';position:absolute;right:0;width:12px;height:12px;pointer-events:none; }
-.desktop[aria-current=page]::before { top:-12px;background:radial-gradient(circle at 0 0,transparent 12px,#191a1e 12.5px); }
-.desktop[aria-current=page]::after { bottom:-12px;background:radial-gradient(circle at 0 100%,transparent 12px,#191a1e 12.5px); }
+.desktop[aria-current=page]::before { top:-12px;background:radial-gradient(circle at 0 0,transparent 12px,#0c0d0f 12.5px); }
+.desktop[aria-current=page]::after { bottom:-12px;background:radial-gradient(circle at 0 100%,transparent 12px,#0c0d0f 12.5px); }
 footer { display:flex;flex-direction:column;align-items:center;gap:7px;padding-right:5px; }
 footer button { width:30px;height:30px;border-radius:8px;font-size:18px;transition:background-color 200ms ease,color 200ms ease; }
 footer button:hover,footer button[aria-expanded=true] { color:#efedf4;background:#ffffff08; }
 button:focus-visible { outline:1px solid #c2c1cc;outline-offset:-4px; }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { transition:none !important;animation:none !important;scroll-behavior:auto !important; } }
+/* Agents à regarder dans ce Space (fini sans être vu / attend une validation). */
+.desktop-badge { position:absolute;top:8px;right:9px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;display:grid;place-items:center;background:#EC5B2B;color:#fff;font:650 10px/16px 'Fabi UI',sans-serif;box-shadow:0 0 0 2px #08090a;animation:desktop-badge-in 280ms cubic-bezier(.2,.8,.2,1); }
+.desktop[aria-current=page] .desktop-badge { box-shadow:0 0 0 2px #0c0d0f; }
+@keyframes desktop-badge-in { from { transform:scale(.4);opacity:0; } to { transform:scale(1);opacity:1; } }

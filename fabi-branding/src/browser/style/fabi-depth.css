@@ -1,0 +1,66 @@
+/* Profondeur (chargé en dernier). Hiérarchie de gris nette, comme Superset :
+ *   cadre #0c0d0f  →  îlots latéraux #1a1b1f / îlot du document #16171a
+ *   →  cartes #232429  →  survol/sélection #2c2d33,
+ * chaque îlot cerclé d'un filet visible et séparé du suivant par le cadre. */
+:root, body {
+    --fabi-canvas: #0c0d0f;
+    --fabi-surface: #1a1b1f;
+    --fabi-editor: #16171a;
+    --fabi-surface-2: #232429;
+    --fabi-surface-3: #2c2d33;
+    --fabi-hairline: #ffffff14;
+    --fabi-gap: 6px;
+    --fabi-island-radius: 12px;
+    --theia-editor-background: #16171a;
+    --theia-sideBar-background: #1a1b1f;
+    --theia-panel-background: #16171a;
+    --theia-editorGroupHeader-tabsBackground: #1a1b1f !important;
+    --theia-tab-inactiveBackground: #1a1b1f !important;
+    --theia-tab-activeBackground: #232429 !important;
+    --theia-tab-hoverBackground: #232429 !important;
+    --theia-list-hoverBackground: #ffffff07;
+    --theia-list-inactiveSelectionBackground: #ffffff0a;
+    --theia-list-activeSelectionBackground: #ffffff10;
+}
+
+/* Îlots latéraux : barre Projets à gauche, Git/outils à droite. */
+#theia-left-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container),
+#theia-right-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) {
+    background-color: var(--fabi-surface) !important;
+    border: var(--fabi-gap) solid var(--fabi-canvas) !important;
+    border-radius: calc(var(--fabi-island-radius) + var(--fabi-gap)) !important;
+    box-shadow: inset 0 0 0 1px var(--fabi-hairline) !important;
+    overflow: hidden !important;
+}
+#theia-left-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) { border-right-width: 3px !important; }
+#theia-right-content-panel > .lm-BoxPanel-child:not(.theia-app-sidebar-container) { border-left-width: 3px !important; }
+
+/* Îlot du document : onglets en bandeau #1a1b1f, contenu #16171a. */
+#theia-main-content-panel {
+    background-color: var(--fabi-editor) !important;
+    border: var(--fabi-gap) solid var(--fabi-canvas) !important;
+    border-left-width: 3px !important;
+    border-radius: calc(var(--fabi-island-radius) + var(--fabi-gap)) !important;
+    box-shadow: inset 0 0 0 1px var(--fabi-hairline) !important;
+}
+body.fabi-sidebar-collapsed #theia-main-content-panel { border-left-width: var(--fabi-gap) !important; }
+#theia-main-content-panel > .lm-TabBar,
+#theia-main-content-panel .lm-TabBar.theia-app-centers {
+    background: var(--fabi-surface) !important;
+    box-shadow: inset 0 -1px 0 var(--fabi-hairline);
+}
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.lm-mod-current {
+    background: var(--fabi-surface-2) !important;
+    box-shadow: inset 0 0 0 1px #ffffff0c !important;
+}
+#theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab:hover { background: #ffffff08 !important; }
+
+/* Cadre : barre de statut et fond derrière les îlots. */
+#theia-statusBar,
+#theia-left-right-split-panel,
+#theia-bottom-split-panel { background-color: var(--fabi-canvas) !important; }
+
+/* En-têtes de panneau détachés du contenu. */
+.theia-sidepanel-toolbar { box-shadow: inset 0 -1px 0 var(--fabi-hairline); }
+.theia-TreeNode:not(.theia-mod-selected):hover { background: #ffffff07 !important; }
+.theia-TreeNode.theia-mod-selected { background: #ffffff0f !important; }

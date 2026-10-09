@@ -6,12 +6,9 @@ import {
 } from '../../common/fabi-maestro-protocol';
 
 /**
- * Façade frontend du tableau de bord Maestro : détient le proxy RPC vers le
- * service backend ET implémente FabiMaestroClient (le backend pousse les snapshots
- * agrégés). Ré-expose en Event Theia → le widget s'y abonne, zéro polling.
- *
- * Injectée UNIQUEMENT par le widget Maestro → la connexion RPC (et donc l'attache
- * du client + le démarrage de la supervision) n'a lieu que dans le Space Maestro.
+ * Façade frontend de la supervision des agents : implémente FabiMaestroClient
+ * (le backend pousse les snapshots agrégés) et les ré-expose en Event Theia.
+ * La barre « Projets » s'y abonne — zéro polling.
  */
 @injectable()
 export class FabiMaestroFrontend implements FabiMaestroClient {

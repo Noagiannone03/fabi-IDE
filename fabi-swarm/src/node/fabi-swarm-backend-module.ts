@@ -13,6 +13,8 @@ import {
 import { FabiSwarmServiceImpl } from './fabi-swarm-service';
 import { FabiCodeServiceImpl } from './fabi-code-service';
 import { FabiMaestroServiceImpl } from './fabi-maestro-service';
+import { FabiAgentCliServiceImpl } from './fabi-agent-cli-service';
+import { FabiAgentCliService, FABI_AGENT_CLI_PATH } from '../common/fabi-agent-cli-protocol';
 
 export default new ContainerModule(bind => {
     bind(FabiSwarmServiceImpl).toSelf().inSingletonScope();
@@ -60,6 +62,7 @@ export default new ContainerModule(bind => {
         new RpcConnectionHandler<FabiMaestroClient>(FABI_MAESTRO_SERVICE_PATH, client => {
             const service = ctx.container.get<FabiMaestroServiceImpl>(FabiMaestroService);
             service.setClient(client);
+            client.onDidCloseConnection(() => service.removeClient(client));
             return service;
         })
     ).inSingletonScope();
@@ -67,5 +70,12 @@ export default new ContainerModule(bind => {
         new RpcConnectionHandler(FABI_MAESTRO_REPORTER_PATH, () =>
             ctx.container.get<FabiMaestroServiceImpl>(FabiMaestroService)
         )
+    ).inSingletonScope();
+
+    // --- CLI d'agents de l'utilisateur : détection + message de commit par l'IA ---
+    bind(FabiAgentCliServiceImpl).toSelf().inSingletonScope();
+    bind(FabiAgentCliService).toService(FabiAgentCliServiceImpl);
+    bind(ConnectionHandler).toDynamicValue(ctx =>
+        new RpcConnectionHandler(FABI_AGENT_CLI_PATH, () => ctx.container.get(FabiAgentCliService))
     ).inSingletonScope();
 });
