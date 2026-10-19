@@ -1,3 +1,4 @@
+import { SWARM_ENGINE_ENABLED, requireSwarmEngine } from '../common/fabi-product-features';
 import { injectable } from '@theia/core/shared/inversify';
 import { BackendApplicationContribution } from '@theia/core/lib/node';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
@@ -137,7 +138,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
         if (m) {
             client.onMetricsChanged(m);
         }
-        void this.publishModelStorage();
+        if (SWARM_ENGINE_ENABLED) { void this.publishModelStorage(); }
         this.tryAutoReconnect(this.feed?.snapshot() ?? []);
     }
 
@@ -160,6 +161,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
      *  du frontend. Pousse chaque échantillon via onMetricsChanged (zéro polling
      *  côté client). isWorkerRunning gate la sonde process (la plus lourde). */
     protected ensureMetrics(): void {
+        if (!SWARM_ENGINE_ENABLED) { return; }
         if (this.metrics) {
             return;
         }
@@ -281,6 +283,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     }
 
     protected ensureFeed(): void {
+        if (!SWARM_ENGINE_ENABLED) { return; }
         if (this.feed) {
             return;
         }
@@ -322,6 +325,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     }
 
     async waitForRequestAgent(): Promise<RequestAgentState> {
+        requireSwarmEngine();
         if (this.requestAgentState.kind === 'ready' && this.requestAgentState.baseUrl) {
             return this.requestAgentState;
         }
@@ -343,6 +347,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     }
 
     async waitUntilReady(timeoutMs = 120_000): Promise<ConnectionInfo> {
+        requireSwarmEngine();
         if (this.connection.ready) {
             return this.connection;
         }
@@ -743,6 +748,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     }
 
     protected tryAutoReconnect(swarms: SwarmEntry[]): void {
+        if (!SWARM_ENGINE_ENABLED) { return; }
         if (this.autoReconnectSettled || this.autoReconnectInFlight || this.switching
             || this.activeSwarm || this.workerState.kind !== 'stopped' || swarms.length === 0) {
             return;
@@ -769,6 +775,7 @@ export class FabiSwarmServiceImpl implements FabiSwarmService, BackendApplicatio
     // ----- connexion / déconnexion -----
 
     async connectSwarm(swarmId: string): Promise<WorkerState> {
+        requireSwarmEngine();
         if (this.switching) {
             return this.workerState;
         }

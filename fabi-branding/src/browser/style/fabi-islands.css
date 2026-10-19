@@ -128,29 +128,7 @@
     background-color: var(--fabi-editor) !important;
 }
 
-/* ------------------------------------------------------------------ */
-/* FOND DE L'ÉDITEUR (le code) — GARANTI, indépendant du thème actif.   */
-/* ------------------------------------------------------------------ */
-/* Monaco peint le fond du code via `var(--vscode-editor-background)`
-   (cf. monaco-editor-core .../codeEditor/editor.css). Cette variable est injectée
-   au RUNTIME par le thème de couleurs ACTIF. Donc `editor.background` (qui n'existe
-   que dans le JSON de notre thème) ne s'applique QUE si fabi-islands est le thème
-   actif → sinon « le fond de l'éditeur ne change jamais ». On force la variable
-   (et l'élément de fond en filet de sécurité) → l'éditeur a TOUJOURS notre surface
-   sombre, quel que soit le thème. */
-:root,
-body.mac,
-body.windows,
-body.linux {
-    --vscode-editor-background: var(--fabi-editor) !important;
-    --vscode-editorGutter-background: var(--fabi-editor) !important;
-    --theia-editor-background: var(--fabi-editor) !important;
-}
-.monaco-editor,
-.monaco-editor .monaco-editor-background,
-.monaco-editor .margin {
-    background-color: var(--fabi-editor) !important;
-}
+/* Monaco owns editor colors through the active VS Code theme. */
 
 /* Éditeur VIDE (aucun onglet ouvert) : filigrane du logo Fabi, centré, en
    NUANCES DE GRIS/NOIR (le renard est brique → grayscale le neutralise).

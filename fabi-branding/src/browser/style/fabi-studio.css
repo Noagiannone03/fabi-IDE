@@ -9,6 +9,15 @@ body {
 .fabi-symbol { width: 23px; height: 23px; flex-shrink: 0; }
 #fabi-workbench-dock { padding: 8px max(12px, calc((100vw - 560px) / 2)); }
 body.fabi-native-spaces #fabi-workbench-dock { padding-left: max(228px, calc((100vw - 560px) / 2)); }
+#fabi-workbench-dock #fabi-activity-bar {
+    background: #202126; border-radius: 14px 0 0 14px;
+    box-shadow: inset 0 1px 0 #ffffff08, inset 0 -1px 0 #00000025;
+}
+#fabi-workbench-dock .fabi-activity-inner { gap: 4px; padding: 0 8px; }
+#fabi-workbench-dock .fabi-activity-item { border-radius: 8px; color: #a1a2ab; opacity: 1; }
+#fabi-workbench-dock .fabi-activity-item.active { color: #e4ded0; background: #343439; box-shadow: inset 0 1px 0 #ffffff0d, 0 2px 3px #00000022; }
+#fabi-workbench-dock .fabi-activity-item:hover { color: #eeebe4; background: #ffffff09; }
+#fabi-workbench-dock .fabi-activity-item .fabi-symbol { width: 21px; height: 21px; }
 #fabi-dock-tools { min-width: 248px; max-width: 248px; }
 .fabi-dock-tools { padding: 0 7px; gap: 6px; border-left: 1px solid #ffffff0a; border-radius: 0 14px 14px 0; background: #202126; }
 .fabi-dock-tool { position: relative; flex: 0 0 54px; width: 54px; height: 48px; gap: 2px; flex-direction: column; background: none !important; border-radius: 9px; }
@@ -21,7 +30,7 @@ body.fabi-native-spaces #fabi-workbench-dock { padding-left: max(228px, calc((10
 .fabi-dock-tool.active::after { content: ''; position: absolute; bottom: 1px; width: 10px; height: 2px; border-radius: 2px; background: #d3ccbf; }
 .fabi-dock-tool .fabi-symbol { width: 21px; height: 21px; }
 #theia-main-content-panel { border: 1px solid #ffffff09 !important; border-radius: 13px !important; box-shadow: 0 5px 24px #090a0c18 !important; }
-#theia-main-content-panel > .lm-TabBar { background: #1a1b1f !important; }
+#theia-main-content-panel > .lm-TabBar { background: #191a1e !important; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers { padding: 5px 6px !important; min-height: 43px; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab { border-radius: 8px !important; padding: 0 13px !important; font-size: 12px; margin: 0 3px !important; color: #91929c; }
 #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab.lm-mod-current { background: #2b2c32 !important; color: #e5dfd4 !important; box-shadow: inset 0 1px 0 #ffffff0c, 0 2px 5px #00000016 !important; }
@@ -75,3 +84,23 @@ body .fabi-sel-row { border-radius: 8px; padding: 12px; }
 body .fabi-mode-menu { border-radius: 12px; padding: 7px; }
 @container (max-width:450px) { .fabi-home-action + .fabi-home-action { border-left: 0; border-top: 1px solid #ffffff07; padding-left: 10px; } }
 @media (prefers-reduced-motion: reduce) { .fabi-dock-tile { transition: none; } .fabi-dock-tool:hover .fabi-dock-tile { transform: none; } }
+
+/* Workspace home: a quiet monochrome signature, with the project in the foreground. */
+.fabi-home { position:relative; isolation:isolate; max-width:860px; padding-top:clamp(38px,8vh,92px); }
+.fabi-home-watermark { position:absolute; z-index:-1; pointer-events:none; top:16px; right:-16px; width:300px; height:300px; background:url('./fox.svg') center/contain no-repeat; filter:grayscale(1); opacity:.075; }
+.fabi-home-header { margin-bottom:40px; }
+.fabi-home-eyebrow { color:#969ba6; letter-spacing:.03em; }
+.fabi-home-header h1 { font-size:clamp(30px,3.5vw,44px); color:#e5e7ec; font-weight:500; letter-spacing:-.055em; max-width:24ch; overflow-wrap:anywhere; }
+.fabi-home-header p { color:#969ba6; }
+.fabi-home-start { gap:12px; border:0; }
+.fabi-home-action { border-radius:13px; background:#ffffff03; padding:19px; border:1px solid #ffffff06; }
+.fabi-home-action+.fabi-home-action { border:1px solid #ffffff06; padding:19px; }
+.fabi-home-action:hover { background:#ffffff07; }
+.fabi-home-action>.codicon { color:#c0c6d1; }
+.fabi-home-recents { margin-top:42px; }
+.fabi-home-text-button { color:#aab1bf; }
+.fabi-home-file-switch { background:transparent; padding:0; gap:20px; border-radius:0; border-bottom:1px solid #ffffff08; width:100%; }
+.fabi-home-file-switch button { border-radius:0; padding:10px 0; }
+.fabi-home-file-switch button[aria-pressed=true] { background:none; box-shadow:0 1px #bec5d1; color:#e0e4ec; }
+.fabi-home-footer { opacity:.8; }
+@container (max-width:450px) { .fabi-home-watermark { width:180px; height:180px; right:0; }.fabi-home-action+.fabi-home-action { padding:19px; border:1px solid #ffffff06; } }

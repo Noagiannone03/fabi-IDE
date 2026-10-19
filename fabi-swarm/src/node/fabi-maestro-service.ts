@@ -1,3 +1,4 @@
+import { SWARM_ENGINE_ENABLED } from '../common/fabi-product-features';
 // Service backend du tableau de bord « Maestro ».
 //
 // Agrège l'état de TOUS les agents IA de l'IDE et le pousse au frontend (zéro
@@ -217,6 +218,8 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
         this.extTimer = setInterval(() => void this.scanExternal(), 4000);
         this.extTimer.unref?.();
 
+        if (!SWARM_ENGINE_ENABLED) { return; }
+
         // Chats Fabi AI (sidecar OpenCode).
         await this.ensureBaseUrl();
         await this.refreshSessions();
@@ -266,6 +269,7 @@ export class FabiMaestroServiceImpl implements FabiMaestroService, BackendApplic
 
     /** (Re)charge la liste GLOBALE des sessions OpenCode et met à jour le modèle. */
     protected async refreshSessions(): Promise<void> {
+        if (!SWARM_ENGINE_ENABLED) { return; }
         if (this.disposed) {
             return;
         }

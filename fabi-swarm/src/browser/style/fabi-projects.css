@@ -1,6 +1,4 @@
-/* Barre « Projets » : dossier (carte) → Agents IA (au premier plan) + Code (replié).
-   DA Fabi : gris en paliers nets (cf. fabi-depth.css), l'orange de marque réservé
-   à ce qui réclame l'attention. */
+/* Projets, agents et Code sur la surface continue Midnight. */
 
 /* --- Logos des CLI d'agents (masques SVG teintés à la couleur de la marque) --- */
 .fabi-agent-logo {
@@ -13,91 +11,6 @@
 .fabi-agent-logo[data-cli=codex] { --fabi-agent-icon: url('./icons/agents/codex.svg'); --fabi-agent-color: #ececf1; }
 .fabi-agent-logo[data-cli=opencode] { --fabi-agent-icon: url('./icons/agents/opencode.svg'); --fabi-agent-color: #cfd0d8; }
 .fabi-agent-logo[data-cli=gemini] { --fabi-agent-icon: url('./icons/agents/gemini.svg'); --fabi-agent-color: #8E9EFF; }
-
-/* --- Carte du dossier racine --- */
-.theia-TreeNode.fabi-project-root {
-    min-height: 46px;
-    margin: 8px 6px 4px 0;
-    border-radius: 10px !important;
-    background: var(--fabi-surface-2, #232429) !important;
-    box-shadow: inset 0 0 0 1px #ffffff0b;
-}
-.theia-TreeNode.fabi-project-root:hover { background: #26272d !important; }
-.fabi-project-tile {
-    flex: 0 0 auto; width: 28px; height: 28px; margin-right: 10px;
-    display: grid; place-items: center; border-radius: 8px;
-    background: color-mix(in srgb, var(--fabi-space-accent, #8c8d98) 22%, #1a1b1f);
-    color: var(--fabi-space-accent, #d7d7df);
-}
-.fabi-project-tile .codicon { font-size: 15px; }
-.fabi-project-caption { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; min-width: 0; line-height: 16px; }
-.theia-TreeNode.fabi-project-root.theia-mod-selected { outline: none !important; }
-.fabi-project-name { font-size: 13px; font-weight: 600; color: #ecebf1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fabi-project-path { font-size: 10.5px; color: #7d7e89; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fabi-project-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; padding-right: 6px; }
-.fabi-project-badge {
-    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-    display: grid; place-items: center;
-    background: #EC5B2B; color: #fff; font-size: 10px; font-weight: 650;
-}
-.fabi-project-add {
-    width: 24px; height: 24px; display: grid; place-items: center;
-    border: 0; border-radius: 7px; background: #ffffff08; color: #b4b5bf;
-    cursor: pointer; transition: background-color 160ms ease, color 160ms ease;
-}
-.fabi-project-add:hover { background: #ffffff14; color: #f2f1f6; }
-
-/* --- Sections « Agents IA » / « Code » --- */
-.theia-TreeNode.fabi-project-section {
-    min-height: 28px; margin-top: 4px;
-    font-size: 10.5px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase;
-    color: #7d7e89;
-}
-.theia-TreeNode.fabi-project-section + .theia-TreeNode.fabi-project-section,
-.theia-TreeNode.fabi-new-agent-node + .theia-TreeNode.fabi-project-section { margin-top: 8px; }
-.fabi-section-glyph { width: 16px; font-size: 12px; margin-right: 6px; color: #7d7e89; }
-.fabi-section-count {
-    margin-left: auto; margin-right: 10px; min-width: 18px; height: 16px; padding: 0 5px;
-    border-radius: 8px; display: grid; place-items: center;
-    background: #ffffff0c; color: #a3a4ae; font-size: 10px; font-weight: 600; letter-spacing: 0;
-}
-
-/* --- Ligne d'agent : avatar (logo + pastille de statut), titre, statut --- */
-.theia-TreeNode.fabi-agent-node { min-height: 42px; margin-right: 6px; border-radius: 8px !important; }
-.fabi-agent-avatar {
-    position: relative; flex: 0 0 auto; width: 28px; height: 28px; margin-right: 10px;
-    display: grid; place-items: center; border-radius: 8px; background: #ffffff09;
-}
-.fabi-agent-avatar .fabi-agent-logo { width: 15px; height: 15px; }
-.fabi-agent-avatar .codicon { font-size: 14px; color: #c9c9d2; }
-.fabi-agent-caption { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; min-width: 0; line-height: 16px; }
-.fabi-agent-title { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #dcdbe3; font-size: 12.5px; }
-.fabi-agent-subtitle { font-size: 10.5px; color: #7d7e89; }
-.fabi-agent-unread .fabi-agent-title { color: #f6f5f9; font-weight: 600; }
-
-/* Pastille posée sur l'avatar (comme Superset : couleur = état, animation = urgence). */
-.fabi-agent-status {
-    position: absolute; right: -2px; bottom: -2px; width: 9px; height: 9px;
-    border-radius: 50%; background: #5d5e68; box-shadow: 0 0 0 2px var(--fabi-surface, #1a1b1f);
-}
-.fabi-agent-working .fabi-agent-status { background: #EC5B2B; animation: fabi-agent-pulse 1100ms ease-in-out infinite; }
-.fabi-agent-working .fabi-agent-subtitle { color: #F08A62; }
-.fabi-agent-permission .fabi-agent-status { background: #FFC58A; animation: fabi-agent-pulse 1400ms ease-in-out infinite; }
-.fabi-agent-permission .fabi-agent-subtitle { color: #FFC58A; }
-.fabi-agent-done .fabi-agent-status { background: #30D158; }
-.fabi-agent-error .fabi-agent-status { background: #FF453A; }
-.fabi-agent-error .fabi-agent-subtitle { color: #FF6B61; }
-.fabi-agent-dot { width: 7px; height: 7px; margin-right: 10px; border-radius: 50%; background: #EC5B2B; box-shadow: 0 0 0 3px #EC5B2B26; }
-
-/* « + Nouvel agent » : toujours visible en fin de section. */
-.theia-TreeNode.fabi-new-agent-node { min-height: 34px; margin-right: 6px; border-radius: 8px !important; color: #8c8d98; }
-.theia-TreeNode.fabi-new-agent-node:hover { color: #e4e3ea; }
-.fabi-new-agent-glyph {
-    width: 28px; height: 28px; margin-right: 10px; display: grid; place-items: center;
-    border-radius: 8px; border: 1px dashed #ffffff22; font-size: 13px;
-}
-
-@keyframes fabi-agent-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 
 /* --- Sélecteur « Nouvel agent IA » (façon Spotlight) --- */
 .fabi-agent-picker-backdrop {
@@ -163,3 +76,79 @@
     .fabi-agent-boot .fabi-agent-logo, .fabi-agent-boot i,
     .fabi-agent-picker-backdrop, .fabi-agent-picker { animation: none; }
 }
+
+/* Sessions and native files share the selected workspace folder. */
+#files.fabi-session-navigator { overflow:hidden; }
+.fabi-workspace-browser { height:100%; display:flex; flex-direction:column; min-height:0; color:#dedee3; font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif; }
+.fabi-workspace-browser button { font:inherit; color:inherit; cursor:pointer; border:0; outline:none!important; transition:background-color 160ms,color 160ms; }
+.fabi-workspace-browser button:focus-visible { background-color:#ffffff12; }
+.fabi-workspace-browser button:disabled { opacity:.5; cursor:default; }
+/* One outline of running sessions. Code is a drill-in, never another stacked section. */
+.fabi-session-list { flex:1; min-height:0; overflow:auto; padding:8px 10px 24px; scrollbar-width:thin; scrollbar-color:#ffffff18 transparent; overscroll-behavior:contain; }
+.fabi-session-list[hidden], .fabi-project-sessions[hidden], .fabi-code-navigation[hidden] { display:none; }
+.fabi-folder-group + .fabi-folder-group { margin-top:22px; }
+.fabi-folder-heading { display:flex; align-items:center; gap:2px; }
+.fabi-folder-disclosure { display:flex; align-items:center; gap:6px; min-width:0; flex:1; background:none; text-align:left; padding:7px 0; border-radius:5px; }
+.fabi-folder-disclosure > .codicon:first-child { font-size:11px; color:#898b94; }
+.fabi-folder-disclosure > .codicon:nth-child(2) { font-size:17px; color:#b4b4af; }
+.fabi-folder-disclosure strong { flex:1; min-width:0; font-size:12px; font-weight:550; line-height:1.4; overflow-wrap:anywhere; }
+.fabi-folder-activity { color:#8e9099; font-size:10px; font-variant-numeric:tabular-nums; }
+.fabi-folder-activity[data-working=true] { color:#b5c8bb; }
+.fabi-folder-activity[data-attention=true] { color:#d1b98c; }
+.fabi-folder-heading > button:not(.fabi-folder-disclosure) { width:25px; height:27px; display:grid; place-items:center; flex:none; background:none; border-radius:5px; color:#8d909a; }
+.fabi-folder-heading > button:hover { background:#ffffff08; color:#e2e2e5; }
+.fabi-folder-heading > button .codicon { font-size:14px; }
+.fabi-folder-path { margin:0 0 10px 23px; font-size:10px; line-height:1.4; color:#8c8f98; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.fabi-project-sessions { --branch-color:#505259; display:flex; flex-direction:column; margin-left:40px; gap:2px; position:relative; }
+.fabi-session-entry, .fabi-session-start { position:relative; display:flex; align-items:flex-start; gap:9px; width:100%; text-align:left; background:none; border-radius:7px; padding:10px 8px; }
+/* D3 builds a single joined path: no overlapping CSS borders. */
+.fabi-session-branches { position:absolute; left:-14px; top:0; pointer-events:none; overflow:visible; }
+.fabi-session-branches path { fill:none; stroke:var(--branch-color); stroke-width:1.25px; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; }
+.fabi-folder-heading > .fabi-project-code { width:30px; height:26px; margin:0 3px; background:#ffffff09; color:#c2c4cc; border-radius:6px; box-shadow:inset 0 0 0 1px #ffffff09; }
+.fabi-folder-heading > .fabi-project-code:hover, .fabi-folder-heading > .fabi-project-code:focus-visible { background:#ffffff14; color:#f0f0f3; box-shadow:inset 0 0 0 1px #ffffff12; }
+.fabi-folder-heading > .fabi-project-code:active { transform:translateY(1px); }
+
+.fabi-session-entry:hover, .fabi-session-start:hover { background:#ffffff04; }
+.fabi-session-entry[data-current=true] { background:#ffffff09; }
+.fabi-session-mark { display:grid; place-items:center; width:20px; height:21px; flex:none; }
+.fabi-session-mark .fabi-agent-logo { width:18px; height:18px; }
+.fabi-session-body { flex:1; min-width:0; }
+.fabi-session-title { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; font-weight:500; line-height:1.5; color:#d4d5dc; }
+.fabi-session-meta { display:flex; align-items:center; flex-wrap:wrap; gap:7px; margin-top:4px; color:#8e929c; font-size:10px; line-height:1.5; }
+.fabi-session-state { display:inline-flex; align-items:center; gap:5px; white-space:nowrap; }
+.fabi-session-state i { width:4px; height:4px; border-radius:50%; background:#777985; flex:none; }
+.fabi-session-entry[data-state=working] .fabi-session-state { color:#b3c4bb; }
+.fabi-session-entry[data-state=working] .fabi-session-state i { background:#a7bfb2; animation:fabi-agent-pulse 1.6s ease-in-out infinite; }
+.fabi-session-entry[data-state=permission] .fabi-session-state { color:#d1b98c; }
+.fabi-session-entry[data-state=permission] .fabi-session-state i { background:#d1b98c; }
+.fabi-session-entry[data-state=error] .fabi-session-state { color:#e39e97; }
+.fabi-session-entry[data-state=error] .fabi-session-state i { background:#e39e97; }
+.fabi-session-folder { display:block; margin-top:3px; color:#91959f; font-size:10px; line-height:1.4; overflow-wrap:anywhere; }
+.fabi-session-unread { width:4px; height:4px; border-radius:50%; background:#dddde3; position:absolute; right:5px; top:10px; }
+.fabi-session-start { align-items:center; font-size:11px!important; color:#9397a0!important; }
+.fabi-session-start > .codicon { width:20px; font-size:13px; }
+.fabi-session-error { color:#e39e97; font-size:11px; padding:10px; overflow-wrap:anywhere; }
+.fabi-code-navigation { flex:none; display:flex; align-items:center; gap:12px; padding:8px 12px 12px; }
+.fabi-sessions-back { display:flex; align-items:center; gap:6px; padding:5px 6px; border-radius:5px; background:none; font-size:11px!important; }
+.fabi-sessions-back:hover { background:#ffffff08; }
+.fabi-code-location { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:#9497a0; text-align:right; }
+.fabi-workspace-browser[data-files-open=true] .fabi-files-viewport { animation:fabi-code-enter 180ms ease-out both; }
+@keyframes fabi-code-enter { from { opacity:0; transform:translateX(12px); } to { opacity:1; transform:translateX(0); } }
+.fabi-files-viewport { padding:10px 10px 0; flex:1; min-height:0; overflow:hidden; }
+.fabi-files-viewport[hidden] { display:none; }
+.fabi-files-viewport .theia-TreeContainer { height:100%; }
+#files .fabi-files-viewport .theia-TreeNode { min-height:26px; border-radius:5px!important; }
+#files .fabi-files-viewport .fabi-file-root { min-height:30px; }
+.fabi-file-root-name { font-size:11px; font-weight:550!important; }
+@keyframes fabi-agent-pulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+@keyframes fabi-session-wave { from { transform:scaleY(.55); } to { transform:scaleY(1); } }
+@media(prefers-reduced-motion:reduce) { .fabi-workspace-browser * { animation:none!important; transition:none!important; } }
+
+body:has(.fabi-workspace-browser[data-files-open=false]) .lm-TabBar-toolbar .item:has([id="file.newFile.toolbar"]),
+body:has(.fabi-workspace-browser[data-files-open=false]) .lm-TabBar-toolbar .item:has([id="file.newFolder.toolbar"]),
+body:has(.fabi-workspace-browser[data-files-open=false]) .lm-TabBar-toolbar .item:has([id="navigator.refresh"]),
+body:has(.fabi-workspace-browser[data-files-open=false]) .lm-TabBar-toolbar .item:has([id="navigator.collapse.all"]) { display:none; }
+#files .fabi-files-viewport .theia-TreeNode.theia-mod-focus { outline:none!important; box-shadow:none!important; }
+.fabi-session-entry { animation:fabi-session-arrive 180ms ease-out both; }
+@keyframes fabi-session-arrive { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:translateY(0); } }
+.fabi-commit-status { display:block; padding:5px 2px; font-size:10px; color:var(--theia-descriptionForeground); }

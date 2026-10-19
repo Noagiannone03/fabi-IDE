@@ -194,6 +194,8 @@ export type Accel = 'mlx' | 'cuda' | 'cpu';
 
 /** État du runtime moteur (Parallax) géré par l'app. */
 export interface RuntimeStatus {
+    /** Disabled product capability: installed/accel are not probed in this state. */
+    disabled?: boolean;
     installed: boolean;
     downloading: boolean;
     /** % de progression du téléchargement/install (0-100), si en cours. */

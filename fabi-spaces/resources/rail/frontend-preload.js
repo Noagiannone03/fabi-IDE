@@ -31,5 +31,15 @@ contextBridge.exposeInMainWorld('fabiSpaceHost', {
     getContext: () => ipcRenderer.sendSync(C.CONTEXT),
     // Barre Projets : pastille du Space dans la colonne des espaces + retour au Space.
     reportAttention: count => ipcRenderer.send(C.ATTENTION, count),
-    activateSelf: () => ipcRenderer.invoke(C.ACTIVATE_SELF)
+    activateSelf: () => ipcRenderer.invoke(C.ACTIVATE_SELF),
+    getRemote: () => ipcRenderer.invoke('fabi-spaces:remote-context'),
+    connectRemote: port => ipcRenderer.invoke('fabi-spaces:remote-connected', port),
+    createRemote: (remote, port) => ipcRenderer.invoke('fabi-spaces:remote-create', remote, port),
+    setRemoteWorkspace: path => ipcRenderer.invoke('fabi-spaces:remote-workspace', path),
+    workspaceChanged: path => ipcRenderer.send('fabi-spaces:workspace-changed', path),
+    onConnectRequest: callback => {
+        const listener = () => callback();
+        ipcRenderer.on('fabi-spaces:connect-request', listener);
+        return { dispose: () => ipcRenderer.removeListener('fabi-spaces:connect-request', listener) };
+    }
 });

@@ -1,5 +1,5 @@
 /* Phosphor regular; original vectors are vendored with the MIT license. */
-.theia-preload { background:#0c0d0f !important;transition:opacity 420ms cubic-bezier(.2,.8,.2,1) !important;flex-direction:column;gap:22px; }
+.theia-preload { background:#191a1e !important;transition:opacity 420ms cubic-bezier(.2,.8,.2,1) !important;flex-direction:column;gap:22px; }
 .theia-preload::before { content:'Ouverture de l’espace';font:450 13px/20px 'Fabi UI',sans-serif;letter-spacing:.1px;color:#b9bbc4; }
 .theia-preload::after { content:'' !important;width:88px;height:2px;border-radius:2px;background:#a8abb5;opacity:.5;transform-origin:center;animation:fabi-space-loading 1600ms ease-in-out infinite !important; }
 @keyframes fabi-space-loading { 0%,100% { transform:scaleX(.28);opacity:.25; } 50% { transform:scaleX(1);opacity:.65; } }

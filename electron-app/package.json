@@ -3,7 +3,7 @@
   "name": "fabi",
   "description": "Fabi — peer-to-peer AI IDE for code",
   "author": "undefined studio",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "main": "lib/backend/electron-main.js",
   "dependencies": {
     "@theia/ai-anthropic": "1.72.2",
@@ -80,16 +80,17 @@
     "electron-builder": "26.15.7"
   },
   "scripts": {
-    "bundle": "yarn download:plugins && yarn rebuild && theia build --mode development",
+    "bundle": "node ../tools/prepare-assist-runtime.mjs && yarn prepare:plugins && yarn rebuild && theia build --mode production",
     "rebuild": "theia rebuild:electron --cacheRoot ..",
-    "start": "yarn download:plugins && theia start --plugins=local-dir:plugins",
-    "watch": "yarn download:plugins && yarn rebuild && theia build --watch --mode development",
+    "start": "node ../tools/start-electron.mjs",
+    "watch": "yarn prepare:plugins && yarn rebuild && theia build --watch --mode development",
     "download:plugins": "theia download:plugins",
-    "package": "yarn download:plugins && yarn bundle && electron-builder --publish never -c electron-builder.yml",
-    "package:dir": "yarn download:plugins && yarn bundle && electron-builder --dir --publish never -c electron-builder.yml",
-    "package:mac": "yarn download:plugins && yarn bundle && electron-builder --mac --publish never -c electron-builder.yml -c.mac.identity=-",
-    "package:mac:release": "yarn download:plugins && yarn bundle && electron-builder --mac --arm64 --publish never -c electron-builder.mac-release.yml",
-    "package:win:release": "yarn download:plugins && yarn bundle && electron-builder --win --x64 --publish never -c electron-builder.win-release.yml"
+    "package": "yarn bundle && electron-builder --publish never -c electron-builder.yml",
+    "package:dir": "yarn bundle && electron-builder --dir --publish never -c electron-builder.yml",
+    "package:mac": "yarn bundle && electron-builder --mac --publish never -c electron-builder.yml -c.mac.identity=-",
+    "package:mac:release": "yarn bundle && electron-builder --mac --arm64 --publish never -c electron-builder.mac-release.yml",
+    "package:win:release": "yarn bundle && electron-builder --win --x64 --publish never -c electron-builder.win-release.yml",
+    "prepare:plugins": "node ../tools/prepare-plugins.mjs"
   },
   "theiaPluginsDir": "plugins",
   "theiaPlugins": {
@@ -161,7 +162,7 @@
         "applicationName": "Fabi",
         "defaultIconTheme": "material-icon-theme",
         "preferences": {
-          "workbench.colorTheme": "fabi-islands",
+          "workbench.colorTheme": "fabi-cursor-dark",
           "workbench.iconTheme": "material-icon-theme",
           "window.titleBarStyle": "custom",
           "window.menuBarVisibility": "compact",

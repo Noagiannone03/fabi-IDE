@@ -44,3 +44,10 @@ button { cursor: pointer; }
 button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #b9b4d6; outline-offset: 2px; }
 button:disabled { opacity: .6; cursor: progress; }
 @media (max-height: 500px) { .card { padding: 18px; gap: 12px; } .card-head .preview { width: 34px; height: 34px; } }
+
+select.input { color-scheme: dark; font: inherit; }
+#sshFields .field { margin-bottom: 12px; }
+
+/* Keyboard focus uses the surface, never a ring. */
+:focus { outline:none!important; }
+button:focus-visible, input:focus-visible, summary:focus-visible { background-color:#ffffff12; outline:none!important; }

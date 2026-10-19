@@ -1,22 +1,12 @@
+import { SWARM_ENGINE_ENABLED } from '../common/fabi-product-features';
 import { injectable, inject } from '@theia/core/shared/inversify';
 import { Emitter, Event } from '@theia/core';
 import { FrontendApplicationContribution } from '@theia/core/lib/browser';
 import { ContextKeyService } from '@theia/core/lib/browser/context-key-service';
 import { AIActivationService, ENABLE_AI_CONTEXT_KEY } from '@theia/ai-core/lib/browser';
 
-/**
- * Activation IA « toujours allumée » pour Fabi.
- *
- * Theia (`@theia/ai-ide`) rebinde `AIActivationService` sur une implémentation
- * pilotée par la préférence `ai-features.AiEnable.enableAI` — IA DÉSACTIVÉE par
- * défaut, à activer à la main. Côté produit Fabi, l'IA EST le produit : pas de
- * première activation, pas d'écran « AI Features are Disabled », pas de toggle
- * qui puisse l'éteindre.
- *
- * On rebinde donc par-dessus (cf. fabi-swarm-frontend-module — chargé APRÈS
- * ai-ide grâce à la dépendance déclarée) avec un service constant : `isActive`
- * et `canRun` valent toujours `true`. La confiance d'espace de travail est déjà
- * désactivée dans la config Theia de l'app, donc aucune restriction `canRun`.
+/** Legacy Theia/Swarm chat activation follows the build-time product policy.
+ * Assist has its own contribution and does not depend on this activation key.
  */
 @injectable()
 export class FabiAIActivationService implements AIActivationService, FrontendApplicationContribution {
@@ -24,8 +14,8 @@ export class FabiAIActivationService implements AIActivationService, FrontendApp
     @inject(ContextKeyService)
     protected readonly contextKeyService: ContextKeyService;
 
-    readonly isActive = true;
-    readonly canRun = true;
+    readonly isActive = SWARM_ENGINE_ENABLED;
+    readonly canRun = SWARM_ENGINE_ENABLED;
 
     // Émetteurs jamais déclenchés (l'état ne change jamais) mais requis par le contrat.
     protected readonly activeStatusEmitter = new Emitter<boolean>();
@@ -41,7 +31,7 @@ export class FabiAIActivationService implements AIActivationService, FrontendApp
 
     initialize(): void {
         // La clé de contexte gouverne l'affichage de pans entiers de l'UI IA
-        // (menus, vues). On la force et on la verrouille à true.
-        this.contextKeyService.createKey(ENABLE_AI_CONTEXT_KEY, true);
+        // (menus, vues). Assist reste indépendant de cette clé.
+        this.contextKeyService.createKey(ENABLE_AI_CONTEXT_KEY, SWARM_ENGINE_ENABLED);
     }
 }

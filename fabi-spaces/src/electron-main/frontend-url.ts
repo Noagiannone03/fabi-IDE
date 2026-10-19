@@ -43,3 +43,11 @@ export function spaceWebPreferences(ctx: FrontendUrlContext): WebPreferences {
         enableDeprecatedPaste: true
     } as WebPreferences;
 }
+
+/** Remote frontends keep the local backend available for SSH, preferences and dialogs. */
+export function buildRemoteFrontendUrl(ctx: FrontendUrlContext, workspacePath: string, port: number): string {
+    const url = new URL(buildFrontendUrl(ctx, workspacePath || '!empty'));
+    url.searchParams.set('port', String(port));
+    url.searchParams.set('localPort', String(ctx.backendPort));
+    return url.toString();
+}

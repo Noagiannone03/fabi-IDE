@@ -46,10 +46,13 @@ try {
         };
     });
     await page.goto(pathToFileURL(resolve(root, 'fabi-spaces/resources/rail/modal.html')).href);
+    await focus.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await page.evaluate(() => window.emitModal({ folder: '/Projects/interface', defaultName: 'Interface', color: '#5E5CE6' }));
     await page.evaluate(() => document.fonts.ready);
     assert.equal(await page.$eval('#nameInput', el => document.activeElement === el), true);
     assert.equal(await page.$eval('.personalization', el => el.open), false);
+    await page.keyboard.press('Tab');
+    assert.equal(await page.$eval('#spaceType', el => document.activeElement === el), true);
     await page.keyboard.press('Tab');
     assert.equal(await page.$eval('#changeFolder', el => document.activeElement === el), true);
     await page.focus('#createBtn');
@@ -72,8 +75,21 @@ try {
     await page.$eval('#createBtn', el => el.click());
     await page.$eval('#createBtn', el => el.click());
     assert.equal(await page.evaluate(() => window.chromeTestCalls.filter(call => call.name === 'create').length), 1);
+    // SSH delegates host/auth/folder selection to upstream Theia after closing the local modal.
+    await page.reload();
+    // Navigation resets focus emulation; keep headless input tests independent of macOS lock state.
+    await focus.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+    await page.evaluate(() => window.emitModal({ folder: '', defaultName: '', color: '#5E5CE6' }));
+    await page.select('#spaceType', 'ssh');
+    await page.$eval('#createBtn', el => el.click());
+    const ssh = await page.evaluate(() => window.chromeTestCalls.find(call => call.name === 'create').data);
+    assert.deepEqual(ssh, { connection: 'ssh' });
+    assert.equal(await page.$eval('#localFields', el => el.hidden), true);
+    assert.equal(await page.$('#sshPath'), null);
+    assert.equal(await page.$('input[type=password]'), null);
     await page.setViewport({ width: 52, height: 700, deviceScaleFactor: 1 });
-    await page.goto(pathToFileURL(resolve(root, 'fabi-spaces/resources/rail/topbar.html')).href);
+    await page.goto(pathToFileURL(resolve(root, 'fabi-spaces/resources/rail/tab-strip.html')).href);
+    await focus.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await page.evaluate(() => window.emitState({ expanded: false, activeId: 'a', spaces: [
         { id: 'a', name: 'Interface', color: '#5E5CE6' }, { id: 'b', name: 'Backend', color: '#30D158' }
     ] }));
@@ -102,6 +118,7 @@ try {
     assert.deepEqual(await page.evaluate(()=>window.chromeTestCalls.find(c=>c.name==='reorder').data), ['b','a']);
     await page.setViewport({ width:250,height:188,deviceScaleFactor:1 });
     await page.goto(pathToFileURL(resolve(root,'fabi-spaces/resources/rail/rail.html')).href);
+    await focus.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     await page.evaluate(()=>window.emitEdit({id:'a',name:'Interface'}));
     assert.equal(await page.$eval('#space-name',el=>document.activeElement===el),true);
     await page.$eval('#space-name',el=>{el.value='   ';});
@@ -120,15 +137,15 @@ try {
     await page.keyboard.press('Enter');
     assert.equal(await page.$eval('#keep-space',el=>document.activeElement===el),true);
     assert.equal(await page.evaluate(()=>window.chromeTestCalls.filter(c=>c.name==='close').length),0);
-    await page.click('#keep-space');
+    await page.$eval('#keep-space', el => el.click());
     await page.keyboard.press('Escape');
     const dismissed=await page.evaluate(()=>window.chromeTestCalls.filter(c=>c.name==='dismiss').length);
     await page.evaluate(()=>window.emitEdit({id:'a',name:'Interface',menu:true,y:20}));
     await page.mouse.click(700,500);
     assert.equal(await page.evaluate(()=>window.chromeTestCalls.filter(c=>c.name==='dismiss').length),dismissed+1);
     await page.evaluate(()=>window.emitEdit({id:'a',name:'Interface',menu:true,y:20}));
-    await page.click('#remove-action');
-    await page.click('#confirm-remove');
+    await page.$eval('#remove-action', el => el.click());
+    await page.$eval('#confirm-remove', el => el.click());
     assert.equal(await page.evaluate(()=>window.chromeTestCalls.find(c=>c.name==='close').data),'a');
     // Minimal native markup to test the actual stylesheet cascade, not shell behavior.
     await page.setViewport({ width: 900, height: 700, deviceScaleFactor: 1 });

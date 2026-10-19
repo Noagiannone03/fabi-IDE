@@ -8,7 +8,7 @@
  *
  * Produit :
  *   branding/fox.svg              → renard vectoriel, fond transparent
- *   branding/fabi-icon.svg        → icône (renard + fond carré arrondi dégradé)
+ *   branding/fabi-icon.svg        → icône (renard sur fond sombre arrondi)
  *   branding/png/fox-<n>.png      → renard transparent, plusieurs tailles
  *   branding/png/icon-<n>.png     → icône complète, plusieurs tailles
  *   branding/icon.ico             → icône Windows (multi-tailles, PNG embarqué)
@@ -16,10 +16,11 @@
  *
  * Encodage PNG fait main (zlib natif + CRC32) : pas de sharp/canvas.
  */
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdirSync, copyFileSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
+import { execFileSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'branding');
@@ -48,10 +49,10 @@ const FOX = [
   '...23344332...',
 ];
 const GRID_W = 14, GRID_H = 12;
+const BG_TOP = [0x24, 0x1a, 0x14];
+const BG_BOT = [0x0b, 0x08, 0x07];
 
-// Fond de l'icône : dégradé sombre chaud (charte Fabi)
-const BG_TOP = [0x24, 0x1a, 0x14];   // #241a14
-const BG_BOT = [0x0b, 0x08, 0x07];   // #0b0807
+
 
 const hexToRgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 
@@ -105,7 +106,7 @@ function setPx(buf, size, x, y, [r, g, b], a = 255) {
 // renard seul, transparent
 function rasterFox(size) {
   const buf = blank(size);
-  const block = Math.floor((size * 0.86) / GRID_W);
+  const block = Math.max(1, Math.floor((size * 0.86) / GRID_W));
   const foxW = block * GRID_W, foxH = block * GRID_H;
   const ox = Math.floor((size - foxW) / 2), oy = Math.floor((size - foxH) / 2);
   for (let gy = 0; gy < GRID_H; gy++) {
@@ -138,7 +139,7 @@ function rasterIcon(size) {
     }
   }
   // renard ~66% de la largeur, légèrement remonté
-  const block = Math.floor((size * 0.62) / GRID_W);
+  const block = Math.max(1, Math.floor((size * 0.62) / GRID_W));
   const foxW = block * GRID_W, foxH = block * GRID_H;
   const ox = Math.floor((size - foxW) / 2);
   const oy = Math.floor((size - foxH) / 2 - size * 0.01);
@@ -209,7 +210,7 @@ function buildIco(entries) { // entries: [{size, png}]
 }
 
 // --- Run --------------------------------------------------------------------
-rmSync(OUT, { recursive: true, force: true });
+// Preserve unrelated branding assets when regenerating the icons.
 mkdirSync(join(OUT, 'png'), { recursive: true });
 mkdirSync(join(OUT, 'fabi.iconset'), { recursive: true });
 
@@ -240,3 +241,17 @@ for (const [name, s] of Object.entries(ICONSET))
 
 console.log('✓ Assets générés dans branding/ :');
 console.log('  fox.svg, fabi-icon.svg, png/ (fox-* & icon-*), icon.ico, fabi.iconset/');
+
+// Installed app: dark tile. Running Dock/launcher: transparent fox.
+for (const [source, target] of [
+  ['png/icon-512.png', 'icon-512.png'], ['icon.ico', 'icon.ico']
+]) copyFileSync(join(OUT, source), join(ROOT, 'electron-app/resources', target));
+writeFileSync(join(ROOT, 'fabi-swarm/src/electron-main/fabi-launcher-logo.ts'),
+  "// Generated from branding/png/fox-512.png by tools/gen-logo.mjs.\n" +
+  "export const FABI_FOX_DATA_URI = 'data:image/png;base64," +
+  readFileSync(join(OUT, 'png/fox-512.png')).toString('base64') + "';\n");
+
+if (process.platform === 'darwin') {
+  execFileSync('iconutil', ['-c', 'icns', join(OUT, 'fabi.iconset'), '-o', join(OUT, 'fabi.icns')]);
+  copyFileSync(join(OUT, 'fabi.icns'), join(ROOT, 'electron-app/resources/fabi.icns'));
+}

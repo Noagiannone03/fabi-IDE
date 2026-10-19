@@ -1,9 +1,10 @@
+import { observationPath } from './fabi-agent-observations';
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import * as net from 'node:net';
-import { MaestroAgent, MaestroStatus, MaestroWaitingKind } from '../common/fabi-maestro-protocol';
+import { MaestroAgent, MaestroToolObservation, MaestroStatus, MaestroWaitingKind } from '../common/fabi-maestro-protocol';
 
 /**
  * Source du client de hook, EMBARQUÉE (écrite à l'install). Évite toute
@@ -11,7 +12,7 @@ import { MaestroAgent, MaestroStatus, MaestroWaitingKind } from '../common/fabi-
  * Claude/Codex sur chaque événement → relaie au socket local de Maestro.
  * NB : pas de template literal ni de `${}` à l'intérieur (script autonome).
  */
-const HOOK_CLIENT_SOURCE = `#!/usr/bin/env node
+export const HOOK_CLIENT_SOURCE = `#!/usr/bin/env node
 'use strict';
 const net = require('node:net');
 const os = require('node:os');
@@ -35,6 +36,18 @@ function ttyForParent() {
         return tty.indexOf('/dev/') === 0 ? tty : '/dev/' + tty;
     } catch (e) { return undefined; }
 }
+function ancestorsForParent() {
+    const result = [];
+    let pid = process.ppid;
+    try {
+        const rows = execFileSync('ps', ['-axo', 'pid=,ppid='], { encoding: 'utf8', timeout: 1500 });
+        const parents = new Map(rows.trim().split('\\n').map(function (line) { return line.trim().split(/\\s+/).map(Number); }));
+        while (pid > 1 && result.length < 24 && result.indexOf(pid) < 0) {
+            result.push(pid); pid = parents.get(pid);
+        }
+    } catch (e) {}
+    return result;
+}
 function main() {
     let raw = '';
     process.stdin.setEncoding('utf8');
@@ -45,7 +58,7 @@ function main() {
         const socket = net.createConnection(socketPath);
         socket.setTimeout(2500);
         socket.on('connect', function () {
-            socket.end(JSON.stringify({ source: source, payload: payload, runtime: { pid: process.ppid, tty: ttyForParent(), terminal: process.env.FABI_AGENT_TERMINAL, receivedAt: Date.now() } }) + '\\n');
+            socket.end(JSON.stringify({ source: source, payload: payload, runtime: { pid: process.ppid, ancestors: ancestorsForParent(), tty: ttyForParent(), terminal: process.env.FABI_AGENT_TERMINAL, receivedAt: Date.now() } }) + '\\n');
         });
         socket.on('timeout', function () { socket.destroy(); });
         socket.on('error', function () {});
@@ -58,10 +71,11 @@ main();
 interface HookEnvelope {
     source?: string;
     payload?: Record<string, unknown>;
-    runtime?: { pid?: number; tty?: string; terminal?: string; receivedAt?: number };
+    runtime?: { ancestors?: number[]; pid?: number; tty?: string; terminal?: string; receivedAt?: number };
 }
 
 interface HookSession {
+    observations?: MaestroToolObservation[];
     source: 'claude' | 'codex';
     id: string;
     directory?: string;
@@ -72,6 +86,8 @@ interface HookSession {
     preview?: string;
     updatedAt: number;
     pid?: number;
+    ancestors?: number[];
+    turnStartedAt?: number;
     /** Widget du terminal d'agent Fabi (env FABI_AGENT_TERMINAL), si lancé depuis Fabi. */
     terminal?: string;
 }
@@ -185,26 +201,32 @@ export class MaestroHookBridge {
             }
             const free = (candidate: HookSession) =>
                 !used.has(this.key(candidate.source, candidate.id)) && candidate.source === agent.source;
+            const exact = (candidate: HookSession) => !!agent.surface && (
+                candidate.terminal === agent.surface.widgetId
+                || (!!agent.surface.processId && !!candidate.ancestors?.includes(agent.surface.processId)));
             // Rattachement exact (terminal lancé par Fabi), sinon heuristique par dossier.
-            const hook = hooks.find(candidate => free(candidate) && !!candidate.terminal
-                && candidate.terminal === agent.surface?.widgetId)
+            const hook = hooks.find(candidate => free(candidate) && candidate.id === agent.id && (!agent.approximate || !agent.surface || exact(candidate)))
+                ?? hooks.find(candidate => free(candidate) && exact(candidate))
                 ?? hooks.find(candidate => free(candidate) && !candidate.terminal
                     && this.sameDirectory(candidate.directory, agent.directory));
             if (!hook) {
                 return agent;
             }
             used.add(this.key(hook.source, hook.id));
+            const newerNative = agent.id === hook.id && (agent.activityAt ?? 0) > hook.updatedAt;
             return {
                 ...agent,
                 key: `${hook.source}:${hook.id}`,
                 id: hook.id,
-                status: hook.status,
-                waitingKind: hook.waitingKind,
-                pendingPermission: hook.pendingPermission,
+                status: newerNative ? agent.status : hook.status,
+                turnStartedAt: newerNative ? agent.turnStartedAt : hook.turnStartedAt ?? (agent.id === hook.id ? agent.turnStartedAt : undefined),
+                waitingKind: newerNative ? agent.waitingKind : hook.waitingKind,
+                pendingPermission: newerNative ? undefined : hook.pendingPermission,
                 preview: hook.preview || agent.preview,
                 model: hook.model || agent.model,
                 updatedAt: hook.updatedAt,
-                approximate: false
+                observations: [...(agent.id === hook.id ? agent.observations ?? [] : []), ...hook.observations ?? []].sort((a, b) => a.at - b.at).slice(-40),
+                approximate: !((!agent.approximate && hook.id === agent.id) || exact(hook))
             };
         });
     }
@@ -260,7 +282,7 @@ export class MaestroHookBridge {
             this.onChange();
             return;
         }
-        const current = this.sessions.get(key) || {
+        const current: HookSession = this.sessions.get(key) || {
             source,
             id,
             status: 'idle' as MaestroStatus,
@@ -269,14 +291,27 @@ export class MaestroHookBridge {
         current.directory = typeof payload.cwd === 'string' ? payload.cwd : current.directory;
         current.model = typeof payload.model === 'string' ? payload.model : current.model;
         current.pid = envelope.runtime?.pid || current.pid;
+        if (Array.isArray(envelope.runtime?.ancestors)) current.ancestors = envelope.runtime.ancestors
+            .filter(pid => Number.isSafeInteger(pid) && pid > 1).slice(0, 24);
         current.terminal = envelope.runtime?.terminal || current.terminal;
         current.updatedAt = envelope.runtime?.receivedAt || Date.now();
         current.preview = this.preview(payload) || current.preview;
+        if (['PreToolUse', 'PostToolUse', 'PostToolUseFailure'].includes(event) && typeof payload.tool_name === 'string') {
+            const input = payload.tool_input as Record<string, unknown> | undefined;
+            const requested = typeof input?.file_path === 'string' ? input.file_path : typeof input?.path === 'string' ? input.path : undefined;
+            const file = current.directory ? observationPath(current.directory, requested) : undefined;
+            current.observations = [...current.observations ?? [], { at: Date.now(), sessionId: id, source: current.source, origin: 'hook' as const,
+                phase: event === 'PreToolUse' ? 'started' as const : event === 'PostToolUse' ? 'completed' as const : 'failed' as const,
+                tool: payload.tool_name.slice(0, 100), ...(file ? { path: file } : {}) }].slice(-40);
+        }
         current.waitingKind = undefined;
         current.pendingPermission = undefined;
 
         switch (event) {
             case 'UserPromptSubmit':
+                current.turnStartedAt = current.updatedAt;
+                current.status = 'generating';
+                break;
             case 'PreToolUse':
                 if (typeof payload.tool_name === 'string' && /askuserquestion|question/i.test(payload.tool_name)) {
                     current.status = 'waiting';

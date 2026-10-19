@@ -1,3 +1,4 @@
+import { requireSwarmEngine } from '../common/fabi-product-features';
 // Service backend du moteur fabi-code (OpenCode en sidecar).
 //
 // Responsabilités :
@@ -213,6 +214,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
     // ---- démarrage du sidecar ----
 
     protected async launch(): Promise<void> {
+        requireSwarmEngine();
         const found = findFabiCode();
         if (!found) {
             const message = 'moteur fabi-code qualifié introuvable';
@@ -250,6 +252,7 @@ export class FabiCodeServiceImpl implements FabiCodeService, BackendApplicationC
 
     /** Redémarre OpenCode si le modèle/Request Agent/token actif a changé. */
     protected async ensureCurrentServer(): Promise<void> {
+        requireSwarmEngine();
         if (!process.env.FABI_CODE_BASE_URL) {
             await this.waitForConsumableSwarm();
         }

@@ -8,7 +8,7 @@ const source = ts.createSourceFile('manager.ts', readFileSync('fabi-spaces/src/e
 const manager = source.statements.find(node => ts.isClassDeclaration(node) && node.name.text === 'SpaceManager');
 const method = manager.members.find(node => ts.isMethodDeclaration(node) && node.name.getText(source) === 'open');
 assert.ok(method);
-const context = { setTimeout, Promise };
+const context = { setTimeout, Promise, console, playSpaceTransition() {} };
 vm.runInNewContext(ts.transpileModule(`globalThis.TestManager = class { ${method.getText(source)} };`, {
     compilerOptions: { target: ts.ScriptTarget.ES2020 }
 }).outputText, context);
@@ -18,14 +18,14 @@ function fixture() {
     const spaces = new Map([['a', { id: 'a' }], ['b', { id: 'b' }]]);
     const activations = [];
     const views = new Map([...spaces.keys()].map(id => [id, {
-        setVisible() {},
-        webContents: { isDestroyed: () => false, focus: () => activations.push(id) }
+        setVisible() {}, getBounds: () => ({ x: 0, y: 32, width: 900, height: 600 }),
+        webContents: { executeJavaScript: () => new Promise(() => {}), isDestroyed: () => false, focus: () => activations.push(id) }
     }]));
     Object.assign(instance, {
-        disposed: false, openSequence: 0, views, viewReady: new WeakMap(),
+        disposed: false, openSequence: 0, previewSequence: 0, views, viewReady: new WeakMap(),
         store: { get: id => spaces.get(id), getSpaces: () => [...spaces.values()], setActive() {} },
-        ensureView() {}, capturePreview: () => Promise.resolve(undefined),
-        layout() {}, applyAccent() {}, fadeInView() {}, enforceSuspension() {}, pushState() {}
+        ensureView(id) { return views.get(id); },
+        ensureViewport: () => Promise.resolve(), layout() {}, applyAccent() {}, enforceSuspension() {}, pushState() {}
     });
     let release;
     instance.viewReady.set(views.get('a'), new Promise(resolve => { release = resolve; }));
@@ -53,3 +53,22 @@ await older;
 assert.equal(instance.activeId, 'b');
 assert.deepEqual(activations, ['b']);
 console.log('Space lifecycle: latest request wins; removed, suspended, disposed and destroyed views never activate.');
+
+// Hung renderer effects must not block selection, chrome updates or another click.
+{
+    const { instance, activations, release } = fixture();
+    release();
+    let updates = 0;
+    instance.pushState = () => updates++;
+    instance.ensureViewport = () => new Promise(() => {});
+    for (const id of ['a', 'b', 'a', 'b', 'a']) {
+        await Promise.race([instance.open(id), new Promise((_, reject) => {
+            const timer = setTimeout(() => reject(new Error('Navigation awaited a renderer effect')), 250);
+            timer.unref();
+        })]);
+        assert.equal(instance.activeId, id);
+    }
+    assert.equal(updates, 5);
+    assert.deepEqual(activations, ['a', 'b', 'a', 'b', 'a']);
+}
+console.log('Space selection remains responsive when renderer animation and viewport promises never settle.');

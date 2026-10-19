@@ -12,7 +12,7 @@
 // contrôles fenêtre) explicitement ci-dessous.
 
 import { app, BaseWindow, WebContentsView, dialog, ipcMain, screen, Rectangle, IpcMainEvent } from 'electron';
-import { basename } from 'path';
+import { basename, join, dirname } from 'path';
 import { CHANNEL_REQUEST_RELOAD, CHANNEL_FOCUS_WINDOW } from '@theia/core/lib/electron-common/electron-api';
 import {
     SpaceDescriptor, SpacesState, SpacesIpc, SPACE_COLORS,
@@ -20,13 +20,15 @@ import {
 } from '../common/space-types';
 import { MaestroHostIpc } from 'fabi-swarm/lib/common/fabi-maestro-protocol';
 import { SpaceStore } from './space-store';
-import { FrontendUrlContext, buildFrontendUrl, spaceWebPreferences } from './frontend-url';
+import { parseRemoteSpace } from '../common/remote-space';
+import { playSpaceTransition } from '../common/space-transition';
+import { FrontendUrlContext, buildFrontendUrl, buildRemoteFrontendUrl, spaceWebPreferences } from './frontend-url';
 import { attachNativeView, reattachNativeView } from './native-view-layout';
 
 /** Largeur du rail au repos (colonne d'icônes d'espaces), en px CSS. */
 const RAIL_COLLAPSED = 52;  // Narrow, connected Space tabs; no desktop thumbnails.
 /** Hauteur de la barre de titre du haut (déplaçable + traffic-lights). */
-const TOPBAR_HEIGHT = 32;
+const TITLEBAR_HEIGHT = process.platform === 'darwin' ? 32 : 0;
 /**
  * Les WebContentsView sont compositées séparément par Chromium. Sur les écrans
  * Retina, deux rectangles strictement adjacents peuvent laisser apparaître une
@@ -48,11 +50,11 @@ export interface SpaceManagerOptions extends FrontendUrlContext {
     appName: string;
     /** Chemin FS du rail.html (la sidebar d'espaces). */
     railHtmlPath: string;
-    /** Chemin FS du topbar.html (la barre de titre déplaçable). */
-    topbarHtmlPath: string;
+    /** Chemin FS des onglets verticaux de Spaces. */
+    tabStripHtmlPath: string;
     /** Chemin FS du modal.html (popup de création de Space). */
     modalHtmlPath: string;
-    /** Chemin FS du preload partagé (rail + topbar + modal). */
+    /** Chemin FS du preload partagé (rail + onglets + modal). */
     railPreloadPath: string;
 }
 
@@ -61,13 +63,17 @@ export class SpaceManager {
     protected readonly store = new SpaceStore();
     protected host!: BaseWindow;
     protected railView!: WebContentsView;
-    protected topbarView!: WebContentsView;
+    protected tabStripView!: WebContentsView;
+    protected titlebarView?: WebContentsView;
+    protected readonly ipcCleanup: (() => void)[] = [];
+    protected cancelModal?: () => void;
     /** Modal de création (popup centré), présent uniquement pendant la création. */
     protected modalView: WebContentsView | undefined;
     /** Vues matérialisées (frontends vivants), par id de Space. */
     protected readonly views = new Map<string, WebContentsView>();
     /** Chargement + validation du viewport natif de chaque vue. */
     protected readonly viewReady = new WeakMap<WebContentsView, Promise<void>>();
+    protected readonly remotePorts = new Map<string, number>();
     protected activeId: string | undefined;
     /** Le rail est-il déplié (survol) ? Sa largeur en dépend ; il overlay l'IDE sans le pousser. */
     protected railExpanded = false;
@@ -85,6 +91,8 @@ export class SpaceManager {
         this.createHost();
         console.log('[fabi-spaces] boot: host créé');
         const chromeReady = this.createChrome();
+        // Observe both branches immediately, including an early frontend failure.
+        const initialLoads: Promise<void>[] = [chromeReady];
         console.log('[fabi-spaces] boot: chrome créé →', this.opts.railHtmlPath);
         this.registerIpc();
 
@@ -95,14 +103,18 @@ export class SpaceManager {
             : this.store.getSpaces()[0]?.id;
         if (first) {
             console.log('[fabi-spaces] boot: ouverture du Space', first);
-            await this.open(first);
+            initialLoads.push(this.open(first));
         }
-        await chromeReady;
-        // La fenêtre reste cachée jusqu'à ce que Chromium confirme que chaque
-        // surface initiale possède le même viewport que sa View native. Cela évite
-        // d'exposer la texture implicite 800x600 pendant le premier frame macOS.
+        await Promise.all(initialLoads);
+        if (this.disposed) { return; }
+        // Chromium can defer renderer work until a native window is visible.
+        // Set native bounds before showing, then verify without gating startup.
         this.layout();
         this.host.show();
+        for (const view of [this.railView, this.tabStripView, this.titlebarView, ...this.views.values()]) {
+            if (view) { void this.ensureViewport(view, view.getBounds(), 'boot')
+                .catch(error => console.warn('[fabi-spaces] viewport :', error)); }
+        }
         // Focusing a WebContentsView while its host is hidden does not reliably
         // give Chromium an active surface on macOS. Restore focus after show so
         // the first workspace can finish its animation-frame-based startup.
@@ -135,7 +147,7 @@ export class SpaceManager {
             minWidth: 640,
             minHeight: 400,
             title: this.opts.appName,
-            backgroundColor: '#0c0d0f',
+            backgroundColor: '#191a1e',
             show: false,
             ...(mac
                 ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 13, y: 11 } }
@@ -143,7 +155,11 @@ export class SpaceManager {
         });
         this.host.center();
         this.host.on('resize', () => this.layout());
-        this.host.on('closed', () => this.dispose());
+        this.host.on('closed', () => {
+            if (this.disposed) { return; }
+            this.dispose();
+            app.quit();
+        });
     }
 
     /** Crée une WebContentsView de chrome (topbar/rail) avec le preload partagé. */
@@ -165,8 +181,8 @@ export class SpaceManager {
         // Sidebar d'espaces (gauche) + barre de titre (haut) : deux vues de chrome.
         this.railView = this.chromeView();
         this.railView.setBackgroundColor('#00000000');
-        this.topbarView = this.chromeView();
-        this.topbarView.setBackgroundColor('#0c0d0f');
+        this.tabStripView = this.chromeView();
+        this.tabStripView.setBackgroundColor('#191a1e');
 
         const { width: W, height: H } = this.contentBounds();
         const railReady = this.loadView(
@@ -175,13 +191,25 @@ export class SpaceManager {
             'rail',
             () => this.railView.webContents.loadFile(this.opts.railHtmlPath)
         );
-        const topbarReady = this.loadView(
-            this.topbarView,
-            this.topbarBounds(W, H),
-            'topbar',
-            () => this.topbarView.webContents.loadFile(this.opts.topbarHtmlPath)
+        const tabsReady = this.loadView(
+            this.tabStripView,
+            this.tabStripBounds(W, H),
+            'tab-strip',
+            () => this.tabStripView.webContents.loadFile(this.opts.tabStripHtmlPath)
         );
-        return Promise.all([railReady, topbarReady]).then(() => {
+        const loads = [railReady, tabsReady];
+        // The vertical tabs are not a title bar. Give the macOS title area its
+        // own sandboxed surface: no preload, IPC, buttons or manual mouse loop.
+        if (TITLEBAR_HEIGHT) {
+            const titlebar = new WebContentsView({ webPreferences: {
+                sandbox: true, contextIsolation: true, nodeIntegration: false
+            } });
+            this.titlebarView = titlebar;
+            titlebar.setBackgroundColor('#191a1e');
+            loads.push(this.loadView(titlebar, { x: 0, y: 0, width: W, height: TITLEBAR_HEIGHT },
+                'titlebar', () => titlebar.webContents.loadFile(join(dirname(this.opts.tabStripHtmlPath), 'titlebar.html'))));
+        }
+        return Promise.all(loads).then(() => {
             this.railView.setVisible(this.railExpanded);
         });
     }
@@ -204,19 +232,25 @@ export class SpaceManager {
         load: () => Promise<void>
     ): Promise<void> {
         attachNativeView(this.host.contentView, view, bounds);
-        const ready = load().then(() => this.ensureViewport(view, bounds, name));
+        const ready = load().then(() => this.ensureViewport(view, view.getBounds(), name));
+        // Callers still await the original promise. Attach a rejection observer
+        // now because another view may be loading before they reach their await.
+        void ready.catch(() => undefined);
         this.viewReady.set(view, ready);
         return ready;
     }
 
     protected async ensureViewport(view: WebContentsView, bounds: Rectangle, name: string): Promise<void> {
-        if (this.disposed || view.webContents.isDestroyed()) {
+        if (this.disposed || !this.host.isVisible() || view.webContents.isDestroyed() || !view.getVisible()) {
             return;
         }
         const viewport = await view.webContents.executeJavaScript(
-            '({ width: window.innerWidth, height: window.innerHeight })',
+            '({ width: window.innerWidth, height: window.innerHeight, hidden: document.hidden })',
             true
-        ) as { width: number; height: number };
+        ) as { width: number; height: number; hidden: boolean };
+        // The renderer may have answered after another Space became active.
+        if (viewport.hidden || this.disposed || view.webContents.isDestroyed() || !view.getVisible()) { return; }
+        bounds = view.getBounds();
         if (viewport.width === bounds.width && viewport.height === bounds.height) {
             return;
         }
@@ -251,7 +285,7 @@ export class SpaceManager {
     protected spaceBounds(W: number, H: number): Rectangle {
         const railW = RAIL_COLLAPSED;
         const x = Math.min(W, Math.max(0, railW - CHROME_OVERLAP));
-        const y = Math.min(H, Math.max(0, TOPBAR_HEIGHT - CHROME_OVERLAP));
+        const y = Math.min(H, Math.max(0, TITLEBAR_HEIGHT - CHROME_OVERLAP));
         return {
             x, y,
             width: Math.max(0, W - x),
@@ -260,19 +294,19 @@ export class SpaceManager {
     }
 
     protected railBounds(W: number, H: number): Rectangle {
-        return { x: 0, y: TOPBAR_HEIGHT, width: W, height: Math.max(1, H - TOPBAR_HEIGHT) };
+        return { x: 0, y: TITLEBAR_HEIGHT, width: W, height: Math.max(1, H - TITLEBAR_HEIGHT) };
     }
 
-    protected topbarBounds(W: number, H: number): Rectangle {
-        return { x: 0, y: TOPBAR_HEIGHT, width: Math.min(RAIL_COLLAPSED, W), height: Math.max(1, H - TOPBAR_HEIGHT) };
+    protected tabStripBounds(W: number, H: number): Rectangle {
+        return { x: 0, y: TITLEBAR_HEIGHT, width: Math.min(RAIL_COLLAPSED, W), height: Math.max(1, H - TITLEBAR_HEIGHT) };
     }
 
     /**
      * Organisation des Spaces :
-     *  - barre de titre (topbar) pleine largeur en haut (déplaçable + traffic-lights) ;
+     *  - barre de titre macOS dédiée en haut (déplaçable + traffic-lights) ;
      *  - gestion des espaces à gauche, uniquement sur demande ;
      *  - l'IDE actif occupe toute la largeur disponible lorsque la gestion est fermée.
-     * z-order (bas → haut) : vues d'IDE, rail, topbar.
+     * z-order (bas → haut) : IDE, onglets, gestion des espaces, titre, modal.
      */
     protected layout(): void {
         if (this.disposed) {
@@ -293,15 +327,20 @@ export class SpaceManager {
         this.host.contentView.addChildView(this.railView);
         this.railView.setVisible(this.railExpanded);
 
-        // Topbar : pleine largeur, tout en haut, au sommet.
-        this.host.contentView.addChildView(this.topbarView);
-        this.topbarView.setBounds(this.topbarBounds(W, H));
+        // Onglets verticaux : colonne de gauche, sous la barre de titre.
+        this.host.contentView.addChildView(this.tabStripView);
+        this.tabStripView.setBounds(this.tabStripBounds(W, H));
 
         if (this.railExpanded) { this.host.contentView.addChildView(this.railView); }
 
+        if (this.titlebarView) {
+            attachNativeView(this.host.contentView, this.titlebarView,
+                { x: 0, y: 0, width: W, height: TITLEBAR_HEIGHT });
+        }
+
         // Modal de création : plein écran, AU-DESSUS de tout.
         if (this.modalView && !this.modalView.webContents.isDestroyed()) {
-            this.modalView.setBounds({ x: 0, y: 0, width: W, height: H });
+            this.modalView.setBounds({ x: 0, y: TITLEBAR_HEIGHT, width: W, height: Math.max(1, H - TITLEBAR_HEIGHT) });
             this.host.contentView.addChildView(this.modalView);
         }
     }
@@ -318,7 +357,8 @@ export class SpaceManager {
         }
         const space = this.store.get(id)!;
         const view = new WebContentsView({ webPreferences: spaceWebPreferences(this.opts) });
-        view.setBackgroundColor('#0c0d0f');
+        view.setBackgroundColor('#191a1e');
+        view.setVisible(false);
         const { width, height } = this.contentBounds();
         // Même invariant que le chrome : dimensionner avant l'attachement afin que
         // le renderer soit créé avec le viewport réellement visible.
@@ -329,7 +369,9 @@ export class SpaceManager {
             view,
             this.spaceBounds(width, height),
             `space:${id}`,
-            () => view.webContents.loadURL(buildFrontendUrl(this.opts, space.workspacePath))
+            () => view.webContents.loadURL(space.remote && this.remotePorts.has(id)
+                ? buildRemoteFrontendUrl(this.opts, space.workspacePath, this.remotePorts.get(id)!)
+                : buildFrontendUrl(this.opts, space.remote ? '!empty' : space.workspacePath))
         );
         return view;
     }
@@ -342,7 +384,21 @@ export class SpaceManager {
                 return;
             }
             if (typeof newUrl === 'string' && newUrl) {
-                wc.loadURL(newUrl);
+                const target = new URL(newUrl);
+                const bundled = new URL(buildFrontendUrl(this.opts, ''));
+                if (target.protocol !== bundled.protocol || target.pathname !== bundled.pathname) { return; }
+                const space = this.store.get(id);
+                if (space?.remote && !target.searchParams.has('localPort')) {
+                    // Disconnect returns to this Space's connection screen, never a local folder with the same path.
+                    const disconnected = new URL(buildFrontendUrl(this.opts, '!empty'));
+                    disconnected.searchParams.set('disconnected', '1');
+                    void wc.loadURL(disconnected.toString());
+                    return;
+                }
+                if (target.hash && target.hash !== '#!empty') {
+                    this.store.update(id, { workspacePath: decodeURI(target.hash.slice(1)) });
+                }
+                void wc.loadURL(newUrl).catch(error => console.error('[fabi-spaces] reload:', error));
             } else {
                 wc.reload();
             }
@@ -380,20 +436,7 @@ export class SpaceManager {
     // Actions
     // ----------------------------------------------------------------------
 
-    protected readonly previewPending = new Set<string>();
     protected openSequence = 0;
-
-    /** Capture only on departure, never on a timer or to disk. */
-    protected capturePreview(id: string): Promise<string | undefined> {
-        const view = this.views.get(id);
-        if (!view || this.previewPending.has(id) || view.webContents.isDestroyed() || view.webContents.isLoading()) { return Promise.resolve(undefined); }
-        this.previewPending.add(id);
-        return view.webContents.capturePage().then(image => {
-            if (this.disposed || !this.store.get(id) || image.isEmpty()) { return; }
-            return 'data:image/jpeg;base64,' + image.resize({ width: Math.min(1400, view.getBounds().width) }).toJPEG(80).toString('base64');
-        }).catch(() => undefined) // A closing or suspended view has no usable snapshot.
-            .finally(() => this.previewPending.delete(id));
-    }
 
     /** Affiche un Space sans attendre sa capture ni bloquer les clics suivants. */
     async open(id: string): Promise<void> {
@@ -402,12 +445,12 @@ export class SpaceManager {
         }
         const sequence = ++this.openSequence;
         const previousId = this.activeId;
-        const departure = previousId && previousId !== id ? this.capturePreview(previousId) : Promise.resolve(undefined);
-        this.ensureView(id);
-        const activeView = this.views.get(id)!;
-        await this.viewReady.get(activeView);
-        // Never hold a Space switch hostage to an occluded renderer's capture.
-        const snapshot = await Promise.race([departure, new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 70))]);
+        const activeView = this.ensureView(id);
+        try { await this.viewReady.get(activeView); }
+        catch (error) {
+            if (this.views.get(id) === activeView) { this.destroyView(id); }
+            throw error;
+        }
         // A Space may have been removed or suspended while its renderer loaded.
         // Never activate a stale view, even if no newer open request was made.
         if (sequence !== this.openSequence || this.disposed || !this.store.get(id)
@@ -423,56 +466,19 @@ export class SpaceManager {
         this.layout();
         this.applyAccent(id);
         activeView.webContents.focus();
-        if (previousId !== id) {
-            const ids = this.store.getSpaces().map(space => space.id);
-            this.fadeInView(id, !previousId || ids.indexOf(id) >= ids.indexOf(previousId) ? 1 : -1, snapshot);
-        }
         this.enforceSuspension();
         this.pushState();
-    }
 
-    /** Petit fondu d'entrée sur la vue qui devient active (« on voit que ça change »). */
-    protected fadeInView(id: string, direction = 1, snapshot?: string): void {
-        const view = this.views.get(id);
-        if (!view || view.webContents.isDestroyed() || view.webContents.isLoading()) {
-            return;
+        // Selection is committed above in one main-process turn. Renderer work
+        // is cosmetic/diagnostic and must never delay navigation or its IPC state.
+        void this.ensureViewport(activeView, activeView.getBounds(), `space:${id}`)
+            .catch(error => console.warn('[fabi-spaces] viewport :', error));
+        if (previousId && previousId !== id) {
+            const ids = this.store.getSpaces().map(space => space.id);
+            const direction = ids.indexOf(id) >= ids.indexOf(previousId) ? 1 : -1;
+            void activeView.webContents.executeJavaScript(`(${playSpaceTransition.toString()})(${direction})`)
+                .catch(error => console.warn('[fabi-spaces] animation :', error));
         }
-        view.webContents.executeJavaScript(
-            `(()=>{try{
-                window.fabiSpaceTransition?.cancel();
-                window.fabiSpaceOverlay?.remove();
-                window.fabiSpaceReadyObserver?.disconnect();
-                clearTimeout(window.fabiSpaceReadyTimeout);
-                if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-                const reveal=()=>{
-                window.fabiSpaceReadyObserver?.disconnect();
-                clearTimeout(window.fabiSpaceReadyTimeout);
-                const surface=document.getElementById('theia-app-shell')||document.body;
-                window.fabiSpaceTransition=surface.animate([
-                    {opacity:.8,transform:'translateX(${direction * 30}px)'},
-                    {opacity:1,transform:'translateX(0)'}
-                ],{duration:480,easing:'cubic-bezier(.2,.8,.2,1)'});
-                };
-                const loading=document.querySelector('.theia-preload:not(.theia-hidden)');
-                if(loading){
-                    window.fabiSpaceReadyObserver=new MutationObserver(()=>{
-                        if(!loading.isConnected||loading.classList.contains('theia-hidden'))reveal();
-                    });
-                    window.fabiSpaceReadyObserver.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class']});
-                    window.fabiSpaceReadyTimeout=setTimeout(()=>window.fabiSpaceReadyObserver?.disconnect(),30000);
-                }else reveal();
-                const snapshot=${JSON.stringify(snapshot ?? '')};
-                if(snapshot){
-                    const overlay=document.createElement('img');
-                    overlay.src=snapshot;overlay.alt='';overlay.setAttribute('aria-hidden','true');
-                    Object.assign(overlay.style,{position:'fixed',inset:'0',width:'100%',height:'100%',objectFit:'fill',pointerEvents:'none',zIndex:'90'});
-                    window.fabiSpaceOverlay=overlay;document.documentElement.append(overlay);
-                    const exit=overlay.animate([{opacity:1},{opacity:0}],{duration:280,easing:'cubic-bezier(.2,.8,.2,1)'});
-                    exit.finished.then(()=>overlay.remove(),()=>overlay.remove());
-                }
-            }catch(e){}})();`,
-            true
-        ).catch(() => { /* frontend pas prêt */ });
     }
 
     protected creatingSpace = false;
@@ -487,13 +493,16 @@ export class SpaceManager {
 
     /** Crée un nouveau Space : choix du dossier (OS) → popup de config → création. */
     protected async createSpace(): Promise<void> {
-        const dir = await this.pickFolder();
-        if (dir === undefined) {
-            return; // sélection de dossier annulée
-        }
-        const config = await this.promptNewSpace(dir);
-        if (!config) {
+        const config = await this.promptNewSpace('');
+        if (!config || this.disposed) {
             return; // popup annulé
+        }
+        if (config.connection === 'ssh') {
+            const active = this.activeId && this.views.get(this.activeId);
+            if (active && !active.webContents.isDestroyed()) {
+                active.webContents.send('fabi-spaces:connect-request');
+            }
+            return;
         }
         const space: SpaceDescriptor = {
             id: this.newId(),
@@ -539,16 +548,25 @@ export class SpaceManager {
                 ipcMain.removeListener(SpacesIpc.MODAL_CANCEL, onCancel);
                 ipcMain.removeListener(SpacesIpc.MODAL_PICK_FOLDER, onPick);
                 this.modalView = undefined;
+                this.cancelModal = undefined;
                 try { this.host.contentView.removeChildView(view); } catch { /* déjà détaché */ }
                 if (!wc.isDestroyed()) {
                     wc.close();
                 }
                 this.layout();
+                if (!this.disposed && this.activeId) { this.views.get(this.activeId)?.webContents.focus(); }
                 resolve(result);
             };
 
             const onCreate = (e: IpcMainEvent, data: NewSpaceModalResult): void => {
-                if (e.sender.id === wc.id) { finish({ ...data, dir: currentDir }); }
+                if (e.sender.id !== wc.id || !data) { return; }
+                if (data.connection === 'ssh') {
+                    finish({ connection: 'ssh', name: '', icon: 'remote', color: this.nextColor(), dir: '' });
+                    return;
+                }
+                if (typeof data.name !== 'string' || !data.name.trim() || !currentDir) { return; }
+                finish({ name: data.name.trim().slice(0, 100), icon: typeof data.icon === 'string' ? data.icon : '',
+                    color: this.nextColor(), dir: currentDir });
             };
             const onCancel = (e: IpcMainEvent): void => {
                 if (e.sender.id === wc.id) { finish(undefined); }
@@ -558,7 +576,7 @@ export class SpaceManager {
                     return;
                 }
                 void this.pickFolder().then(d => {
-                    if (d) {
+                    if (d && !settled && !this.disposed) {
                         currentDir = d;
                         if (!wc.isDestroyed()) {
                             wc.send(SpacesIpc.MODAL_FOLDER, d);
@@ -567,18 +585,25 @@ export class SpaceManager {
                 });
             };
 
+            this.cancelModal = () => finish(undefined);
+            wc.once('destroyed', this.cancelModal);
             ipcMain.on(SpacesIpc.MODAL_CREATE, onCreate);
             ipcMain.on(SpacesIpc.MODAL_CANCEL, onCancel);
             ipcMain.on(SpacesIpc.MODAL_PICK_FOLDER, onPick);
 
             wc.once('did-finish-load', () => {
+                if (settled || this.disposed) { return; }
                 const init: NewSpaceModalInit = { folder: currentDir, defaultName: basename(currentDir), color: this.nextColor() };
                 wc.send(SpacesIpc.MODAL_OPEN, init);
+                wc.focus();
             });
 
             this.host.contentView.addChildView(view);
             this.layout();
-            wc.loadFile(this.opts.modalHtmlPath);
+            void wc.loadFile(this.opts.modalHtmlPath).catch(error => {
+                console.error('[fabi-spaces] chargement du dialogue échoué :', error);
+                finish(undefined);
+            });
         });
     }
 
@@ -589,11 +614,19 @@ export class SpaceManager {
             return;
         }
         this.views.delete(id);
+        this.remotePorts.delete(id);
         try {
             this.host.contentView.removeChildView(view);
         } catch { /* déjà détaché */ }
         if (!view.webContents.isDestroyed()) {
-            view.webContents.close();
+            // Release the SSH transport before tearing down its local RPC client.
+            const close = () => { if (!view.webContents.isDestroyed()) { view.webContents.close(); } };
+            if (new URL(view.webContents.getURL() || 'about:blank').searchParams.has('localPort')) {
+                view.setVisible(false);
+                const deadline = setTimeout(close, 1500);
+                void view.webContents.executeJavaScript('window.fabiDisconnectRemote?.()')
+                    .catch(() => undefined).finally(() => { clearTimeout(deadline); close(); });
+            } else { close(); }
         }
     }
 
@@ -655,7 +688,7 @@ export class SpaceManager {
         this.railExpanded = expanded;
         this.layout();
         this.pushState();
-        const target = expanded ? this.railView : this.topbarView;
+        const target = expanded ? this.railView : this.tabStripView;
         target.webContents.focus();
         void target.webContents.executeJavaScript(`document.querySelector('button')?.focus()`).catch(() => {});
     }
@@ -691,21 +724,40 @@ export class SpaceManager {
     // ----------------------------------------------------------------------
 
     protected registerIpc(): void {
+        const on = (channel: string, listener: Parameters<typeof ipcMain.on>[1]): void => {
+            const guarded: typeof listener = (event, ...args) => {
+                if (this.disposed) { return; }
+                try {
+                    Promise.resolve(listener(event, ...args)).catch(error =>
+                        console.error(`[fabi-spaces] ${channel}:`, error));
+                } catch (error) { console.error(`[fabi-spaces] ${channel}:`, error); }
+            };
+            ipcMain.on(channel, guarded);
+            this.ipcCleanup.push(() => ipcMain.removeListener(channel, guarded));
+        };
+        const handle = (channel: string, listener: Parameters<typeof ipcMain.handle>[1]): void => {
+            ipcMain.handle(channel, async (event, ...args) => {
+                if (this.disposed) { return false; }
+                try { return await listener(event, ...args); }
+                catch (error) { console.error(`[fabi-spaces] ${channel}:`, error); return false; }
+            });
+            this.ipcCleanup.push(() => ipcMain.removeHandler(channel));
+        };
         const fromRail = (event: IpcMainEvent) => event.sender.id === this.railView.webContents.id;
         const fromChrome = (event: IpcMainEvent) =>
-            event.sender.id === this.railView.webContents.id || event.sender.id === this.topbarView.webContents.id;
+            event.sender.id === this.railView.webContents.id || event.sender.id === this.tabStripView.webContents.id;
 
-        ipcMain.on(SpacesIpc.READY, e => { if (fromChrome(e)) { this.pushState(); } });
-        ipcMain.on(SpacesIpc.OPEN, (e, id: string) => { if (fromChrome(e)) { void this.open(id); } });
-        ipcMain.on(SpacesIpc.CREATE, e => { if (fromChrome(e)) { void this.create(); } });
-        ipcMain.on(SpacesIpc.CLOSE, (e, id: string) => { if (fromRail(e)) { void this.close(id); } });
-        ipcMain.on(SpacesIpc.RENAME, (e, id: string, name: string) => { if (fromRail(e)) { this.rename(id, name); } });
-        ipcMain.on(SpacesIpc.SET_COLOR, (e, id: string, color: string) => { if (fromRail(e)) { this.setColor(id, color); } });
-        ipcMain.on(SpacesIpc.SET_EMOJI, (e, id: string, emoji: string) => { if (fromRail(e)) { this.setEmoji(id, emoji); } });
-        ipcMain.on(SpacesIpc.REORDER, (e, ids: string[]) => {
+        on(SpacesIpc.READY, e => { if (fromChrome(e)) { this.pushState(); } });
+        on(SpacesIpc.OPEN, (e, id: string) => { if (fromChrome(e)) { return this.open(id); } });
+        on(SpacesIpc.CREATE, e => { if (fromChrome(e)) { return this.create(); } });
+        on(SpacesIpc.CLOSE, (e, id: string) => { if (fromRail(e)) { return this.close(id); } });
+        on(SpacesIpc.RENAME, (e, id: string, name: string) => { if (fromRail(e)) { this.rename(id, name); } });
+        on(SpacesIpc.SET_COLOR, (e, id: string, color: string) => { if (fromRail(e)) { this.setColor(id, color); } });
+        on(SpacesIpc.SET_EMOJI, (e, id: string, emoji: string) => { if (fromRail(e)) { this.setEmoji(id, emoji); } });
+        on(SpacesIpc.REORDER, (e, ids: string[]) => {
             if (fromChrome(e) && Array.isArray(ids) && ids.every(id => typeof id === 'string')) { this.reorder(ids); }
         });
-        ipcMain.on('fabi-spaces:context-menu', (e, id: unknown, y: unknown) => {
+        on('fabi-spaces:context-menu', (e, id: unknown, y: unknown) => {
             if (!fromChrome(e) || typeof id !== 'string') { return; }
             const space = this.store.get(id);
             if (!space) { return; }
@@ -714,26 +766,26 @@ export class SpaceManager {
                 ...space, menu: true, y: typeof y === 'number' && Number.isFinite(y) ? y : 12
             });
         });
-        ipcMain.on('fabi-spaces:dismiss-menu', e => {
+        on('fabi-spaces:dismiss-menu', e => {
             if (fromRail(e)) {
                 this.setExpanded(false);
                 if (this.activeId) { this.views.get(this.activeId)?.webContents.focus(); }
             }
         });
         // Le toggle peut venir du rail OU de la topbar.
-        ipcMain.on(SpacesIpc.TOGGLE_SIDEBAR, e => { if (fromChrome(e)) { this.setExpanded(!this.railExpanded); } });
+        on(SpacesIpc.TOGGLE_SIDEBAR, e => { if (fromChrome(e)) { this.setExpanded(!this.railExpanded); } });
         // La topbar ET le rail peuvent piloter la fenêtre (boutons Win/Linux, double-clic).
-        ipcMain.on(SpacesIpc.WINDOW, (e, action) => { if (fromChrome(e)) { this.windowControl(action); } });
+        on(SpacesIpc.WINDOW, (e, action) => { if (fromChrome(e)) { this.windowControl(action); } });
 
         // Barre Projets d'un Space : nombre d'agents à regarder (pastille du rail).
         // Un Space suspendu garde sa dernière valeur jusqu'à ce qu'on y revienne.
-        ipcMain.on(SpacesIpc.ATTENTION, (e, count: unknown) => {
+        on(SpacesIpc.ATTENTION, (e, count: unknown) => {
             const id = this.spaceIdOf(e.sender.id);
             if (id && typeof count === 'number' && Number.isFinite(count)) {
                 this.setAttention(id, count);
             }
         });
-        ipcMain.handle(SpacesIpc.ACTIVATE_SELF, async e => {
+        handle(SpacesIpc.ACTIVATE_SELF, async e => {
             const id = this.spaceIdOf(e.sender.id);
             if (!id) {
                 return false;
@@ -746,8 +798,58 @@ export class SpaceManager {
             return true;
         });
 
+        handle('fabi-spaces:remote-create', async (e, identity: unknown, port: unknown) => {
+            if (!this.spaceIdOf(e.sender.id)) { return false; }
+            const remote = parseRemoteSpace(identity);
+            if (!remote || typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535
+                || port === this.opts.backendPort) { return false; }
+            const id = this.newId();
+            this.store.add({ id, remote, name: remote.host, emoji: 'remote', color: this.nextColor(),
+                workspacePath: '', lastActive: Date.now() });
+            this.remotePorts.set(id, port);
+            await this.open(id);
+            return true;
+        });
+        on('fabi-spaces:workspace-changed', (e, path: unknown) => {
+            const id = this.spaceIdOf(e.sender.id);
+            const space = id && this.store.get(id);
+            if (!id || !space || typeof path !== 'string' || !path.startsWith('/') || /[\0\r\n]/.test(path)) { return; }
+            const connected = new URL(e.sender.getURL()).searchParams.has('localPort');
+            if (!!space.remote !== connected) { return; }
+            this.store.update(id, { workspacePath: path });
+            this.pushState();
+        });
+        handle('fabi-spaces:remote-workspace', (e, path: unknown) => {
+            const id = this.spaceIdOf(e.sender.id);
+            const space = id ? this.store.get(id) : undefined;
+            if (!id || !space?.remote || typeof path !== 'string' || !path.startsWith('/')
+                || /[\0\r\n]/.test(path) || !new URL(e.sender.getURL()).searchParams.has('localPort')) { return false; }
+            this.store.update(id, { workspacePath: path });
+            this.pushState();
+            return true;
+        });
+        handle('fabi-spaces:remote-context', e => {
+            const id = this.spaceIdOf(e.sender.id);
+            const space = id ? this.store.get(id) : undefined;
+            return space?.remote ? { ...space.remote, workspacePath: space.workspacePath } : undefined;
+        });
+        handle('fabi-spaces:remote-connected', (e, port: unknown) => {
+            const id = this.spaceIdOf(e.sender.id);
+            const space = id ? this.store.get(id) : undefined;
+            if (!space?.remote || typeof port !== 'number' || !Number.isInteger(port)
+                || port < 1 || port > 65535 || port === this.opts.backendPort) { return false; }
+            // The renderer receives an acknowledgement before its document is replaced.
+            setImmediate(() => {
+                if (this.disposed || !id || this.views.get(id)?.webContents !== e.sender || e.sender.isDestroyed()) { return; }
+                this.remotePorts.set(id, port);
+                void e.sender.loadURL(buildRemoteFrontendUrl(this.opts, space.workspacePath, port))
+                    .catch(error => console.error('[fabi-spaces] remote navigation:', error));
+            });
+            return true;
+        });
+
         // Contexte du frontend appelant (utilisé par le reporter de surfaces).
-        ipcMain.on(MaestroHostIpc.CONTEXT, e => {
+        on(MaestroHostIpc.CONTEXT, e => {
             const spaceId = this.spaceIdOf(e.sender.id);
             e.returnValue = spaceId ? { spaceId } : {};
         });
@@ -779,8 +881,8 @@ export class SpaceManager {
             return;
         }
         const state = this.state();
-        // Le rail ET la topbar reçoivent l'état (couleur active pour le « relié », expanded…).
-        for (const chrome of [this.railView, this.topbarView]) {
+        // Les deux vues de navigation reçoivent le même état.
+        for (const chrome of [this.railView, this.tabStripView]) {
             if (chrome && !chrome.webContents.isDestroyed()) {
                 chrome.webContents.send(SpacesIpc.STATE, state);
             }
@@ -857,11 +959,14 @@ export class SpaceManager {
     }
     protected readonly bootStamp = Date.now().toString(36);
 
-    protected dispose(): void {
+    dispose(): void {
         if (this.disposed) {
             return;
         }
         this.disposed = true;
+        ++this.openSequence;
+        this.cancelModal?.();
+        for (const cleanup of this.ipcCleanup.splice(0).reverse()) { cleanup(); }
         this.store.flush();
         for (const view of this.views.values()) {
             if (!view.webContents.isDestroyed()) {
@@ -869,12 +974,11 @@ export class SpaceManager {
             }
         }
         this.views.clear();
-        this.previewPending.clear();
-        for (const chrome of [this.railView, this.topbarView, this.modalView]) {
+        for (const chrome of [this.railView, this.tabStripView, this.titlebarView, this.modalView]) {
             if (chrome && !chrome.webContents.isDestroyed()) {
                 chrome.webContents.close();
             }
         }
-        app.quit();
+        if (this.host && !this.host.isDestroyed()) { this.host.destroy(); }
     }
 }

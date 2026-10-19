@@ -67,19 +67,15 @@ class DockTools extends ReactWidget {
         }
     }
 
-    protected async openTerminal(): Promise<void> {
-        const terminals = [...this.shell.getWidgets('bottom'), ...this.shell.getWidgets('main')]
-            .filter(widget => widget.id.startsWith('terminal-') && !widget.id.startsWith(AGENT_TERMINAL_PREFIX)
-                && !(widget as Widget & { exitStatus?: unknown }).exitStatus);
-        const terminal = terminals.find(widget => widget === this.shell.currentWidget) ?? terminals[0];
-        if (!terminal) {
+    private terminalQueue: Promise<void> = Promise.resolve();
+
+    protected openTerminal(): Promise<void> {
+        // Keep every click, including while the previous PTY is starting.
+        const opening = this.terminalQueue.then(async () => {
             await this.commands.executeCommand('fabi.newTerminalTab');
-            return;
-        }
-        if (this.shell.getAreaFor(terminal) !== 'main') {
-            await this.shell.addWidget(terminal, { area: 'main' });
-        }
-        await this.shell.activateWidget(terminal.id);
+        });
+        this.terminalQueue = opening.catch(() => {});
+        return opening;
     }
 
     protected async run(action: () => Promise<unknown>): Promise<void> {
@@ -99,8 +95,8 @@ class DockTools extends ReactWidget {
     protected renderTool(key: string, symbol: string, label: string, active: boolean, action: () => Promise<unknown>): React.ReactNode {
         return <button key={key}
             className={'fabi-dock-tool' + (active ? ' active' : '')}
-            title={label} aria-label={label} aria-pressed={active} disabled={this.busy}
-            onClick={() => void this.run(action)}>
+            title={label} aria-label={label} aria-pressed={active} disabled={this.busy && key !== 'terminal'}
+            onClick={() => key === 'terminal' ? void action().catch(error => this.messages.error(String(error))) : void this.run(action)}>
             <span className="fabi-dock-tile"><FabiSymbol name={symbol} /></span>
         </button>;
     }
@@ -112,7 +108,7 @@ class DockTools extends ReactWidget {
         const others = views.filter(title => title !== git);
         const otherShown = others.some(title => this.isShownOnRight(title));
         return <nav className="fabi-dock-tools" aria-label="Outils du Space" aria-busy={this.busy}>
-            {this.renderTool('files', 'files', 'Projets', this.shell.isExpanded('left'), () => this.toggleFiles())}
+            {this.renderTool('files', 'files', 'Espace', this.shell.isExpanded('left'), () => this.toggleFiles())}
             {this.renderTool('search', 'search', 'Rechercher (⌘P)', false, () => this.commands.executeCommand(SPOTLIGHT_COMMAND))}
             {git && this.renderTool('git', GIT_SYMBOL, 'Git', this.isShownOnRight(git), () => this.toggleRight(git))}
             {this.renderTool('terminal', 'terminal', 'Terminal',

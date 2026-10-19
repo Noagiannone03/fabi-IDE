@@ -9,7 +9,7 @@ const browser = await puppeteer.connect({
 });
 try {
     const pages = await browser.pages();
-    const topbar = pages.find(page => page.url().includes('/rail/topbar.html'));
+    const topbar = pages.find(page => page.url().includes('/rail/tab-strip.html'));
     const workspace = pages.find(page => page.url().includes('/frontend/index.html') && !page.url().includes('maestro=1'));
     assert.ok(topbar && workspace, 'Native chrome and workspace must be running');
     const chrome = await topbar.evaluate(() => ({ width: innerWidth, height: innerHeight }));

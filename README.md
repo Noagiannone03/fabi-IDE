@@ -25,6 +25,8 @@ Open http://localhost:3000 in the browser.
     yarn build:electron
     yarn start:electron
 
+`start:electron` launches the existing build without downloading extensions. Rebuild after source changes. Builds and packaging validate the locally installed extension versions, entry points and transitive dependencies first; they download only when this check fails. Explicit registry resolution is still available with `yarn --cwd electron-app download:plugins`.
+
 *or:*
 
     yarn build:electron

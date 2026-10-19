@@ -14,10 +14,15 @@
   ],
   "dependencies": {
     "@theia/core": "1.72.2",
+    "@theia/filesystem": "1.72.2",
+    "@theia/remote": "1.72.2",
+    "@theia/workspace": "1.72.2",
     "fabi-swarm": "0.1.0",
-    "jsonc-parser": "^3.3.1"
+    "jsonc-parser": "^3.3.1",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
+    "@types/ssh2": "^1.15.5",
     "electron": "39.8.7",
     "rimraf": "^5.0.0",
     "typescript": "~5.4.5"
@@ -31,7 +36,9 @@
   },
   "theiaExtensions": [
     {
-      "electronMain": "lib/electron-main/fabi-spaces-electron-main-module"
+      "electronMain": "lib/electron-main/fabi-spaces-electron-main-module",
+      "frontendElectron": "lib/electron-browser/remote-space-module",
+      "backendElectron": "lib/electron-node/remote-space-backend-module"
     }
   ]
 }

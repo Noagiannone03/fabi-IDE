@@ -28,6 +28,16 @@
         create: document.getElementById('createBtn')
     };
 
+    const type = document.getElementById('spaceType');
+    type.onchange = () => {
+        document.getElementById('sshFields').hidden = type.value !== 'ssh';
+        document.getElementById('localFields').hidden = type.value === 'ssh';
+        document.getElementById('nameField').hidden = type.value === 'ssh';
+        document.querySelector('.personalization').hidden = type.value === 'ssh';
+        el.create.textContent = type.value === 'ssh' ? 'Se connecter en SSH…' : 'Créer le Space';
+        st.icon = type.value === 'ssh' ? 'remote' : 'folder';
+        renderIcons(); refreshPreview();
+    };
     const st = { name: '', icon: 'folder', color: SPACE_COLORS[0], folder: '', nameEdited: false, submitted: false };
 
     const baseName = p => (p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || '';
@@ -102,7 +112,7 @@
     document.addEventListener('keydown', e => {
         if (e.key === 'Escape' && !st.submitted) { e.preventDefault(); api.modalCancel(); }
         if (e.key === 'Tab') {
-            const focusable = [...document.querySelectorAll('button:not(:disabled), input:not(:disabled), summary')]
+            const focusable = [...document.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), summary')]
                 .filter(node => node.getClientRects().length > 0);
             const first = focusable[0]; const last = focusable[focusable.length - 1];
             if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
@@ -112,8 +122,12 @@
 
     function submit() {
         if (st.submitted) { return; }
+        if (type.value === 'ssh') {
+            st.submitted = true; el.create.disabled = true;
+            api.modalCreate({ connection: 'ssh' }); return;
+        }
         const name = st.name.trim();
-        if (!name || !st.folder) {
+        if (!name || (type.value === 'local' && !st.folder)) {
             el.error.textContent = !name ? 'Donnez un nom à ce Space.' : 'Choisissez un dossier pour ce Space.';
             el.error.hidden = false;
             el.name.setAttribute('aria-invalid', String(!name));
@@ -138,7 +152,7 @@
         st.nameEdited = false;
         st.name = init.defaultName || baseName(st.folder);
         el.name.value = st.name;
-        el.folderPath.textContent = st.folder;
+        el.folderPath.textContent = st.folder || 'Choisir un dossier…';
         el.folderPath.title = st.folder;
         renderIcons();
         applyColor();

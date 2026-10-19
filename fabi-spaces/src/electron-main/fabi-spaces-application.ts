@@ -55,13 +55,15 @@ export class FabiSpacesApplication extends FabiElectronMainApplication {
                 frontendHtmlPath: this.globals.THEIA_FRONTEND_HTML_PATH,
                 preloadPath: join(railDir, 'frontend-preload.js'),
                 railHtmlPath: join(railDir, 'rail.html'),
-                topbarHtmlPath: join(railDir, 'topbar.html'),
+                tabStripHtmlPath: join(railDir, 'tab-strip.html'),
                 modalHtmlPath: join(railDir, 'modal.html'),
                 railPreloadPath: join(railDir, 'preload.js')
             });
             await this.spaceManager.boot();
             this.spacesDecision.resolve('active');
         } catch (err) {
+            this.spaceManager?.dispose();
+            this.spaceManager = undefined;
             console.error('[fabi-spaces] boot de la fenêtre-hôte échoué → fallback IDE classique :', err);
             this.spacesDecision.resolve('failed');
             // Le flux classique (handleMainCommand) ouvrira une fenêtre IDE standard.

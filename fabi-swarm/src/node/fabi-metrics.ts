@@ -7,7 +7,7 @@
 // Best-effort : chaque sonde est protégée — une mesure qui échoue ne casse pas la
 // boucle, et un champ absent (p.ex. usage GPU live sur Apple Silicon, non exposé
 // sans privilèges) est simplement omis. Coût maîtrisé : `processes()` (le plus
-// lourd) n'est appelé QUE si le worker tourne ; le GPU est sondé 1 fois sur 3.
+// lourd) est limité à 15 s au repos ; inventaire GPU limité à une fois/minute.
 
 import { cpus } from 'os';
 import * as si from 'systeminformation';
@@ -16,14 +16,19 @@ import { FabiMetrics, FabiMetricSample, FabiProcInfo } from '../common/fabi-swar
 /** Tout process dont la commande contient ça appartient à NOTRE worker. */
 const WORKER_PROC_MATCH = 'parallax-venv';
 /** Cadence d'échantillonnage. */
-const SAMPLE_INTERVAL_MS = 2000;
-/** Taille de l'historique glissant (≈ 2 min à 2 s). */
+const SAMPLE_INTERVAL_MS = 5000;
+const PROCESS_INTERVAL_MS = 15000;
+const GPU_INTERVAL_MS = 60000;
+/** Taille de l'historique glissant (≈ 5 min à 5 s). */
 const HISTORY_LEN = 60;
 
 export class FabiMetricsCollector {
     protected timer: ReturnType<typeof setInterval> | undefined;
     protected ticking = false;
-    protected tickCount = 0;
+    protected lastGpuSample: number | undefined;
+    protected lastProcessSample: number | undefined;
+    protected lastWorkerRunning: boolean | undefined;
+    protected processCache: { worker: FabiMetrics['worker']; topProcs: FabiProcInfo[] } = { worker: null, topProcs: [] };
     protected history: FabiMetricSample[] = [];
     protected peaks = { cpu: 0, memPct: 0, workerCpu: 0, workerMemGb: 0 };
     protected gpuCache: FabiMetrics['system']['gpu'] | undefined;
@@ -31,7 +36,8 @@ export class FabiMetricsCollector {
 
     constructor(
         protected readonly onSample: (m: FabiMetrics) => void,
-        protected readonly isWorkerRunning: () => boolean
+        protected readonly isWorkerRunning: () => boolean,
+        protected readonly system = si
     ) { }
 
     start(): void {
@@ -72,11 +78,11 @@ export class FabiMetricsCollector {
             let memUsedGb = 0;
             let memTotalGb = 0;
             try {
-                const load = await si.currentLoad();
+                const load = await this.system.currentLoad();
                 cpu = clampPct(load.currentLoad);
             } catch { /* best-effort */ }
             try {
-                const mem = await si.mem();
+                const mem = await this.system.mem();
                 memTotalGb = mem.total / 1e9;
                 // `active` = mémoire réellement utilisée hors cache/buffers (plus
                 // représentatif que `used` qui inclut le cache sur Linux/mac).
@@ -85,13 +91,22 @@ export class FabiMetricsCollector {
             } catch { /* best-effort */ }
             const memPct = memTotalGb > 0 ? clampPct((memUsedGb / memTotalGb) * 100) : 0;
 
-            // --- GPU : 1 fois sur 3 (plus lourd, souvent statique) ---
-            if (this.tickCount % 3 === 0) {
+            // Graphics enumeration can spawn system_profiler on macOS. Hardware
+            // data does not need to be rediscovered on every status-bar update.
+            const now = Date.now();
+            if (this.lastGpuSample === undefined || now - this.lastGpuSample >= GPU_INTERVAL_MS) {
                 this.gpuCache = await this.readGpu();
+                this.lastGpuSample = now;
             }
 
             // --- Process : worker agrégé + top consommateurs (« qui bouffe ») ---
-            const { worker, topProcs } = await this.readProcesses(cores, memTotalGb);
+            const running = this.isWorkerRunning();
+            if (running || running !== this.lastWorkerRunning || this.lastProcessSample === undefined || now - this.lastProcessSample >= PROCESS_INTERVAL_MS) {
+                this.processCache = await this.readProcesses(cores, memTotalGb);
+                this.lastProcessSample = now;
+                this.lastWorkerRunning = running;
+            }
+            const { worker, topProcs } = this.processCache;
 
             // --- Pics ---
             this.peaks.cpu = Math.max(this.peaks.cpu, cpu);
@@ -123,14 +138,13 @@ export class FabiMetricsCollector {
             this.latest = metrics;
             this.onSample(metrics);
         } finally {
-            this.tickCount++;
             this.ticking = false;
         }
     }
 
     protected async readGpu(): Promise<FabiMetrics['system']['gpu'] | undefined> {
         try {
-            const g = await si.graphics();
+            const g = await this.system.graphics();
             const c = (g.controllers || []).find(x => x.model || x.vram) ?? g.controllers?.[0];
             if (!c) {
                 return undefined;
@@ -149,7 +163,7 @@ export class FabiMetricsCollector {
     ): Promise<{ worker: FabiMetrics['worker']; topProcs: FabiProcInfo[] }> {
         const running = this.isWorkerRunning();
         try {
-            const list = (await si.processes()).list || [];
+            const list = (await this.system.processes()).list || [];
             // IMPORTANT : sur macOS, systeminformation tronque `name`/`command` à
             // « python » — le chemin complet (…/parallax-venv/bin/python) n'est que
             // dans `path`. On matche donc les TROIS champs, sinon le worker du Mac

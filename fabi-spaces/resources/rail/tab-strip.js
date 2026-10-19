@@ -95,9 +95,10 @@
             if (badge) {
                 if (attention) { badge.textContent = attention > 9 ? '9+' : String(attention); } else { badge.remove(); }
             }
-            button.title = name + (space.workspacePath ? '\n' + space.workspacePath : '')
+            button.title = name + (space.remote ? '\nSSH · ' + space.remote.user + '@' + space.remote.host : '') + (space.workspacePath ? '\n' + space.workspacePath : '')
                 + (attention ? '\n' + attention + (attention > 1 ? ' agents à regarder' : ' agent à regarder') : '');
-            button.setAttribute('aria-label', name);
+            button.setAttribute('aria-label', name + (space.remote ? ' — SSH' : ''));
+            button.classList.toggle('remote-space', !!space.remote);
             button.setAttribute('aria-current', state.activeId === space.id ? 'page' : 'false');
             if (/^#[0-9a-f]{6}$/i.test(space.color || '')) { button.style.setProperty('--space-color', space.color); }
             if (nav.children[index] !== button) { nav.insertBefore(button, nav.children[index] || null); }

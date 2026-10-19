@@ -1,0 +1,13 @@
+html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #191a1e;
+    user-select: none;
+    -webkit-app-region: drag;
+}
+
+/* Keyboard focus uses the surface, never a ring. */
+:focus { outline:none!important; }
+button:focus-visible, input:focus-visible, summary:focus-visible { background-color:#ffffff12; outline:none!important; }

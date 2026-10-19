@@ -16,7 +16,7 @@ import '../../src/browser/style/fabi-midnight.css';
 import '../../src/browser/style/fabi-native-midnight.css';
 import '../../src/browser/style/fabi-studio.css';
 import '../../src/browser/style/fabi-navigation.css';
-import '../../src/browser/style/fabi-depth.css';         // EN DERNIER : hiérarchie de gris des îlots
+import '../../src/browser/style/fabi-focus.css';
 
 import { ContainerModule } from '@theia/core/shared/inversify';
 import { CommandContribution, MenuContribution } from '@theia/core/lib/common';

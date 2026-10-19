@@ -1,0 +1,27 @@
+/* Fabi uses quiet surface focus throughout the workbench. Validation borders,
+   editor selections and diagnostics keep their own semantic colors. */
+body {
+    --theia-settings-focusedRowBorder: transparent !important;
+    --vscode-settings-focusedRowBorder: transparent !important;
+    --theia-focusBorder: transparent !important;
+    --vscode-focusBorder: transparent !important;
+    --theia-list-focusOutline: transparent !important;
+    --vscode-list-focusOutline: transparent !important;
+    --theia-list-inactiveFocusOutline: transparent !important;
+    --vscode-list-inactiveFocusOutline: transparent !important;
+}
+html :is(#fabi-focus-policy, body) :is(:focus, :focus-visible, .theia-mod-focus, .monaco-list-row.focused),
+html body .theia-Tree:focus-within .theia-TreeNode.theia-mod-focus,
+html body .monaco-list:focus-within .monaco-list-row.focused,
+html body #theia-main-content-panel .lm-TabBar.theia-app-centers .lm-TabBar-tab:focus-visible,
+html body #theia-bottom-content-panel .lm-TabBar .lm-TabBar-tab:focus-visible {
+    outline: none !important;
+}
+html :is(#fabi-focus-policy, body) :is(input, textarea, select, button, .theia-input, .monaco-inputbox):focus,
+html body .monaco-inputbox.synthetic-focus,
+html body .chat-input-widget .theia-ChatInput-Editor-Box:focus-within {
+    box-shadow: none !important;
+}
+html :is(#fabi-focus-policy, body) :is(button, a, summary, select, input, textarea, [role=button], .lm-TabBar-tab):focus-visible {
+    background-color: #ffffff12;
+}

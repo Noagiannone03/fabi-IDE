@@ -1,3 +1,4 @@
+import { codexObservations, codexLifecycle } from './fabi-agent-observations';
 // Détection des agents CLI externes (Claude Code, Codex) tournant dans un
 // terminal de l'IDE — pour les superviser dans le tableau de bord Maestro.
 //
@@ -171,11 +172,13 @@ export class ExternalAgentMonitor {
             id = id ?? this.codexIdFromName(file);
             const lastText = this.codexLastText([...head, ...tail]);
             agents.push({
+                observations: cwd ? codexObservations([...head, ...tail], id, cwd) : [],
+                status: this.coarseStatus(mtime, alive),
+                ...codexLifecycle([...head, ...tail]),
                 key: `codex:${id}`,
                 source: 'codex',
                 id,
                 title: lastText ? this.clip(lastText, 70) : 'Session Codex',
-                status: this.coarseStatus(mtime, alive),
                 directory: cwd,
                 workspaceName: cwd ? this.basename(cwd) : undefined,
                 preview: lastText ? this.clip(lastText) : undefined,
@@ -193,7 +196,9 @@ export class ExternalAgentMonitor {
             if (!payload) {
                 continue;
             }
-            // event_msg type 'agent_message' / response_item message → champ texte.
+            if (!(d.type === 'event_msg' && ['agent_message', 'user_message'].includes(String(payload.type)))
+                && !(d.type === 'response_item' && payload.type === 'message' && ['user', 'assistant'].includes(String(payload.role)))) continue;
+            // Public messages only; reasoning and tool payloads never become task previews.
             const msg = payload.message;
             if (typeof msg === 'string' && msg.trim()) {
                 last = msg.trim();

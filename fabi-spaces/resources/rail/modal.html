@@ -21,13 +21,18 @@
         </header>
         <p class="description" id="dialogDescription">Un projet, ses fichiers et ses outils. Retrouvez-les ensemble dans votre Space.</p>
 
-        <div class="field">
+        <div class="field" id="nameField">
             <label class="label" for="nameInput">Nom du Space</label>
             <input id="nameInput" class="input" type="text" maxlength="100" spellcheck="false" placeholder="Nom du projet" aria-describedby="nameError" />
             <p id="nameError" class="field-error" role="alert" hidden></p>
         </div>
 
         <div class="field">
+            <label class="label" for="spaceType">Emplacement</label>
+            <select class="input" id="spaceType"><option value="local">Sur cet ordinateur</option><option value="ssh">Serveur SSH</option></select>
+        </div>
+        <p id="sshFields" class="description" hidden>Connectez-vous à un hôte SSH, puis choisissez un dossier sur ce serveur. Les fichiers, terminaux et agents restent sur la machine distante.</p>
+        <div class="field" id="localFields">
             <span class="label" id="folderLabel">Dossier du projet</span>
             <div class="folder-row">
                 <i class="codicon codicon-folder" aria-hidden="true"></i>

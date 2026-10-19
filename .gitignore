@@ -4,6 +4,7 @@ lib
 *.log
 *-app/*
 !*-app/package.json
+!electron-app/esbuild.mjs
 !electron-app/product.json
 !electron-app/electron-builder.yml
 !electron-app/electron-builder.mac-release.yml

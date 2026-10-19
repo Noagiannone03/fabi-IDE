@@ -1,3 +1,4 @@
+import { SWARM_ENGINE_ENABLED } from '../common/fabi-product-features';
 // Launcher de 1er lancement — sous-classe d'ElectronMainApplication.
 //
 // Theia crée la fenêtre IDE (+ son splash) tôt, dans `showInitialWindow()`
@@ -17,7 +18,7 @@ import { ElectronMainApplication } from '@theia/core/lib/electron-main/electron-
 import { TheiaRendererAPI } from '@theia/core/lib/electron-main/electron-api-main';
 import { CancellationTokenSource } from '@theia/core/lib/common/cancellation';
 import { timeout } from '@theia/core/lib/common/promise-util';
-import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join, resolve as resolvePath } from 'path';
 import { detectPlatform, findParallax, installedRuntimeProblem, installRuntime } from '../node/fabi-runtime-install';
@@ -27,6 +28,20 @@ import { FabiMandatoryAppUpdater } from './fabi-mandatory-app-updater';
 
 @injectable()
 export class FabiElectronMainApplication extends ElectronMainApplication {
+
+    /** Direct Electron/packaged launches need the same bundled extensions as yarn start. */
+    protected override async startBackend(): Promise<number> {
+        const executable = process.platform === 'win32' ? 'opencode.exe' : 'opencode';
+        const runtime = [join(process.resourcesPath, 'assist-runtime', executable), join(this.globals.THEIA_APP_PROJECT_PATH, 'lib', 'assist-runtime', executable)].find(path => existsSync(path));
+        if (runtime && !process.env.FABI_ASSIST_OPENCODE_BIN) { process.env.FABI_ASSIST_OPENCODE_BIN = runtime; }
+        const candidates = [join(process.resourcesPath, 'app', 'plugins'), join(this.globals.THEIA_APP_PROJECT_PATH, 'plugins')];
+        const plugins = candidates.find(path => existsSync(join(path, 'vscode.git')));
+        if (plugins) {
+            const defaults = (process.env.THEIA_DEFAULT_PLUGINS ?? '').split(',').filter(Boolean);
+            process.env.THEIA_DEFAULT_PLUGINS = [...new Set([...defaults, `local-dir:${plugins}`])].join(',');
+        }
+        return super.startBackend();
+    }
 
     protected launcherHandled = false;
     protected readonly launcherSurfaceHandoff = new LauncherSurfaceHandoff();
@@ -187,6 +202,7 @@ export class FabiElectronMainApplication extends ElectronMainApplication {
      * strictement réservés au développement non packagé.
      */
     protected shouldRunLauncher(): boolean {
+        if (!SWARM_ENGINE_ENABLED) { return false; }
         return shouldGateRuntime({
             packaged: electron.app.isPackaged,
             forcedInDevelopment: process.env.FABI_FORCE_LAUNCHER === '1',

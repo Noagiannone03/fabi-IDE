@@ -27,7 +27,14 @@ export type SpaceColor = typeof SPACE_COLORS[number] | string;
  * et envoyé au rail. Ne contient AUCUN handle natif (vue, fenêtre) — uniquement de
  * l'état sérialisable.
  */
+export interface RemoteSpace {
+    host: string;
+    user: string;
+}
+
 export interface SpaceDescriptor {
+    /** SSH identity only: credentials and transient ports are never persisted. */
+    remote?: RemoteSpace;
     /** Identifiant stable (ne change jamais, sert de clé partout). */
     id: string;
     /** Nom affiché. Vide → dérivé du dossier du workspace. */
@@ -54,6 +61,7 @@ export interface NewSpaceModalInit {
 
 /** Résultat renvoyé par le modal de création (« Créer »). */
 export interface NewSpaceModalResult {
+    connection?: 'ssh';
     name: string;
     icon: string;
     color: string;

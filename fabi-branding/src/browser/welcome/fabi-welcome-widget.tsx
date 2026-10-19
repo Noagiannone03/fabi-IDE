@@ -1,3 +1,4 @@
+import { Message } from '@theia/core/shared/@lumino/messaging';
 import * as React from '@theia/core/shared/react';
 import { injectable, postConstruct, inject } from '@theia/core/shared/inversify';
 import { ReactWidget } from '@theia/core/lib/browser/widgets/react-widget';
@@ -38,6 +39,7 @@ export class FabiWelcomeWidget extends ReactWidget {
         this.title.closable = true;
         this.title.iconClass = 'fabi-fox-tab-icon';
         this.addClass('fabi-welcome');
+        this.node.tabIndex = -1;
         this.toDispose.push(this.recents.onDidChange(() => this.update()));
         this.toDispose.push(this.workspace.onWorkspaceChanged(() => this.update()));
         this.toDispose.push(this.labels.onDidChange(() => this.update()));
@@ -48,6 +50,12 @@ export class FabiWelcomeWidget extends ReactWidget {
         this.watchRepositories();
         void this.workspace.ready.then(() => { if (!this.isDisposed) { this.update(); } });
         this.update();
+    }
+
+    protected override onActivateRequest(message: Message): void {
+        super.onActivateRequest(message);
+        // Honor Lumino activation instead of making ApplicationShell wait for its 2s timeout.
+        this.node.focus({ preventScroll: true });
     }
 
     protected watchRepositories(): void {
@@ -88,7 +96,7 @@ export class FabiWelcomeWidget extends ReactWidget {
         if (!resources.length) {
             return <div className="fabi-home-empty"><span className="codicon codicon-git-compare" aria-hidden="true" />
                 <p>{this.scm.repositories.length ? 'Aucun changement signalé.' : 'Aucun dépôt disponible pour le moment.'}
-                    <span>Cette vue suit les changements fournis par le contrôle de version.</span></p>
+                    <span>Ouvrez le contrôle de version pour vérifier le dépôt et préparer un commit.</span></p><button className="fabi-home-text-button" onClick={() => void this.run(['scmView:toggle'])}>Ouvrir Git ↗</button>
             </div>;
         }
         return <>
@@ -170,24 +178,26 @@ export class FabiWelcomeWidget extends ReactWidget {
 
     protected render(): React.ReactNode {
         const resource = this.workspace.workspace?.resource;
+        const remote = new URLSearchParams(window.location.search).has('localPort');
         const name = resource ? this.labels.getName(resource) : 'Votre prochain projet';
         const changes = this.changedFiles();
         return <main className="fabi-home">
+            <div className="fabi-home-watermark" aria-hidden="true"/>
             <header className="fabi-home-header">
-                <span className="fabi-home-eyebrow">Fabi / Space</span>
+                <span className="fabi-home-eyebrow">{remote ? 'Fabi · Projet distant' : 'Fabi · Votre espace'}</span>
                 <h1>{name}</h1>
                 <p>{resource ? 'Reprenez là où vous en étiez.' : 'Ouvrez un dossier pour commencer à coder.'}</p>
             </header>
             <section className="fabi-home-start" aria-label="Actions du projet">
                 {resource
                     ? this.renderAction('go-to-file', 'Trouver un fichier', 'Rechercher dans ce projet', ['file-search.openFile'])
-                    : this.renderAction('folder-opened', 'Ouvrir un dossier', 'Choisir un projet sur cet ordinateur', ['workspace:openWorkspace', 'workspace:open'])}
+                    : this.renderAction('folder-opened', 'Ouvrir un dossier', remote ? 'Choisir un dossier sur le serveur SSH' : 'Choisir un projet sur cet ordinateur', ['workspace:openWorkspace', 'workspace:open'])}
                 {this.renderAction('new-file', 'Nouveau fichier', 'Un éditeur vide, prêt à écrire', ['workbench.action.files.newFile', 'workbench.action.files.newUntitledFile'])}
             </section>
             <section className="fabi-home-recents" aria-labelledby="fabi-home-recents-title">
                 <div className="fabi-home-section-heading">
                     <h2 id="fabi-home-recents-title">Fichiers du projet</h2>
-                    {resource && <button className="fabi-home-text-button" onClick={() => void this.run(['fileNavigator:toggle'])}>Arborescence <span aria-hidden="true">↗</span></button>}
+                    {resource && <button className="fabi-home-text-button" onClick={() => void this.run(['fabi.projects.showFiles', 'fileNavigator:toggle'])}>Arborescence <span aria-hidden="true">↗</span></button>}
                 </div>
                 <div className="fabi-home-file-switch" role="group" aria-label="Vue des fichiers">
                     <button aria-pressed={this.fileView === 'recent'} onClick={() => { this.fileView = 'recent'; this.update(); }}>Récents</button>

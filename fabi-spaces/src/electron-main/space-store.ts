@@ -8,6 +8,7 @@
 import { app } from 'electron';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { parsePersistedSpaces } from '../common/persisted-spaces';
 import { SpaceDescriptor, SPACE_COLORS } from '../common/space-types';
 
 interface PersistedState {
@@ -33,7 +34,7 @@ export class SpaceStore {
             if (existsSync(this.file)) {
                 const raw = JSON.parse(readFileSync(this.file, 'utf8'));
                 if (raw && Array.isArray(raw.spaces)) {
-                    this.state = { version: 1, spaces: raw.spaces, activeId: raw.activeId };
+                    this.state = parsePersistedSpaces(raw);
                     this.dropMaestro();
                     this.migratePalette();
                 }
@@ -84,6 +85,7 @@ export class SpaceStore {
     }
 
     flush(): void {
+        if (this.saveTimer) { clearTimeout(this.saveTimer); }
         this.saveTimer = undefined;
         try {
             const dir = app.getPath('userData');

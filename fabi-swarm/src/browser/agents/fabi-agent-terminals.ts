@@ -1,14 +1,17 @@
+import { MessageLoop } from '@theia/core/shared/@lumino/messaging';
 import { inject, injectable } from '@theia/core/shared/inversify';
 import { CommandContribution, CommandRegistry, Emitter, Event, generateUuid, MessageService } from '@theia/core';
 import { isWindows } from '@theia/core/lib/common/os';
 import URI from '@theia/core/lib/common/uri';
 import { FrontendApplicationContribution, StorageService } from '@theia/core/lib/browser';
 import { WorkspaceService } from '@theia/workspace/lib/browser';
+import { FrontendApplicationStateService } from '@theia/core/lib/browser/frontend-application-state';
 import { TerminalService } from '@theia/terminal/lib/browser/base/terminal-service';
 import { TerminalLocation, TerminalWidget } from '@theia/terminal/lib/browser/base/terminal-widget';
 import {
     agentCli, FabiAgentCli, FabiAgentCliId, FABI_AGENT_TERMINAL_ENV, FABI_AGENT_TERMINAL_PREFIX
 } from '../../common/fabi-agent-clis';
+import { FabiTerminalWidget } from '../fabi-terminal-widget';
 import { FabiAgentPicker } from './fabi-agent-picker';
 
 /** Lien persistant entre un onglet de terminal et la conversation qu'il porte. */
@@ -23,6 +26,7 @@ export interface FabiAgentTerminalBinding {
     /** PID du shell : s'il change, le PTY est neuf → on relance la conversation. */
     shellPid?: number;
     createdAt: number;
+    title?: string;
 }
 
 /** Stockage propre au workspace (la clé de StorageService inclut le dossier). */
@@ -45,16 +49,32 @@ export class FabiAgentTerminals implements FrontendApplicationContribution, Comm
     @inject(StorageService) protected readonly storage: StorageService;
     @inject(WorkspaceService) protected readonly workspace: WorkspaceService;
     @inject(MessageService) protected readonly messages: MessageService;
+    @inject(FrontendApplicationStateService) protected readonly state: FrontendApplicationStateService;
+    protected stopped = false;
 
+    protected readonly tracked = new WeakSet<TerminalWidget>();
     protected readonly bindings = new Map<string, FabiAgentTerminalBinding>();
     protected readonly changedEmitter = new Emitter<void>();
     readonly onDidChange: Event<void> = this.changedEmitter.event;
 
-    async onDidInitializeLayout(): Promise<void> {
+    onDidInitializeLayout(): void {
+        // CLI output/credentials/network readiness must never gate the workbench.
+        void this.restoreSavedSessions().catch(error => {
+            if (!this.stopped) void this.messages.error(`Impossible de reprendre les sessions : ${error instanceof Error ? error.message : String(error)}`);
+        });
+    }
+
+    onStop(): void { this.stopped = true; }
+
+    protected async restoreSavedSessions(): Promise<void> {
         const stored = await this.storage.getData<Record<string, FabiAgentTerminalBinding>>(STORAGE_KEY, {});
+        if (this.stopped) return;
         for (const [id, binding] of Object.entries(stored ?? {})) {
             this.bindings.set(id, binding);
         }
+        this.changedEmitter.fire();
+        await this.state.reachedState('ready');
+        if (this.stopped) return;
         await Promise.all([...this.bindings].map(([id, binding]) => this.restore(id, binding)));
     }
 
@@ -112,9 +132,9 @@ export class FabiAgentTerminals implements FrontendApplicationContribution, Comm
     /** Recrée l'onglet d'un agent au démarrage et relance sa conversation si son PTY est mort. */
     protected async restore(id: string, binding: FabiAgentTerminalBinding): Promise<void> {
         const cli = agentCli(binding.cli);
-        if (!cli || this.terminals.getById(id)) {
-            return;
-        }
+        if (!cli) return;
+        const existing = this.terminals.getById(id);
+        if (existing) { this.track(existing, binding); return; }
         try {
             const previousPid = binding.shellPid;
             const terminal = await this.open(id, cli, binding, false);
@@ -134,7 +154,7 @@ export class FabiAgentTerminals implements FrontendApplicationContribution, Comm
     protected async open(id: string, cli: FabiAgentCli, binding: FabiAgentTerminalBinding, activate: boolean): Promise<TerminalWidget> {
         const terminal = await this.terminals.newTerminal({
             id,
-            title: cli.label,
+            title: binding.title || cli.label,
             iconClass: 'codicon codicon-sparkle',
             // Chaîne, pas d'objet URI : les options du widget sont sérialisées.
             cwd: binding.cwd,
@@ -147,15 +167,44 @@ export class FabiAgentTerminals implements FrontendApplicationContribution, Comm
         binding.shellPid = await terminal.processId;
         this.bindings.set(id, binding);
         await this.save();
-        terminal.onDidDispose(() => {
-            // Onglet fermé par l'utilisateur : la conversation n'est plus rattachée.
-            if (this.bindings.delete(id)) {
-                void this.save();
-            }
-        });
+        this.track(terminal, binding);
         this.terminals.open(terminal, { widgetOptions: { area: 'main' }, mode: activate ? 'activate' : 'open' });
         await ready;
         return terminal;
+    }
+
+    /** Closing a tab hides it; explicit session closure disposes its PTY. */
+    protected track(terminal: TerminalWidget, binding: FabiAgentTerminalBinding): void {
+        if (this.tracked.has(terminal)) return;
+        this.tracked.add(terminal);
+        if (binding.title) terminal.title.label = binding.title;
+        const hook = (_handler: unknown, message: { type: string }) => {
+            if (message.type !== 'close-request') return true;
+            terminal.parent = null;
+            this.changedEmitter.fire();
+            return false;
+        };
+        MessageLoop.installMessageHook(terminal, hook);
+        terminal.onDidDispose(() => {
+            MessageLoop.removeMessageHook(terminal, hook);
+            if (this.bindings.delete(terminal.id)) void this.save();
+            this.changedEmitter.fire();
+        });
+    }
+
+    async rename(id: string, title: string): Promise<void> {
+        const binding = this.bindings.get(id);
+        if (!binding) return;
+        binding.title = title.trim().slice(0, 160) || undefined;
+        const terminal = this.terminals.getById(id);
+        if (terminal) terminal.title.label = binding.title || agentCli(binding.cli)?.label || binding.cli;
+        await this.save();
+    }
+
+    close(id: string): void {
+        this.terminals.getById(id)?.dispose();
+        if (this.bindings.delete(id)) void this.save();
+        this.changedEmitter.fire();
     }
 
     /**
@@ -196,7 +245,10 @@ export class FabiAgentTerminals implements FrontendApplicationContribution, Comm
                 clearTimeout(limit);
                 resolve();
             };
-            const listener = terminal.onOutput(() => {
+            // Theia onOutput follows xterm parsing, which may never run for hidden tabs.
+            // Boot readiness depends on bytes arriving, not on a visible renderer.
+            const output = terminal instanceof FabiTerminalWidget ? terminal.onDidReceiveOutput : terminal.onOutput;
+            const listener = output(() => {
                 clearTimeout(quiet);
                 quiet = setTimeout(done, quietMs);
             });

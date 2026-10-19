@@ -1,3 +1,4 @@
+import { requireSwarmEngine } from '../common/fabi-product-features';
 // Install du runtime moteur (Parallax) — réplique FIDÈLE de install.sh /
 // install.ps1 du repo `fabi`, en TypeScript, pour que l'IDE installe au même
 // endroit et de la même façon que le CLI (un seul moteur partagé sur le disque).
@@ -871,6 +872,7 @@ export function relocateBundledRuntime(extractedRoot: string, finalRoot: string)
  * Extraction dans un staging puis rename → jamais d'install à moitié.
  */
 export async function installRuntime(onProgress: (p: InstallProgress) => void): Promise<string> {
+    requireSwarmEngine();
     const plat = detectPlatform();
     if (plat.accel === 'cpu') {
         throw new Error(

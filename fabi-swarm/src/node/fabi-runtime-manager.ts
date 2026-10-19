@@ -1,3 +1,4 @@
+import { SWARM_ENGINE_ENABLED, requireSwarmEngine } from '../common/fabi-product-features';
 // RuntimeManager — fin wrapper au-dessus de fabi-runtime-install (la logique
 // canonique, partagée avec le launcher electron-main). Il ne fait que :
 //   - exposer le statut (installé ? où ? quelle plateforme/accel ?)
@@ -22,15 +23,20 @@ export class FabiRuntimeManager {
 
     /** Localise le binaire parallax sur la machine (sans rien télécharger). */
     findParallax(): LocatedRuntimeCommand | undefined {
-        return findParallax();
+        return SWARM_ENGINE_ENABLED ? findParallax() : undefined;
     }
 
     /** Localise le frontend OpenAI local du runtime qualifié. */
     findRequestAgent(): LocatedRuntimeCommand | undefined {
-        return findRequestAgent();
+        return SWARM_ENGINE_ENABLED ? findRequestAgent() : undefined;
     }
 
     status(): RuntimeStatus {
+        if (!SWARM_ENGINE_ENABLED) {
+            return { disabled: true, installed: false, downloading: false, location: 'none',
+                platform: `${process.platform}-${process.arch}`, accel: 'cpu', version: '',
+                message: 'Moteur Swarm désactivé. Fabi Assist utilise RunPod.' };
+        }
         const plat = detectPlatform();
         const found = findParallax();
         const requestAgent = findRequestAgent();
@@ -62,6 +68,7 @@ export class FabiRuntimeManager {
      * le statut sans rien faire. `onStatus` est appelé à chaque progression.
      */
     async ensureRuntime(onStatus?: (s: RuntimeStatus) => void): Promise<RuntimeStatus> {
+        requireSwarmEngine();
         if (findParallax() && findRequestAgent()) {
             return this.status();
         }

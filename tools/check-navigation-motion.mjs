@@ -7,7 +7,7 @@ let workspace;
 try {
     const pages = await browser.pages();
     workspace = pages.find(p => p.url().includes('/frontend/index.html') && !p.url().includes('maestro=1'));
-    const chrome = pages.find(p => p.url().includes('/rail/topbar.html'));
+    const chrome = pages.find(p => p.url().includes('/rail/tab-strip.html'));
     for (const page of pages) {
         const client = await page.createCDPSession();
         clients.push(client);

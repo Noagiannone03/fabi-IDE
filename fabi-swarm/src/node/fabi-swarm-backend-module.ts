@@ -16,7 +16,22 @@ import { FabiMaestroServiceImpl } from './fabi-maestro-service';
 import { FabiAgentCliServiceImpl } from './fabi-agent-cli-service';
 import { FabiAgentCliService, FABI_AGENT_CLI_PATH } from '../common/fabi-agent-cli-protocol';
 
+import { FABI_ASSIST_PATH, FabiAssistClient } from '../common/fabi-assist-protocol';
+import { AssistService } from './assist/assist-service';
+import { JarvisProvider } from './assist/jarvis-provider';
+import { FabiTerminalEnvironmentContribution } from './fabi-terminal-environment';
+
 export default new ContainerModule(bind => {
+    bind(BackendApplicationContribution).to(FabiTerminalEnvironmentContribution).inSingletonScope();
+    const assistProvider = new JarvisProvider();
+    bind(ConnectionHandler).toDynamicValue(() =>
+        new RpcConnectionHandler<FabiAssistClient>(FABI_ASSIST_PATH, client => {
+            const service = new AssistService(assistProvider, client);
+            client.onDidCloseConnection(() => service.dispose());
+            return service;
+        })
+    ).inSingletonScope();
+
     bind(FabiSwarmServiceImpl).toSelf().inSingletonScope();
     bind(FabiSwarmService).toService(FabiSwarmServiceImpl);
     // Arrêt propre à la fermeture de l'IDE : Theia ATTEND ce onStop() avant de

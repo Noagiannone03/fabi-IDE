@@ -1,0 +1,28 @@
+{
+  "repository": "https://github.com/anthropics/claude-code",
+  "path": "plugins/learning-output-style",
+  "files": {
+    ".claude-plugin/plugin.json": {
+      "gitBlob": "3f798c518c3bdb74e2dc7a793b21015f42f23038",
+      "sha256": "7642b740f89ede0586cb2d43b93058d84519cb60792dd704d6b2ac1eda8c5921"
+    },
+    "README.md": {
+      "gitBlob": "8a83ffdf60d3e312465a81f6fdaacf7d28b2e6f3",
+      "sha256": "3148b3552ce12e2e8fa73e00d914882ae60557b29ded502d22da633685e5bdbd"
+    },
+    "hooks/hooks.json": {
+      "gitBlob": "b3ab7ce9b781ed39370b427b8c83ee78e5341c35",
+      "sha256": "595436e45533450f9961fadb9efc6826125383d1aa84b477a6d61778962ed487"
+    },
+    "hooks-handlers/session-start.sh": {
+      "gitBlob": "0489074abad81a48abf1ce6b3fe96ee91137f246",
+      "sha256": "2b2ef02fffeb9df6d587a3180ab3bb06e1364a75f70e2f534045b599b953731e"
+    },
+    "LICENSE.upstream.md": {
+      "gitBlob": "645a5d67c6d1e16437bec850dad5bd3b6c81f77c",
+      "sha256": "728158fd1037143fad6907e8fa34804177e598b7326519503fe83cafdef849e6"
+    }
+  },
+  "generated": "context.json extracted from literal hook JSON without shell execution",
+  "license": "LICENSE.upstream.md"
+}

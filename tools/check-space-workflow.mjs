@@ -7,7 +7,7 @@ let active;
 let page;
 try {
     const pages=await browser.pages();
-    chrome=pages.find(p=>p.url().includes('topbar.html'));
+    chrome=pages.find(p=>p.url().includes('tab-strip.html'));
     assert.ok(chrome, 'The native Spaces rail must be available');
     active=await chrome.$eval('[aria-current=page]',e=>e.dataset.spaceId);
     for(const candidate of pages.filter(p=>p.url().includes('/frontend/index.html'))){

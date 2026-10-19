@@ -1,6 +1,7 @@
 import { fabiIslandsTheme } from './fabi-islands-theme';
+import cursorDark = require('./vendor/cursor-dark/theme.json');
 
-/** Preserve the language/scope coverage of the existing theme, not its palette. */
+/** Fabi shell palette. Editor and terminal colors below come from Cursor Dark. */
 const palette: Record<string, string> = {
     '#101113': '#121316', '#161619': '#191a1e', '#141416': '#17181c',
     '#22262d': '#191a1e', '#1e2024': '#202127', '#2f333b': '#292a32',
@@ -24,25 +25,24 @@ const inheritedColors: Record<string, string> = {};
 for (const [key, value] of Object.entries(fabiIslandsTheme.colors)) {
     inheritedColors[key] = midnightColor(value);
 }
-const semanticColors: Record<string, string | { foreground: string; fontStyle: string }> = {};
-for (const [key, value] of Object.entries(fabiIslandsTheme.semanticTokenColors)) {
-    semanticColors[key] = typeof value === 'string' ? midnightColor(value)
-        : { ...value, foreground: midnightColor(value.foreground) };
-}
+// Vendor's VS Code theme data, unchanged. Monaco/TextMate and xterm consume
+// the same standard keys as VS Code; no desaturation or per-language recoloring.
+const codeColors = Object.fromEntries(Object.entries(cursorDark.colors)
+    .filter(([key]) => /^(editor|terminal|diffEditor|gitDecoration)/.test(key)));
 
 export const fabiMidnightTheme = {
     name: 'Fabi Midnight',
     type: 'dark',
     colors: {
         ...inheritedColors,
-        'focusBorder': '#b9b4d6',
+        'focusBorder': '#00000000',
         'foreground': '#d7d7df',
         'descriptionForeground': '#92929e',
         'widget.border': '#35363f',
         'widget.shadow': '#08090b66',
         'settings.rowHoverBackground': '#ffffff03',
         'settings.focusedRowBackground': '#24252b',
-        'settings.focusedRowBorder': '#b9b4d6',
+        'settings.focusedRowBorder': '#00000000',
         'settings.modifiedItemIndicator': '#b9b4d6',
         'notifications.background': '#24252b',
         'notifications.foreground': '#d7d7df',
@@ -70,69 +70,21 @@ export const fabiMidnightTheme = {
         'list.inactiveSelectionBackground': '#292a32',
         'list.hoverBackground': '#24252b',
         'list.focusBackground': '#383442',
-        'list.focusOutline': '#b9b4d6',
+        'list.focusOutline': '#00000000',
         'list.inactiveFocusOutline': '#b9b4d644',
-        'editorGroupHeader.tabsBackground': '#1a1b1f',
-        'editorGroupHeader.noTabsBackground': '#1a1b1f',
         'tab.activeBackground': '#23242a',
         'tab.activeForeground': '#e6e5ed',
-        'tab.inactiveBackground': '#1a1b1f',
+        'tab.inactiveBackground': '#191a1e',
         'tab.inactiveForeground': '#92929e',
         'tab.hoverBackground': '#24252b',
-        'tab.border': '#1a1b1f',
-        'editor.background': '#16171a',
-        'editor.foreground': '#d7d7df',
-        'editorCursor.foreground': '#e1dce9',
-        'editor.selectionBackground': '#423c53',
-        'editor.inactiveSelectionBackground': '#303039',
-        'editor.selectionHighlightBackground': '#b9b4d61a',
-        'editor.wordHighlightBackground': '#b9b4d615',
-        'editor.wordHighlightStrongBackground': '#b9b4d626',
-        'editor.lineHighlightBackground': '#ffffff04',
-        'editorLineNumber.foreground': '#62626e',
-        'editorLineNumber.activeForeground': '#b5b1c5',
-        'editorIndentGuide.background1': '#ffffff09',
-        'editorIndentGuide.activeBackground1': '#ffffff22',
-        'editorSuggestWidget.background': '#202127',
-        'editorSuggestWidget.selectedBackground': '#383442',
-        'editorSuggestWidget.border': '#35363f',
-        'editorHoverWidget.background': '#202127',
-        'editorHoverWidget.border': '#35363f',
-        'editorHoverWidget.statusBarBackground': '#24252b',
-        'editorWidget.background': '#202127',
-        'diffEditor.insertedTextBackground': '#91b99b22',
-        'diffEditor.removedTextBackground': '#e6949c22',
-        'diffEditor.insertedLineBackground': '#91b99b0d',
-        'diffEditor.removedLineBackground': '#e6949c0d',
-        'panel.background': '#16171a',
-        'statusBar.background': '#0c0d0f',
+        'tab.border': '#191a1e',
+        'panel.background': '#121316',
+        'statusBar.background': '#191a1e',
         'statusBar.foreground': '#92929e',
         'statusBar.noFolderForeground': '#92929e',
-        'terminal.background': '#16171a',
-        'terminal.foreground': '#d7d7df',
-        'terminalCursor.foreground': '#e1dce9',
-        'terminal.selectionBackground': '#423c53',
-        'terminal.ansiBlack': '#35363f',
-        'terminal.ansiRed': '#e6949c',
-        'terminal.ansiGreen': '#a4c5a6',
-        'terminal.ansiYellow': '#d8bd8b',
-        'terminal.ansiBlue': '#9cbde0',
-        'terminal.ansiMagenta': '#c7b7d7',
-        'terminal.ansiCyan': '#a2c9cd',
-        'terminal.ansiWhite': '#d7d7df',
-        'terminal.ansiBrightBlack': '#92929e',
-        'terminal.ansiBrightRed': '#f3b1b7',
-        'terminal.ansiBrightGreen': '#bfdbc0',
-        'terminal.ansiBrightYellow': '#e9d3ac',
-        'terminal.ansiBrightBlue': '#bed5ef',
-        'terminal.ansiBrightMagenta': '#dfcdeb',
-        'terminal.ansiBrightCyan': '#c0e1e4',
-        'terminal.ansiBrightWhite': '#f0eef4'
+        ...codeColors
     },
-    tokenColors: fabiIslandsTheme.tokenColors.map(rule => ({
-        ...rule,
-        settings: { ...rule.settings, foreground: midnightColor(rule.settings.foreground) }
-    })),
-    semanticHighlighting: true,
-    semanticTokenColors: semanticColors
+    tokenColors: cursorDark.tokenColors,
+    semanticHighlighting: cursorDark.semanticHighlighting,
+    semanticTokenColors: cursorDark.semanticTokenColors
 };

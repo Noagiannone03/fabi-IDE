@@ -1,3 +1,4 @@
+import { SWARM_ENGINE_ENABLED } from '../common/fabi-product-features';
 import '../../src/browser/style/fabi-swarm.css';
 import '../../src/browser/style/fabi-welcome.css';
 import '../../src/browser/style/fabi-agent-midnight.css';
@@ -71,13 +72,30 @@ import { FabiAgentCliService, FABI_AGENT_CLI_PATH } from '../common/fabi-agent-c
 ChatViewWidget.LABEL = 'Fabi AI';
 
 // Le panneau de gauche n'est plus un explorateur de fichiers mais la barre
-// « Projets » (dossiers → Agents IA + Code), cf. agents/fabi-project-tree.
-EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label = 'Projets';
+// « Espace » (sessions IA et volet fichiers), cf. agents/fabi-project-tree.
+EXPLORER_VIEW_CONTAINER_TITLE_OPTIONS.label = 'Espace';
 
 // Ce module est chargé APRÈS @theia/ai-ide (déclaré en dépendance de fabi-swarm) :
 // Theia ordonne les ContainerModule topologiquement → nos rebind/unbind passent
 // par-dessus ceux d'ai-ide de façon déterministe.
+import '../../src/browser/style/fabi-assist.css';
+import { KeybindingContribution } from '@theia/core/lib/browser';
+import { AssistModel, ContextAssistModel, AssistConnection } from './assist/assist-model';
+import { AssistIdeObserver } from './assist/assist-ide-context';
+import { AssistContribution, AssistWidget, ASSIST_WIDGET } from './assist/assist-contribution';
+
 export default new ContainerModule((bind, unbind, isBound, rebind) => {
+    bind(AssistConnection).toSelf().inSingletonScope();
+    bind(AssistModel).toSelf().inSingletonScope();
+    bind<AssistModel>(ContextAssistModel).to(AssistModel).inSingletonScope().onActivation((_ctx, model) => { model.surface = 'context'; return model; });
+    bind(AssistIdeObserver).toSelf().inSingletonScope();
+    bind(FrontendApplicationContribution).toService(AssistIdeObserver);
+    bind(AssistWidget).toSelf();
+    bind(WidgetFactory).toDynamicValue(ctx => ({ id: ASSIST_WIDGET, createWidget: () => ctx.container.get(AssistWidget) })).inSingletonScope();
+    bind(AssistContribution).toSelf().inSingletonScope();
+    [CommandContribution, MenuContribution, KeybindingContribution, TabBarToolbarContribution, FrontendApplicationContribution]
+        .forEach(contribution => bind(contribution).toService(AssistContribution));
+
     // Façade frontend : proxy RPC client-aware + Events. Singleton partagé.
     bind(FabiSwarmFrontend).toSelf().inSingletonScope();
     bind(FabiSwarmService).toDynamicValue(ctx => ctx.container.get(FabiSwarmFrontend).service).inSingletonScope();
@@ -89,7 +107,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
         id: FabiModelStorageSettingsWidget.ID,
         createWidget: () => ctx.container.get(FabiModelStorageSettingsWidget)
     })).inSingletonScope();
-    rebind(AIConfigurationContainerWidget).to(FabiAIConfigurationContainerWidget);
+    if (SWARM_ENGINE_ENABLED) { rebind(AIConfigurationContainerWidget).to(FabiAIConfigurationContainerWidget); }
 
     // === CERVEAU IA = OPENCODE, RENDU DANS LE CHAT THEIA (relais) ===
     // FabiCodeAgent est un ChatAgent Theia qui ne porte aucun modèle/prompt :
@@ -98,8 +116,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // cerveau (agents, prompts, modèle, contexte, outils) vit dans OpenCode.
     bind(FabiCodeFrontend).toSelf().inSingletonScope();
     bind(FabiCodeAgent).toSelf().inSingletonScope();
-    bind(Agent).toService(FabiCodeAgent);
-    bind(ChatAgent).toService(FabiCodeAgent);
+    if (SWARM_ENGINE_ENABLED) {
+        bind(Agent).toService(FabiCodeAgent);
+        bind(ChatAgent).toService(FabiCodeAgent);
+    }
     // Conserve les nouveaux messages pendant un tour actif. Le service Theia
     // standard annule sinon le tour précédent avant même d'invoquer l'agent.
     bind(FabiChatService).toSelf().inSingletonScope();
@@ -117,7 +137,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     }
     // Pont éditeur : fichiers édités par OpenCode → ouverts/scrollés dans l'éditeur.
     bind(FabiCodeEditorBridge).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(FabiCodeEditorBridge);
+    if (SWARM_ENGINE_ENABLED) { bind(FrontendApplicationContribution).toService(FabiCodeEditorBridge); }
     // Checkpoints : remplace le crayon « éditer » par une flèche « restaurer »
     // (dialogue « message + code » / « message seul ») sur les messages utilisateur.
     rebind(DefaultChatNodeToolbarActionContribution).to(FabiCodeRevertToolbarContribution).inSingletonScope();
@@ -130,7 +150,7 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
 
     // Moniteur de perfs (status bar bas-droite + modale détaillée).
     bind(FabiMetricsStatusBar).toSelf().inSingletonScope();
-    bind(FrontendApplicationContribution).toService(FabiMetricsStatusBar);
+    if (SWARM_ENGINE_ENABLED) { bind(FrontendApplicationContribution).toService(FabiMetricsStatusBar); }
 
     // Important : on n'enregistre PAS le swarm comme LanguageModel Theia global.
     // Le seul chemin IA produit est FabiCodeAgent → OpenCode. Sinon Theia lance
@@ -205,8 +225,10 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     // Bouton « Fabi AI » (îlot) à droite de la barre d'onglets + nettoyage de la
     // sidebar droite au démarrage (onDidInitializeLayout).
     bind(FabiEditorActionsContribution).toSelf().inSingletonScope();
-    bind(CommandContribution).toService(FabiEditorActionsContribution);
-    bind(TabBarToolbarContribution).toService(FabiEditorActionsContribution);
+    if (SWARM_ENGINE_ENABLED) {
+        bind(CommandContribution).toService(FabiEditorActionsContribution);
+        bind(TabBarToolbarContribution).toService(FabiEditorActionsContribution);
+    }
 
     // Renommage des onglets (terminaux + chats IA) au clic droit.
     bind(FabiTabRenameContribution).toSelf().inSingletonScope();
@@ -219,12 +241,13 @@ export default new ContainerModule((bind, unbind, isBound, rebind) => {
     bind(MaestroSurfaceReporter).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(MaestroSurfaceReporter);
 
-    // === Barre « Projets » : chaque dossier = Agents IA + Code ===
+    // === Espace : sessions IA au premier plan, fichiers natifs à la demande ===
     // Terminaux d'agents (lancement Claude/Codex…, reprise de conversation) et
     // modèle des agents par dossier (statut, non lu, notifications).
     bind(FabiAgentPicker).toSelf().inSingletonScope();
     bind(FabiProjectsLayout).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiProjectsLayout);
+    bind(CommandContribution).toService(FabiProjectsLayout);
     bind(FabiAgentTerminals).toSelf().inSingletonScope();
     bind(FrontendApplicationContribution).toService(FabiAgentTerminals);
     bind(CommandContribution).toService(FabiAgentTerminals);

@@ -50,7 +50,16 @@ export interface MaestroSurface {
 }
 
 /** Un agent supervisé (une ligne du tableau de bord). */
+export interface MaestroToolObservation {
+    at: number; sessionId: string; source: 'claude' | 'codex';
+    origin?: 'hook' | 'rollout' | 'app-server'; eventId?: string;
+    phase: 'started' | 'completed' | 'failed'; tool: string; path?: string;
+}
 export interface MaestroAgent {
+    /** Timestamp of an explicit native turn lifecycle event (not file mtime). */
+    activityAt?: number;
+    turnStartedAt?: number;
+    observations?: MaestroToolObservation[];
     /** Clé stable inter-sources : `${source}:${id}`. */
     key: string;
     source: MaestroSource;

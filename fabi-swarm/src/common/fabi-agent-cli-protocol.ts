@@ -7,12 +7,13 @@ export const FABI_AGENT_CLI_PATH = '/services/fabi-agent-cli';
 export const FabiAgentCliService = Symbol('FabiAgentCliService');
 
 export interface FabiAgentCliService {
-    /** CLI d'agents trouvées dans le PATH de l'utilisateur (shell de login). */
+    /** CLI d'agents trouvées dans le PATH de l'utilisateur (shell interactif de login). */
     installed(): Promise<FabiAgentCliId[]>;
 
     /**
      * Rédige un message pour les changements indexés du dépôt (à défaut, pour
      * les changements non indexés). `repositoryPath` = chemin FS de la racine git.
      */
-    commitMessage(repositoryPath: string): Promise<string>;
+    commitMessage(repositoryPath: string, requestId?: string): Promise<string>;
+    cancelCommitMessage(requestId: string): Promise<void>;
 }

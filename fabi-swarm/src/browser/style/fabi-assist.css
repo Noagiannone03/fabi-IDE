@@ -1,0 +1,494 @@
+/* Fabi's learning surface has its own material and typography, independent of editor chrome. */
+.fabi-assist-host { position:relative; }
+.fabi-assist { --assist-ink:#f1f1f3; --assist-muted:#a0a0a8; --assist-surface:#202023; --assist-line:#ffffff10; --assist-accent:#c8d5ee; color:var(--assist-ink); font:13px/1.7 -apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif; -webkit-font-smoothing:antialiased; }
+.fabi-assist *, .fabi-assist-selection-cue { box-sizing:border-box; }
+.fabi-assist button,.fabi-assist textarea { font:inherit; color:inherit; }
+.fabi-assist button { border:0; background:none; padding:0; cursor:pointer; transition:background 180ms,opacity 180ms,transform 220ms; }
+.fabi-assist button:hover { color:#fff; }
+.fabi-assist button:active { transform:scale(.97); }
+.fabi-assist button:disabled { opacity:.4; cursor:default; }
+/* No editor-theme focus rectangles inside Assist. Keyboard focus uses the material itself. */
+.fabi-assist button:focus,.fabi-assist input:focus,.fabi-assist textarea:focus,
+.fabi-assist button:focus-visible,.fabi-terminal-assist>button:focus-visible,.fabi-assist-selection-cue:focus-visible { background-color:#ffffff12; color:#fff; }
+.fabi-assist input:focus-visible,.fabi-assist textarea:focus-visible { caret-color:#f1f1f3; }
+.fabi-assist-fox { display:inline-block; width:18px; height:18px; flex:none; background:url('./icons/assist-fox.svg') center/contain no-repeat; }
+/* A quiet presence expands only on intent; the terminal grid never changes. */
+.fabi-terminal-assist { position:absolute; z-index:5; top:14px; right:20px; display:flex; align-items:center; gap:8px; border:1px solid #ffffff0b; border-radius:14px; padding:8px 12px; background:#242529e8; color:#c8cbd1; font:11px -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; box-shadow:0 4px 18px #0002; transition:background 180ms,transform 180ms; }
+.fabi-terminal-assist:hover { background:#303136; }
+.fabi-terminal-assist>.fabi-assist-fox { width:18px; height:18px; }
+.fabi-assist-open>.fabi-terminal-assist { display:none; }
+.fabi-presence-hint { position:absolute; top:calc(100% + 8px); right:0; width:230px; padding:16px; display:flex; flex-direction:column; gap:9px; text-align:left; border-radius:14px; background:#26272bf5; box-shadow:0 8px 30px #0004,inset 0 1px 0 #ffffff0b; opacity:0; transform:translateY(-4px); pointer-events:none; transition:opacity 180ms,transform 180ms; }
+.fabi-presence-hint strong { font-weight:500; font-size:12px; color:#e1e3e8; }
+.fabi-presence-hint small { color:#aeb6c2; font-size:10px; }
+.fabi-discovery-status { color:#979ca5; line-height:1.5; font-size:11px; }
+.fabi-terminal-assist[data-invited] .fabi-presence-hint,.fabi-terminal-assist:hover .fabi-presence-hint,.fabi-terminal-assist:focus-visible .fabi-presence-hint { opacity:1; transform:none; }
+.fabi-assist-surface { position:relative; inset:auto; min-height:0; border-top:1px solid var(--theia-panel-border); }
+.fabi-discovery-status { font-size:10px; color:var(--theia-descriptionForeground); }
+.fabi-discovery-status:empty { display:none; }
+.fabi-assist-surface { position:absolute; inset:0; z-index:8; overflow:hidden; background:#1b1b1e; container-type:inline-size; animation:assist-arrive 300ms cubic-bezier(.16,1,.3,1); }
+.fabi-assist-lesson-view { height:100%; display:flex; flex-direction:column; background:#1b1b1e; position:relative; }
+.fabi-assist-topline { display:flex; align-items:center; gap:14px; flex:none; padding:17px 24px; }
+.fabi-assist-segments { display:flex; padding:3px; background:#ffffff06; border-radius:10px; font-size:11px; }
+.fabi-assist-segments>button,.fabi-assist-segments>span { padding:5px 13px; border-radius:7px; }
+.fabi-assist-segments>button { color:var(--assist-muted); }
+.fabi-assist-segments>span { background:#ffffff0d; box-shadow:0 2px 5px #0002; }
+.fabi-session-status { font-size:10px; color:var(--assist-muted); margin-left:auto; display:flex; align-items:center; gap:7px; }
+.fabi-session-status i { width:5px; height:5px; border-radius:50%; background:#8c8e96; }
+.fabi-session-status i[data-working=true] { background:#a8c8a9; animation:assist-breathe 2s infinite; }
+.fabi-assist .fabi-top-icon { width:28px; height:28px; display:grid; place-items:center; color:var(--assist-muted); border-radius:8px; }
+.fabi-top-icon:hover { background:#ffffff08; }
+.fabi-top-icon svg { width:17px; height:17px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.fabi-assist-reading-space { flex:1; overflow-y:auto; padding:22px max(28px,calc((100% - 650px)/2)); scrollbar-width:thin; scrollbar-color:#ffffff16 transparent; }
+.fabi-assist-invitation { padding:clamp(24px,7vh,80px) 0 34px; }
+.fabi-assist-eyebrow { font-size:11px; color:#9da5b3; letter-spacing:.01em; }
+.fabi-assist h2 { font-weight:550; letter-spacing:-.04em; line-height:1.2; text-wrap:balance; }
+.fabi-assist-invitation h2 { font-size:clamp(30px,4vw,44px); margin:20px 0; }
+.fabi-assist-invitation p { color:var(--assist-muted); font-size:14px; line-height:1.8; }
+.fabi-start-ideas { margin-top:30px; display:flex; flex-direction:column; gap:8px; max-width:370px; }
+.fabi-assist .fabi-start-ideas button { display:flex; justify-content:space-between; align-items:center; gap:25px; padding:13px 16px; border-radius:12px; background:#ffffff04; font-size:12px; color:#c8c8cf; }
+.fabi-start-ideas button:hover { background:#ffffff09; }
+.fabi-conversation-turn { padding:10px 0 30px; animation:assist-arrive 240ms both; }
+.fabi-user-question { margin:0 0 30px auto; width:fit-content; max-width:88%; padding:11px 16px; border-radius:17px 17px 5px 17px; background:#ffffff06; white-space:pre-wrap; font-size:12px; color:#c6c6cc; }
+.fabi-answer-author { font-size:10px; font-weight:600; letter-spacing:.035em; color:#a9b9d0; }
+.fabi-assist-response h2 { font-size:23px; margin:10px 0 20px; }
+.fabi-assist-markdown { overflow-wrap:anywhere; }
+.fabi-assist-markdown p { margin:10px 0 16px; }
+.fabi-assist-markdown ul,.fabi-assist-markdown ol { padding-left:22px; }
+.fabi-assist-markdown pre { padding:16px; border-radius:12px; background:#10101380; overflow:auto; border:1px solid #ffffff05; }
+.fabi-assist-markdown code { font:12px/1.65 'SFMono-Regular',Menlo,monospace; }
+.fabi-assist-markdown h1,.fabi-assist-markdown h2,.fabi-assist-markdown h3 { font-size:16px; margin:22px 0 10px; }
+.fabi-assist-sources { display:flex; gap:6px 14px; flex-wrap:wrap; margin-top:15px; }
+.fabi-assist-sources button,.fabi-assist-sources a { color:#9299a6; font-size:10px; text-decoration:none; text-align:left; }
+.fabi-assist-sources a:hover,.fabi-assist-sources button:hover { color:#c8d5ee; }
+.fabi-verification { font-size:10px; color:#afa28d; margin:12px 0; }
+.fabi-assist-compose-dock { flex:none; padding:12px max(24px,calc((100% - 690px)/2)) 16px; }
+.fabi-assist-composer { display:flex; align-items:flex-end; gap:12px; border-radius:18px; background:#28282d; padding:12px 12px 12px 18px; box-shadow:0 0 0 1px #ffffff07,0 5px 20px #0001; }
+
+.fabi-assist textarea { width:100%; resize:vertical; background:transparent; border:0; outline:0!important; line-height:1.7; font-size:12px; }
+.fabi-assist textarea::placeholder { color:#8a8a94; }
+.fabi-assist-composer textarea { resize:none; min-height:38px; max-height:160px; }
+.fabi-assist .fabi-assist-composer>button { flex:none; width:30px; height:30px; border-radius:50%; background:#d7dce5; color:#252831; font-size:20px; line-height:1; }
+.fabi-assist-bottom { display:flex; align-items:center; justify-content:space-between; margin-top:12px; color:#83838c; font-size:10px; }
+.fabi-assist-bottom>button { color:#b9bac4; }
+.fabi-assist-drawer { position:absolute; right:20px; top:62px; z-index:5; width:min(330px,calc(100% - 40px)); max-height:calc(100% - 90px); overflow:auto; padding:18px; border-radius:18px; background:#2b2b30f5; backdrop-filter:blur(24px); box-shadow:0 12px 50px #0005,inset 0 1px 0 #ffffff0d; animation:assist-arrive 180ms both; }
+.fabi-assist-drawer>header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.fabi-assist-drawer h3 { margin:0; font-weight:550; font-size:14px; }
+.fabi-assist-drawer>header button { font-size:20px; color:#95959f; }
+.fabi-assist-drawer>p { color:var(--assist-muted); font-size:12px; }
+.fabi-assist .fabi-thread-row { display:flex; flex-direction:column; width:100%; text-align:left; padding:11px 12px; border-radius:10px; }
+.fabi-thread-row:hover,.fabi-thread-row[aria-current=true] { background:#ffffff07; }
+.fabi-thread-row small { font-size:9px; color:#9298a5; }
+.fabi-thread-row span { font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.fabi-concept-row { display:flex; gap:12px; padding:13px 0; }
+.fabi-concept-row>span { color:#9a9ba6; }
+.fabi-concept-row>span[data-known=true] { color:#a3c9ad; }
+.fabi-concept-row strong { font-weight:500; font-size:12px; }
+.fabi-concept-row small { display:block; font-size:10px; color:var(--assist-muted); }
+.fabi-assist-exercise { margin-top:25px; padding:20px; border-radius:16px; background:#ffffff04; }
+.fabi-exercise-heading { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; }
+.fabi-exercise-heading>span { font-size:11px; color:#b8c9e1; }
+.fabi-exercise-heading small { font-size:9px; color:#888993; }
+.fabi-assist-exercise textarea { border-radius:9px; background:#12121580; padding:12px; }
+.fabi-assist-exercise textarea.fabi-code-answer { font-family:'SFMono-Regular',Menlo,monospace; }
+.fabi-assist .fabi-small-action { display:flex; align-items:center; gap:30px; background:#ffffff08; padding:8px 12px; border-radius:8px; margin-top:12px; font-size:11px; }
+.fabi-assist .fabi-hint-toggle { margin-top:16px; font-size:10px; color:#9d9da8; }
+.fabi-hint { color:#b5b5be; font-size:12px; }
+.fabi-quiz-choices { display:grid; gap:7px; }
+.fabi-assist .fabi-quiz-choices button { text-align:left; padding:10px 12px; display:flex; align-items:center; gap:12px; border-radius:10px; background:#ffffff04; font-size:12px; }
+.fabi-quiz-choices button:hover { background:#ffffff0b; }
+.fabi-quiz-choices button>span { color:#aabbd5; font-size:10px; }
+.fabi-assist-feedback { margin:20px 0; padding-left:15px; border-left:2px solid #a2a9b7; font-size:12px; }
+.fabi-assist-feedback[data-result=understood] { border-color:#92b09a; }
+.fabi-assist-feedback>strong { font-weight:500; color:#c6d6c9; }
+.fabi-term { position:relative; }
+.fabi-assist .fabi-term>button { display:inline; padding:0 1px; color:#bed0ed; border-bottom:1px dotted #bed0ed80; font:inherit; text-align:left; line-height:inherit; }
+.fabi-term-definition { display:none; position:absolute; z-index:6; left:0; top:calc(100% + 6px); width:min(260px,65vw); padding:14px 16px; border-radius:12px; color:#e6e6eb; background:#34343b; font:12px/1.65 -apple-system,BlinkMacSystemFont,sans-serif; white-space:pre-line; box-shadow:0 8px 30px #0005,inset 0 1px 0 #ffffff10; }
+.fabi-term[data-open=true]>.fabi-term-definition { display:block; animation:assist-arrive 150ms both; }
+.fabi-learning-flow { margin:24px 0; }
+.fabi-learning-flow figcaption { font-size:10px; color:#9699a4; margin-bottom:12px; }
+.fabi-learning-flow ol { list-style:none; padding:0; margin:0; display:flex; align-items:stretch; gap:18px; }
+.fabi-learning-flow li { flex:1; min-width:0; position:relative; padding:12px; background:#ffffff04; border-radius:12px; display:flex; flex-direction:column; }
+.fabi-learning-flow li+li:before { content:'→'; position:absolute; left:-15px; top:50%; color:#757b88; font-size:11px; }
+.fabi-flow-number { color:#94a7c4; font-size:9px; margin-bottom:8px; }
+.fabi-learning-flow strong { font-weight:500; font-size:11px; }
+.fabi-learning-flow li>span:last-child { color:#999ca6; font-size:10px; line-height:1.5; margin-top:5px; }
+.fabi-assist-thinking { display:flex; align-items:center; gap:12px; padding:25px 0; font-size:11px; color:var(--assist-muted); }
+.fabi-assist-thinking>button { margin-left:auto; font-size:10px; }
+.fabi-assist-error,.fabi-petal-error { font-size:12px; color:#d8aaa5; padding:12px 0; }
+.fabi-assist-connect { display:flex; align-items:center; gap:12px; color:#aaaab4; font-size:11px; padding:20px 0; }
+.fabi-assist-connect>button { white-space:nowrap; color:#c1d0e7; }
+.fabi-assist-completion { display:flex; justify-content:space-between; gap:15px; font-size:11px; color:#b5c8b7; padding:12px 0; }
+.fabi-assist-proposal { font-size:12px; color:#b7bdc9; margin-top:20px; }
+/* One anchored instrument, expanding into a reading sheet. */
+.fabi-assist-popover { position:fixed; z-index:1000; isolation:isolate; overflow:visible; animation:assist-arrive 260ms cubic-bezier(.16,1,.3,1); transform-origin:18px 0; }
+.fabi-assist-orbital { width:300px; max-width:100%; padding:14px; border-radius:20px; background:linear-gradient(155deg,#35363af5,#242529f5); backdrop-filter:blur(32px) saturate(115%); box-shadow:inset 0 1px 0 #ffffff24,inset 0 0 0 1px #ffffff0c,0 12px 40px #0005; }
+.fabi-lens-caption { display:flex; align-items:center; gap:10px; padding:0 3px 13px; }
+.fabi-lens-caption>span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; font-weight:550; }
+.fabi-lens-caption small { display:block; font-size:9px; font-weight:400; color:#a3a4aa; }
+.fabi-lens-caption>button { font-size:20px; color:#9c9da3; }
+.fabi-assist .fabi-orbit-action { position:static; display:flex; align-items:center; justify-content:space-between; gap:8px; border-radius:10px; padding:10px 12px; font-size:11px; color:#d6d7dc; }
+.fabi-assist .fabi-orbit-explain { width:100%; background:#e6e7eb; color:#25262b; font-weight:550; }
+.fabi-assist .fabi-orbit-explain:hover { background:#fff; color:#111; }
+.fabi-lens-options { display:flex; gap:4px; padding-top:5px; }
+.fabi-lens-options>button { flex:1; }
+.fabi-lens-options>button:hover { background:#ffffff09; }
+.fabi-lens-options kbd { color:#8c8d96; font:10px inherit; }
+.fabi-assist-petal { border-radius:22px; background:#28282eee; backdrop-filter:blur(30px); box-shadow:0 16px 60px #0005,inset 0 1px 0 #ffffff12; padding:17px 20px; max-height:inherit; overflow:auto; scrollbar-width:thin; }
+.fabi-petal-header { display:flex; align-items:center; gap:10px; padding-bottom:12px; }
+.fabi-petal-header>span { flex:1; font-size:11px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fabi-petal-header small { display:block; font-size:9px; color:#9595a0; }
+.fabi-petal-core { width:26px; height:26px; display:grid; place-items:center; }
+.fabi-assist .fabi-petal-close { font-size:20px; color:#90909b; }
+.fabi-petal-compose { position:relative; padding:12px 0 0; }
+.fabi-petal-compose textarea { padding:10px 36px 10px 12px; background:#15151965; border-radius:12px; resize:none; }
+.fabi-assist .fabi-petal-compose>button { position:absolute; right:10px; top:24px; width:23px; height:23px; border-radius:50%; background:#c9d1df; color:#262a32; }
+.fabi-petal-compose>span { display:block; font-size:9px; color:#92929e; margin-top:9px; }
+.fabi-petal-footer { display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#aebbd1; padding-top:18px; }
+.fabi-petal-answer { font-size:12px; }
+.fabi-petal-answer .fabi-learning-flow ol { flex-direction:column; gap:12px; }
+.fabi-petal-answer .fabi-learning-flow li+li:before { content:'↓'; left:50%; top:-14px; }
+.fabi-petal-thinking { min-height:95px; display:flex; align-items:center; gap:12px; color:#aaaab5; font-size:11px; }
+.fabi-petal-thinking>button { font-size:9px; margin-left:auto; }
+.fabi-petal-dots { display:flex; gap:3px; flex:none; }
+.fabi-petal-dots i { width:4px; height:4px; background:#b7c7df; border-radius:50%; animation:assist-breathe 1.1s infinite; }
+.fabi-petal-dots i:nth-child(2) { animation-delay:150ms; }.fabi-petal-dots i:nth-child(3) { animation-delay:300ms; }
+.fabi-assist-selection-cue { position:fixed; z-index:998; display:flex; align-items:center; gap:5px; padding:6px 8px; border:1px solid #ffffff16; border-radius:12px; background:#33333be8; backdrop-filter:blur(20px); box-shadow:0 4px 14px #0003; color:#b9b9c4; font:9px -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; animation:assist-arrive 230ms cubic-bezier(.16,1,.3,1); }
+.fabi-assist-selection-cue .fabi-assist-fox { width:15px; height:15px; }
+.fabi-assist-selection-cue:hover { background:#45454e; }
+.fabi-assist-hold { position:fixed; z-index:999; width:22px; height:22px; margin:-11px; border-radius:50%; pointer-events:none; border:1px solid #bccae2; animation:assist-hold 560ms linear both; }
+body.fabi-assist-cursor,body.fabi-assist-cursor * { cursor:url('./icons/assist-fox.svg') 9 9,help!important; }
+@keyframes assist-arrive { from { opacity:0; transform:translateY(5px) scale(.985); } to { opacity:1; transform:none; } }
+@keyframes assist-palette-in { from { opacity:0; transform:translateY(7px) scale(.93); } to { opacity:1; transform:none; } }
+@keyframes assist-hold { from { opacity:0; transform:scale(1.5); } 30% { opacity:.6; } to { opacity:1; transform:scale(1); } }
+@keyframes assist-breathe { 50% { opacity:.3; } }
+@container (max-width:550px) { .fabi-assist-topline { padding:12px; gap:8px; }.fabi-session-status { font-size:9px; }.fabi-assist-reading-space { padding:12px 22px; }.fabi-assist-compose-dock { padding:12px 18px; }.fabi-learning-flow ol { flex-direction:column; }.fabi-learning-flow li+li:before { content:'↓'; left:50%; top:-17px; }.fabi-assist-bottom>span { display:none; } }
+@media (prefers-reduced-motion:reduce) { .fabi-assist *,.fabi-assist-popover,.fabi-assist-surface,.fabi-assist-hold,.fabi-assist-selection-cue { animation:none!important; transition:none!important; scroll-behavior:auto!important; } }
+
+/* Quiet graphite surfaces, generous reading rhythm, restrained chrome. */
+.fabi-assist { --assist-accent:#d9dce3; --assist-ink:#e8e9ed; --assist-muted:#999ca6; }
+.fabi-assist-surface,.fabi-assist-lesson-view { background:#191a1e; }
+.fabi-assist-topline { border-bottom:1px solid #ffffff06; padding:14px 22px; }
+.fabi-assist-reading-space { padding-top:30px; }
+.fabi-assist-invitation { position:relative; padding:clamp(28px,6vh,64px) 0 36px; }
+.fabi-assist-welcome-mark { width:68px; height:68px; opacity:.8; margin:0 0 28px; display:block; }
+.fabi-assist-invitation h2 { font-size:clamp(34px,5vw,52px); font-weight:500; letter-spacing:-.055em; margin:14px 0 22px; }
+.fabi-assist-eyebrow { color:#a6a8b1; font-size:12px; }
+.fabi-start-ideas { max-width:440px; gap:0; margin-top:32px; border-top:1px solid #ffffff0c; }
+.fabi-assist .fabi-start-ideas button { border-radius:0; padding:16px 2px; background:none; border-bottom:1px solid #ffffff0c; color:#c9cbd3; }
+.fabi-start-ideas button:hover { padding-left:8px; background:#ffffff03; }
+.fabi-user-question { background:transparent; border-left:2px solid #ffffff20; border-radius:0; margin:0 0 28px; padding:3px 0 3px 14px; color:#aeb0bb; max-width:100%; }
+.fabi-answer-author { color:#dbdde4; }
+.fabi-assist-response h2 { font-size:25px; font-weight:500; }
+.fabi-assist-composer { border-radius:16px; background:#25262b; box-shadow:inset 0 1px 0 #ffffff0e,0 8px 28px #0002; }
+.fabi-assist-compose-dock { background:linear-gradient(transparent,#191a1e 22%); }
+.fabi-assist .fabi-assist-composer>button { border-radius:10px; background:#dddfe6; }
+.fabi-assist-bottom { padding:0 4px; }
+.fabi-assist-bottom .fabi-context-button { color:#9b9eaa; }
+.fabi-context-inspector { font-size:11px; color:#babdc7; }
+.fabi-context-inspector h4 { font-size:10px; color:#858995; margin:22px 0 10px; font-weight:500; }
+.fabi-context-inspector>button { text-align:left; width:100%; overflow-wrap:anywhere; margin:5px 0; }
+.fabi-context-inspector p { overflow-wrap:anywhere; }
+.fabi-context-inspector small { display:block; color:#858995; font-size:9px; }
+.fabi-quote-question { margin:16px 0; border-radius:13px; padding:14px; background:#ffffff06; box-shadow:inset 2px 0 #b2b9ca; animation:assist-arrive 180ms both; }
+.fabi-quote-question header { display:flex; justify-content:space-between; color:#aeb4c2; font-size:10px; }
+.fabi-quote-question blockquote { margin:10px 0; font-size:11px; max-height:90px; overflow:auto; color:#d7d9e1; }
+.fabi-quote-question form { display:flex; gap:8px; border-bottom:1px solid #ffffff16; padding:6px 0; }
+.fabi-quote-question input { min-width:0; flex:1; border:0; background:none; color:#dddfe7; outline:none; font:12px inherit; }
+
+.fabi-quote-question>button { font-size:10px; color:#aeb9ce; margin-top:10px; }
+.fabi-assist-petal { background:#26272cf5; border-radius:20px; }
+.fabi-assist-selection-cue { border-radius:9px; background:#303137f0; }
+
+.fabi-assist-fox { filter:grayscale(1); }
+
+.fabi-term[data-dismissed=true]>.fabi-term-definition { display:none; }
+/* The same session switch on both faces of the terminal. */
+.fabi-assist-segments { align-items:center; gap:2px; }
+.fabi-assist-segments>button,.fabi-assist-segments>span { display:flex; align-items:center; gap:7px; }
+.fabi-assist-segments svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.fabi-assist-segments .fabi-assist-fox { width:14px; height:14px; filter:grayscale(1); }
+
+/* A three-leaf fan unfolds from the pointer; the code remains visible between leaves. */
+.fabi-assist-orbital { position:relative; width:290px; height:212px; padding:0; border-radius:0; background:none; box-shadow:none; backdrop-filter:none; pointer-events:none; }
+.fabi-fan-material { position:absolute; inset:0 0 auto; width:100%; height:190px; overflow:visible; filter:drop-shadow(0 5px 10px #0005); }
+.fabi-fan-leaf { fill:#303238f5; stroke:#ffffff19; stroke-width:1; transform-origin:27px 96px; animation:fabi-fan-unfold 340ms cubic-bezier(.16,1,.3,1) both; transition:fill 160ms; }
+.leaf-role { animation-delay:35ms; }.leaf-question { animation-delay:70ms; }
+.fabi-assist .fabi-orbit-action { pointer-events:auto; position:absolute; left:103px; width:145px; height:42px; padding:0 10px; background:none; color:#e1e3e9; border-radius:11px; font-weight:450; animation:assist-arrive 300ms 100ms both; }
+.fabi-assist .fabi-orbit-action:hover { background:none; color:#fff; }
+.fabi-orbit-action small { color:#959ba8; font-size:12px; }
+.fabi-assist .fabi-orbit-explain { top:13px; }
+.fabi-assist .fabi-orbit-role { top:73px; left:113px; }
+.fabi-assist .fabi-orbit-question { top:132px; }
+.fabi-assist-orbital:has(.fabi-orbit-explain:hover) .leaf-explain,.fabi-assist-orbital:has(.fabi-orbit-explain:focus-visible) .leaf-explain { fill:#484c55; }
+.fabi-assist-orbital:has(.fabi-orbit-role:hover) .leaf-role,.fabi-assist-orbital:has(.fabi-orbit-role:focus-visible) .leaf-role { fill:#484c55; }
+.fabi-assist-orbital:has(.fabi-orbit-question:hover) .leaf-question,.fabi-assist-orbital:has(.fabi-orbit-question:focus-visible) .leaf-question { fill:#484c55; }
+.fabi-assist .fabi-fan-origin { position:absolute; pointer-events:auto; left:12px; top:80px; width:30px; height:32px; display:grid; place-items:center; filter:drop-shadow(0 0 7px #d9e1f580); border-radius:9px; }
+.fabi-fan-origin:hover { background:#34363c; }
+.fabi-fan-context { position:absolute; top:188px; left:103px; max-width:155px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#aeb3bf; font-size:9px; text-shadow:0 1px 4px #000; }
+body:has(.fabi-assist-orbital),body:has(.fabi-assist-orbital) * ,body.fabi-assist-cursor,body.fabi-assist-cursor * { cursor:url('./icons/assist-cursor.svg') 5 3,default!important; }
+.fabi-assist-hold { border:2px solid #d8dce5; box-shadow:0 0 14px #c5d0ea50; }
+@keyframes fabi-fan-unfold { from { opacity:0; transform:scaleX(.2) scaleY(.45) rotate(-12deg); } to { opacity:1; transform:none; } }
+@media(prefers-reduced-motion:reduce) { .fabi-fan-leaf { animation:none; } }
+
+/* Press: a lens gathers light, traces the hold, then releases the fan. */
+.fabi-assist-segments .fabi-assist-fox { width:22px; height:22px; }
+.fabi-assist-selection-cue .fabi-assist-fox { width:24px; height:24px; }
+.fabi-fan-origin .fabi-assist-fox,.fabi-petal-core .fabi-assist-fox { width:30px; height:30px; }
+.fabi-assist .fabi-fan-origin { left:7px; top:75px; width:40px; height:42px; }
+.fabi-petal-core { width:34px; height:34px; }
+.fabi-assist-hold { width:80px; height:80px; margin:-40px; border:0; box-shadow:none; animation:fabi-hold-gather 560ms cubic-bezier(.2,.7,.2,1) both; }
+.fabi-assist-hold::before { content:''; position:absolute; inset:16px; border-radius:50%; background:radial-gradient(circle at 35% 20%,#ffffff24,#23262ce0 65%); box-shadow:inset 0 1px 1px #ffffff38,0 8px 24px #0004; backdrop-filter:blur(8px); }
+.fabi-assist-hold svg { position:absolute; inset:0; width:80px; height:80px; overflow:visible; transform:rotate(-90deg); }
+.fabi-hold-track { fill:none; stroke:#ffffff12; stroke-width:1; }
+.fabi-hold-progress { fill:none; stroke:#f0f2f8; stroke-width:1.7; stroke-linecap:round; stroke-dasharray:1; stroke-dashoffset:1; animation:fabi-hold-trace 560ms cubic-bezier(.3,0,.5,1) both; filter:drop-shadow(0 0 3px #ffffff70); }
+.fabi-assist-hold>.fabi-assist-fox { position:absolute; left:25px; top:25px; width:30px; height:30px; animation:fabi-hold-mark 560ms both; }
+.fabi-hold-wave { position:absolute; inset:8px; border:1px solid #ffffff30; border-radius:50%; animation:fabi-hold-wave 560ms both; }
+.fabi-fan-leaf { animation-name:fabi-fan-release; animation-duration:520ms; }
+.leaf-explain { --fan-angle:-16deg; }.leaf-role { --fan-angle:0deg; }.leaf-question { --fan-angle:16deg; }
+.fabi-assist-expanded .fabi-assist-petal { width:min(620px,calc(100vw - 32px)); }
+@keyframes fabi-hold-gather { 0% { opacity:0; transform:scale(.55); } 30% { opacity:1; transform:scale(1.08); } 75% { transform:scale(.97); } 100% { transform:scale(1); } }
+@keyframes fabi-hold-trace { to { stroke-dashoffset:0; } }
+@keyframes fabi-hold-mark { 0% { opacity:0; transform:translateY(4px) scale(.6); } 50%,100% { opacity:1; transform:none; } }
+@keyframes fabi-hold-wave { 0% { opacity:0; transform:scale(.5); } 45% { opacity:.6; } 100% { opacity:0; transform:scale(1.3); } }
+@keyframes fabi-fan-release { 0% { opacity:0; transform:scaleX(.08) scaleY(.25) rotate(var(--fan-angle)); } 65% { opacity:1; transform:scaleX(1.025) scaleY(1.015); } 100% { opacity:1; transform:none; } }
+@media(prefers-reduced-motion:reduce) { .fabi-assist-hold * { animation:none!important; }.fabi-hold-progress { stroke-dashoffset:0; }.fabi-hold-wave { display:none; } }
+
+/* Feedback occupies only the intentional part of the 560 ms hold. */
+.fabi-assist-hold,.fabi-assist-hold .fabi-hold-progress,.fabi-assist-hold>.fabi-assist-fox,.fabi-assist-hold .fabi-hold-wave { animation-duration:380ms; }
+
+/* Keep the definition reachable across its small visual gap. */
+.fabi-term-definition::before { content:''; position:absolute; left:0; right:0; top:-8px; height:8px; }
+.fabi-petal-user { margin:16px 0 10px; padding:9px 12px; border-radius:12px; background:#ffffff07; color:#d0d2da; font-size:12px; }
+.fabi-petal-answer+.fabi-petal-answer { margin-top:20px; border-top:1px solid #ffffff0a; }
+.fabi-petal-thread+.fabi-petal-compose { margin-top:8px; }
+.fabi-assist .fabi-fan-origin { left:0; top:72px; width:46px; height:48px; filter:drop-shadow(0 2px 6px #0004); }
+.fabi-fan-origin .fabi-assist-fox { width:40px; height:40px; }
+.fabi-fan-leaf { stroke-width:.65; transform-origin:60px 96px; }
+
+/* Session workspace: fixed left switch, quiet canvas, one primary composer. */
+.fabi-terminal-assist { left:22px; right:auto; top:14px; }
+.fabi-assist-topline { justify-content:flex-start; min-height:48px; padding:14px 22px; }
+.fabi-assist-invitation { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:clamp(32px,10vh,100px) 0 40px; }
+.fabi-assist-invitation .fabi-assist-welcome-mark { position:static; width:88px; height:88px; margin:0 0 14px; opacity:1; filter:grayscale(1); background-color:transparent; }
+.fabi-assist-invitation h2 { margin:0; font:500 24px/1.3 -apple-system,BlinkMacSystemFont,sans-serif; letter-spacing:-.035em; }
+.fabi-assist-invitation p { margin:10px 0 0; font-size:12px; line-height:1.5; }
+.fabi-assist-compose-dock { background:none; }
+.fabi-provider-status { display:flex; justify-content:center; gap:10px; margin:10px 0 0; font-size:10px; color:var(--assist-muted); }
+.fabi-provider-status button { color:inherit; text-decoration:underline; text-underline-offset:3px; }
+.fabi-cli-progress { margin:8px 0 22px; padding:12px 0 16px; border-bottom:1px solid #ffffff0c; animation:assist-arrive 220ms ease-out; }
+.fabi-cli-progress-heading { display:flex; align-items:center; gap:8px; font-size:11px; }
+.fabi-cli-progress-heading>span:last-child { color:var(--assist-muted); }
+.fabi-cli-indicator { width:6px; height:6px; border-radius:50%; background:#a7aca9; }
+.fabi-cli-progress[data-working=true] .fabi-cli-indicator { animation:assist-breathe 1.8s infinite; }
+.fabi-cli-progress p { margin:10px 0; color:var(--assist-muted); font-size:12px; line-height:1.6; white-space:pre-wrap; max-height:5em; overflow:auto; }
+.fabi-cli-progress-actions { display:flex; gap:18px; margin-top:12px; font-size:11px; }
+.fabi-dispatch-review { margin-bottom:14px; padding:16px; border-radius:16px; background:var(--theia-editor-background,#202124); box-shadow:0 0 0 1px #ffffff12; animation:assist-arrive 220ms ease-out; }
+.fabi-dispatch-review header,.fabi-dispatch-review>div { display:flex; align-items:center; justify-content:space-between; gap:16px; font-size:12px; }
+.fabi-dispatch-review header button { font-size:20px; }
+.fabi-dispatch-review textarea { margin:12px 0; min-height:150px; max-height:30vh; font-size:12px; }
+.fabi-dispatch-review .fabi-dispatch-confirm { padding:9px 12px; border-radius:9px; background:#e9e9ea; color:#191a1e; font-weight:500; }
+.fabi-dispatch-review small { display:block; margin-top:12px; color:var(--assist-muted); font-size:10px; }
+.fabi-assist-bottom .fabi-send-cli { margin-right:auto; color:var(--theia-editor-foreground,#ddd); }
+.fabi-assist button:disabled { cursor:default; opacity:.4; }
+@media (prefers-reduced-motion:reduce) { .fabi-cli-progress,.fabi-dispatch-review,.fabi-cli-progress[data-working=true] .fabi-cli-indicator { animation:none; } }
+
+.fabi-assist-compose-dock { padding-bottom:12px; }
+.fabi-assist-bottom { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+.fabi-dispatch-review { margin-bottom:0; }
+
+/* The mode switch stays on the right in both terminal and assistant views. */
+.fabi-terminal-assist { left:auto; right:22px; }
+.fabi-assist-composer { display:flex; flex-direction:column; align-items:stretch; gap:10px; padding:16px 14px 10px; border-radius:20px; background:#242529; box-shadow:0 0 0 1px #ffffff0a,inset 0 1px 0 #ffffff04,0 8px 28px #00000016; transition:box-shadow 180ms ease; }
+.fabi-assist-composer textarea { padding:0 4px; font-size:13px; min-height:44px; }
+.fabi-composer-toolbar { display:flex; align-items:center; gap:12px; }
+.fabi-composer-destination { display:flex; gap:2px; padding:3px; border-radius:11px; background:#16171a65; }
+.fabi-composer-destination button { display:flex; align-items:center; gap:6px; padding:6px 9px; border-radius:8px; font-size:11px; color:#8f929b; text-transform:capitalize; }
+.fabi-composer-destination button[aria-pressed=true] { color:#ececef; background:#ffffff0d; box-shadow:0 1px 3px #0002,inset 0 1px 0 #ffffff0a; }
+.fabi-composer-destination button:hover:not(:disabled) { color:#fff; }
+.fabi-composer-destination .fabi-assist-fox { width:17px; height:17px; }
+.fabi-composer-destination svg,.fabi-composer-send svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+.fabi-composer-keyhint { margin-left:auto; font-size:9px; color:#737781; }
+.fabi-assist .fabi-composer-send { display:grid; place-items:center; width:32px; height:32px; flex-shrink:0; border-radius:10px; color:#1b1c20; background:#e8e9ec; }
+.fabi-composer-send:hover:not(:disabled) { transform:translateY(-1px); background:white; }
+.fabi-composer-send:active:not(:disabled) { transform:scale(.94); }
+.fabi-assist-bottom { justify-content:center; gap:20px; margin-top:11px; }
+@container (max-width:550px) { .fabi-composer-keyhint { display:none; }.fabi-composer-send { margin-left:auto; }.fabi-assist-topline { padding-right:22px; } }
+
+/* Conversation: personal messages, assistant responses and CLI events have distinct roles. */
+.fabi-user-message { display:flex; flex-direction:column; align-items:flex-end; margin:24px 0 26px; gap:7px; }
+.fabi-user-message > span { font-size:11px; color:var(--theia-descriptionForeground); padding-right:12px; }
+.fabi-user-message .fabi-user-question { max-width:82%; width:fit-content; margin:0; padding:13px 18px; border:1px solid color-mix(in srgb,currentColor 8%,transparent); border-radius:20px 20px 5px 20px; background:color-mix(in srgb,currentColor 5%,transparent); font-size:14px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+.fabi-assist-response .fabi-answer-author { display:flex; align-items:center; gap:9px; font-size:12px; letter-spacing:0; }
+.fabi-answer-author > .fabi-assist-fox { width:24px; height:24px; flex:none; }
+.fabi-answer-author > small { font-size:11px; font-weight:400; color:var(--theia-descriptionForeground); margin-left:3px; }
+.fabi-turn-event { display:flex; align-items:center; gap:14px; margin:30px 0 22px; color:var(--theia-descriptionForeground); font-size:11px; }
+.fabi-turn-event::before,.fabi-turn-event::after { content:''; height:1px; flex:1; background:color-mix(in srgb,currentColor 12%,transparent); }
+.fabi-cli-output { margin-top:10px; font-size:12px; line-height:1.6; }
+.fabi-cli-output > summary { cursor:pointer; color:var(--theia-descriptionForeground); }
+.fabi-cli-output > div { max-height:240px; overflow:auto; margin-top:12px; }
+.fabi-retry-message { display:block; margin-left:auto; border:0; background:none; color:var(--theia-foreground); cursor:pointer; padding:8px 12px; }
+.fabi-activity { display:flex; align-items:center; gap:14px; padding:12px 0 25px; animation:fabi-activity-enter .28s ease-out both; }
+.fabi-activity-emblem { position:relative; display:grid; place-items:center; width:46px; height:46px; flex:none; }
+.fabi-activity-emblem > .fabi-assist-fox { width:28px; height:28px; opacity:.85; }
+.fabi-activity-emblem > svg { position:absolute; inset:0; width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1; stroke-dasharray:23 115; stroke-linecap:round; opacity:.5; animation:fabi-activity-orbit 2.4s linear infinite; }
+.fabi-activity-copy { flex:1; min-width:0; }
+.fabi-activity-copy > strong { display:flex; gap:12px; align-items:center; font-size:12px; font-weight:500; }
+.fabi-activity-copy > strong > span { color:var(--theia-descriptionForeground); font-size:11px; font-variant-numeric:tabular-nums; font-weight:400; }
+.fabi-activity-stage { display:flex; gap:7px; align-items:center; margin-top:7px; color:var(--theia-descriptionForeground); font-size:12px; animation:fabi-activity-enter .24s ease-out both; }
+.fabi-activity-stage > svg { width:15px; height:15px; flex:none; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.fabi-activity-stop { display:grid; place-items:center; width:30px; height:30px; border:1px solid color-mix(in srgb,currentColor 12%,transparent); border-radius:50%; background:transparent; color:var(--theia-descriptionForeground); cursor:pointer; transition:background .18s,color .18s; }
+.fabi-activity-stop:hover { background:color-mix(in srgb,currentColor 8%,transparent); color:var(--theia-foreground); }
+.fabi-activity-stop > svg { width:18px; height:18px; fill:currentColor; }
+@keyframes fabi-activity-orbit { to { transform:rotate(360deg); } }
+@keyframes fabi-activity-enter { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .fabi-activity,.fabi-activity-stage,.fabi-activity-emblem > svg { animation:none; } }
+
+/* One continuous silhouette; the junction is never three stacked outlines. */
+.fabi-fan-surface { fill:#303238; stroke:#ffffff1c; stroke-width:.8; stroke-linejoin:round; transform-origin:52px 96px; animation:fabi-fan-grow 440ms cubic-bezier(.2,.8,.2,1) both; }
+@keyframes fabi-fan-grow { from { opacity:0; transform:translateX(-5px) scale(.2,.55); } to { opacity:1; transform:none; } }
+.fabi-assist .fabi-orbit-action { border-radius:20px; transition:background 160ms,color 160ms; }
+.fabi-assist .fabi-orbit-action:hover, .fabi-assist .fabi-orbit-action:focus-visible { background:#ffffff09; }
+@media(prefers-reduced-motion:reduce) { .fabi-fan-surface { animation:none; } }
+
+/* Reading rhythm shared by the pointer lens and terminal Assist. */
+.fabi-assist-markdown { line-height:1.8; }
+.fabi-assist-markdown strong { color:#f1f2f5; font-weight:600; }
+.fabi-assist-markdown :not(pre)>code { padding:2px 5px; border-radius:4px; color:#bfd0e5; background:#bbcce110; box-decoration-break:clone; }
+.fabi-assist-markdown blockquote { margin:18px 0; padding:2px 16px; border-left:2px solid #879eb7; color:#bac5d3; }
+.fabi-assist-markdown table { width:100%; border-collapse:collapse; margin:18px 0; font-size:12px; }
+.fabi-assist-markdown th,.fabi-assist-markdown td { padding:9px 12px; border-bottom:1px solid #ffffff10; text-align:left; }
+.fabi-assist-markdown th { color:#b5c7da; font-weight:500; }
+.fabi-code-block { overflow:hidden; margin:18px 0; border:1px solid #ffffff0c; border-radius:10px; background:#18191d; }
+.fabi-code-block>header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 13px; background:#ffffff03; color:#a7afbc; font-size:10px; }
+.fabi-code-block>header>span { display:flex; align-items:center; gap:7px; }
+.fabi-code-block>header .codicon { font-size:13px; }
+.fabi-assist .fabi-code-block>header button { padding:3px 7px; border-radius:5px; font-size:10px; }
+.fabi-code-block pre,.fabi-assist-markdown .fabi-code-block pre { margin:0; padding:14px 16px; background:transparent; border:0; border-radius:0; white-space:pre; }
+.fabi-code-block code { color:#d7dde6; }
+.fabi-mermaid { padding:18px 12px; overflow:auto; text-align:center; }
+.fabi-mermaid svg { max-width:100%; height:auto; }
+.fabi-code-block details>summary { padding:8px 13px; color:#969fac; font-size:10px; cursor:pointer; }
+.fabi-diagram-fallback { padding:0 14px; color:#c1b69e; font-size:11px; }
+.fabi-learning-flow { padding:16px 0; border-top:1px solid #ffffff0a; border-bottom:1px solid #ffffff0a; }
+.fabi-learning-flow figcaption { font-size:11px; color:#b4c7da; }
+.fabi-learning-flow li { background:transparent; padding:8px 2px; }
+.fabi-flow-number { display:grid; place-items:center; width:26px; height:26px; margin-bottom:9px; border-radius:8px; background:#b7cbe510; color:#afc7dd; }
+.fabi-learning-flow strong { font-size:12px; }
+.fabi-learning-flow li>span:last-child { font-size:11px; color:#b3b7c0; }
+
+.fabi-assist-petal { display:flex; flex-direction:column; overflow:hidden; }
+.fabi-petal-header,.fabi-petal-compose,.fabi-petal-footer { flex:none; }
+.fabi-petal-thread { flex:1 1 auto; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; padding-right:3px; }
+
+
+
+/* Full-space learning with a live return tether, not a second pane. */
+.fabi-assist-surface { transition:opacity 160ms ease; }
+.fabi-assist-surface.fabi-assist-peeking { opacity:0; }
+.fabi-companion-identity { display:flex; align-items:center; gap:9px; font-size:12px; color:#dedfe4; }
+.fabi-companion-identity small { font-size:10px; color:var(--assist-muted); margin-left:5px; }
+.fabi-terminal-tether { display:flex; align-items:center; gap:2px; margin-left:auto; background:#ffffff04; border-radius:10px; padding:3px; }
+.fabi-assist .fabi-terminal-return { display:flex; align-items:center; gap:8px; padding:6px 9px; border-radius:7px; font-size:11px; }
+.fabi-terminal-return small { color:var(--assist-muted); font-size:10px; }
+.fabi-terminal-return>i { width:5px; height:5px; border-radius:50%; background:#90969f; }
+.fabi-terminal-return>i[data-working=true] { background:#a8c8a9; animation:assist-breathe 2s infinite; }
+.fabi-assist .fabi-terminal-peek { display:grid; place-items:center; padding:6px; color:#a4a9b2; border-radius:7px; touch-action:none; }
+.fabi-terminal-peek svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.4; }
+.fabi-terminal-return:hover,.fabi-terminal-peek:hover { background:#ffffff07; }
+.fabi-session-notice { display:flex; flex-wrap:wrap; align-items:center; gap:6px 18px; padding:10px 0; color:var(--assist-muted); font-size:11px; }
+.fabi-session-notice button { color:var(--assist-ink); }
+.fabi-assist-invitation { align-items:flex-start; text-align:left; max-width:560px; margin:auto; padding:clamp(24px,7vh,64px) 0 32px; }
+.fabi-assist-invitation .fabi-assist-welcome-mark { width:36px; height:36px; margin:0 0 22px; }
+.fabi-assist-invitation h2 { font-size:clamp(28px,4vw,40px); margin:12px 0 8px; letter-spacing:-.045em; }
+.fabi-assist-invitation p { max-width:400px; line-height:1.8; color:var(--assist-muted); }
+.fabi-assist-reading-space { min-height:0; }
+@container (max-width:550px) { .fabi-companion-identity small,.fabi-terminal-return small { display:none; } .fabi-assist-topline { gap:6px; } }
+@media (prefers-reduced-motion:reduce) { .fabi-terminal-assist,.fabi-presence-hint { animation:none!important; transition:none!important; } }
+
+.fabi-assist .fabi-concept-review { font-size:10px; margin-top:6px; color:var(--assist-muted); text-decoration:underline; text-underline-offset:3px; }
+
+/* A presence in the terminal, expanding without changing its geometry or focus. */
+.fabi-terminal-assist { padding:0; width:min(360px, calc(100% - 32px)); right:16px; display:block; border:0; background:none; box-shadow:none; pointer-events:none; }
+.fabi-terminal-assist:hover { background:none; }
+.fabi-presence-trigger { position:relative; display:flex; align-items:center; gap:9px; padding:10px 14px; margin-left:auto; background:#292c32; border:1px solid #ffffff12; color:#e2e5ec; font:500 12px -apple-system,BlinkMacSystemFont,sans-serif; cursor:pointer; border-radius:12px; pointer-events:auto; transition:background 180ms; }
+.fabi-presence-trigger:hover { background:#353940; }
+.fabi-presence-trigger::after { content:""; position:absolute; top:100%; right:0; width:100%; height:10px; }
+.fabi-presence-trigger>.codicon { font-size:12px; color:#9da9b8; }
+.fabi-presence-trigger .fabi-assist-fox { width:18px; height:18px; }
+.fabi-presence-hint { visibility:hidden; box-sizing:border-box; width:100%; padding:22px; gap:12px; cursor:default; border-radius:18px; background:#252930; border:1px solid #ffffff12; box-shadow:0 16px 48px #10121770,0 2px 8px #10121740; max-height:calc(100vh - 150px); overflow-y:auto; }
+.fabi-presence-heading { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
+.fabi-presence-avatar { width:44px; height:44px; flex:none; display:grid; place-items:center; border-radius:14px; background:#bed0ed12; box-shadow:inset 0 0 0 1px #bed0ed18; }
+.fabi-presence-avatar .fabi-assist-fox { width:29px; height:29px; background-color:#c5d5eb; }
+.fabi-presence-heading>span:nth-child(2) { display:flex; flex-direction:column; gap:4px; }
+.fabi-presence-name { font-size:13px; font-weight:600; color:#e3e8ef; }
+.fabi-presence-eyebrow { font-size:11px; color:#a7b3c3; }
+.fabi-presence-heading>.codicon { margin-left:auto; color:#a8bdd8; font-size:20px; }
+.fabi-presence-hint strong { font-size:19px; font-weight:550; line-height:1.35; letter-spacing:-.35px; text-wrap:pretty; overflow-wrap:anywhere; color:#f0f2f6; }
+.fabi-terminal-assist[data-invited] .fabi-presence-hint,.fabi-terminal-assist:hover .fabi-presence-hint,.fabi-terminal-assist:focus-within .fabi-presence-hint { visibility:visible; opacity:1; transform:none; pointer-events:auto; }
+.fabi-terminal-assist[data-dismissed] .fabi-presence-hint { visibility:hidden; pointer-events:none; opacity:0; }
+.fabi-presence-description { font-size:13px; line-height:1.65; color:#b6becb; }
+.fabi-discovery-status:empty { display:none; }
+.fabi-presence-actions { display:flex; flex-wrap:wrap; align-items:center; gap:16px; margin-top:8px; }
+.fabi-presence-actions button { border:0; background:none; color:var(--theia-descriptionForeground); font:inherit; cursor:pointer; padding:7px 0; }
+.fabi-presence-actions button:first-child { display:flex; align-items:center; justify-content:center; gap:14px; padding:12px 16px; border-radius:10px; background:#c5d5eb; color:#202833; font-size:12px; font-weight:600; transition:background 180ms; }
+.fabi-presence-actions button:first-child:hover { background:#d7e3f3; }
+.fabi-presence-actions button:last-child { color:#b6becb; font-size:12px; }
+.fabi-presence-actions button:last-child:hover { color:#f0f2f6; }
+.fabi-presence-actions button:active { transform:translateY(1px); }
+.fabi-presence-actions button:focus-visible,.fabi-presence-trigger:focus-visible { outline:1px solid var(--theia-focusBorder); outline-offset:2px; }
+
+.fabi-presence-hint::before { content:""; position:absolute; left:0; right:0; top:-9px; height:9px; }
+.fabi-context-inspector label { display:grid; gap:7px; margin:12px 0; }
+.fabi-context-inspector label:has(input[type=checkbox]) { display:flex; align-items:center; }
+.fabi-context-inspector input:not([type=checkbox]),.fabi-context-inspector textarea,.fabi-context-inspector select { box-sizing:border-box; width:100%; padding:8px; font:inherit; color:var(--theia-input-foreground); background:var(--theia-input-background); border:1px solid var(--theia-input-border,transparent); border-radius:6px; }
+.fabi-context-inspector textarea { min-height:72px; resize:vertical; }
+.fabi-context-inspector input:focus-visible,.fabi-context-inspector textarea:focus-visible,.fabi-context-inspector select:focus-visible { outline:1px solid var(--theia-focusBorder); outline-offset:1px; }
+.fabi-context-inspector details { padding:10px 0; border-bottom:1px solid var(--theia-widget-border); }
+.fabi-context-inspector summary { cursor:pointer; line-height:1.5; }
+
+/* One explorable explanation, shared by long press and the learning workspace. */
+.fabi-reply-takeaway { border-left:2px solid #a4cbb5; padding:2px 0 2px 16px; margin:12px 0 22px; }
+.fabi-reply-takeaway>span { color:#a4cbb5; font-size:11px; font-weight:600; }
+.fabi-reply-takeaway .fabi-assist-markdown { font-size:14px; line-height:1.65; }
+.fabi-explanation-path { margin:20px 0; --path-accent:#aac8ec; }
+.fabi-explanation-path figcaption { color:var(--theia-foreground, #d3d6df); font-size:12px; margin-bottom:14px; }
+.fabi-explanation-path ol { list-style:none; padding:0; margin:0 0 18px; display:flex; flex-wrap:wrap; gap:8px; }
+.fabi-explanation-path li { flex:1 1 100px; min-width:0; }
+.fabi-explanation-path li button { width:100%; height:100%; display:flex; align-items:flex-start; gap:8px; text-align:left; font:inherit; font-size:12px; line-height:1.5; color:#b3b7c0; background:transparent; border:0; border-bottom:2px solid #ffffff15; padding:10px 4px; cursor:pointer; }
+.fabi-explanation-path li button>span { display:grid; place-items:center; flex-shrink:0; width:22px; height:22px; border-radius:50%; background:#ffffff09; font-size:11px; }
+.fabi-explanation-path li[data-active=true] button { color:var(--path-accent); border-color:var(--path-accent); }
+.fabi-explanation-path li[data-active=true] button>span { background:#aac8ec20; }
+.fabi-explanation-path li[data-visited=true] button>span { color:#a4cbb5; }
+.fabi-path-detail { padding:16px 18px; border-radius:10px; background:#aac8ec08; border-left:2px solid var(--path-accent); }
+.fabi-path-detail>small { color:var(--path-accent); font-size:11px; }
+.fabi-path-detail h4 { margin:8px 0; font-size:15px; font-weight:500; color:var(--theia-foreground, #e1e3ea); }
+.fabi-path-detail .fabi-assist-markdown { font-size:13px; line-height:1.7; }
+.fabi-path-detail>code { display:block; white-space:pre-wrap; overflow-wrap:anywhere; padding:10px 0; color:#e2c497; font-size:12px; }
+.fabi-path-source { display:block; margin-top:12px; color:var(--path-accent); background:none; border:0; padding:0; cursor:pointer; font:inherit; font-size:11px; }
+.fabi-reply-depth { margin:20px 0; border-top:1px solid #ffffff12; padding-top:12px; }
+.fabi-reply-depth summary { color:#b3b7c0; font-size:12px; cursor:pointer; padding:6px 0; }
+.fabi-reply-depth[open] summary { margin-bottom:12px; }
+.fabi-explanation-path button:focus-visible, .fabi-reply-depth summary:focus-visible { outline:2px solid var(--theia-focusBorder, #aac8ec); outline-offset:3px; }
+
+/* Compact teaching workspace: keep the reading area primary. */
+.fabi-assist-lesson-view .fabi-assist-topline { min-height:44px; padding:6px 16px; gap:8px; }
+.fabi-assist-lesson-view .fabi-assist-compose-dock { padding:8px max(18px,calc((100% - 690px)/2)) 12px; }
+/* Floating navigation: 48px dock + borders, 14px bottom inset, 12px breathing room. */
+body.fabi-dock-enabled .fabi-assist-lesson-view .fabi-assist-compose-dock { padding-bottom:76px; }
+.fabi-assist-lesson-view .fabi-assist-composer { padding:10px 12px 7px; gap:4px; border-radius:14px; }
+.fabi-assist-lesson-view .fabi-assist-composer textarea { min-height:24px; max-height:112px; line-height:22px; padding:0 4px; overflow-y:auto; }
+.fabi-assist-lesson-view .fabi-composer-destination { padding:2px; }
+.fabi-assist-lesson-view .fabi-composer-destination button { padding:4px 7px; }
+.fabi-assist-lesson-view .fabi-assist-reading-space { padding-top:16px; }
+.fabi-assist-options { position:relative; flex:none; }
+.fabi-assist-options>summary { cursor:pointer; list-style:none; position:relative; }
+.fabi-assist-options>summary::-webkit-details-marker { display:none; }
+.fabi-assist-options>summary[data-offline]::after { content:''; position:absolute; top:3px; right:3px; width:5px; height:5px; border-radius:50%; background:#dfb678; }
+.fabi-assist-options>summary:focus-visible { outline:1px solid var(--theia-focusBorder); outline-offset:2px; }
+.fabi-assist-options-list { position:absolute; z-index:8; right:0; top:calc(100% + 8px); width:230px; padding:6px; border:1px solid #ffffff14; border-radius:12px; background:#282b32; box-shadow:0 10px 30px #10121760; }
+.fabi-assist .fabi-assist-options-list button { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:9px 10px; border-radius:7px; font-size:12px; color:#cbd2dd; }
+.fabi-assist-options-list button:hover { background:#ffffff08; }
+.fabi-assist-options-list button small { margin-left:auto; color:#9ca9bd; }
+.fabi-options-connection { border-top:1px solid #ffffff12; margin-top:4px; padding-top:5px; }
+.fabi-options-connection>span { display:block; font-size:11px; color:#dfb678; padding:5px 10px; }
+@container (max-width:420px) { .fabi-assist-lesson-view .fabi-terminal-return small { display:none; } .fabi-assist-lesson-view .fabi-assist-topline { padding-inline:8px; gap:3px; } }

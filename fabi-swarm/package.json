@@ -4,7 +4,7 @@
     "theia-extension"
   ],
   "version": "0.1.0",
-  "description": "Fabi Swarm — provider d'inférence LLM P2P (Parallax) branché dans Theia AI",
+  "description": "Fabi Swarm \u2014 provider d'inf\u00e9rence LLM P2P (Parallax) branch\u00e9 dans Theia AI",
   "author": "Noa Giannone",
   "license": "MIT",
   "files": [
@@ -13,6 +13,8 @@
     "resources"
   ],
   "dependencies": {
+    "@langchain/core": "1.2.17",
+    "@langchain/openai": "1.6.2",
     "@theia/ai-chat": "1.72.2",
     "@theia/ai-chat-ui": "1.72.2",
     "@theia/ai-core": "1.72.2",
@@ -25,22 +27,31 @@
     "@theia/scm": "1.72.2",
     "@theia/terminal": "1.72.2",
     "@theia/workspace": "1.72.2",
+    "d3-path": "3.1.0",
+    "deepagents": "1.14.2",
     "electron-updater": "6.8.9",
     "eventsource-parser": "^3.1.0",
+    "langchain": "1.5.16",
     "lucide-react": "^1.18.0",
-    "systeminformation": "^5.23.5"
+    "mermaid": "11",
+    "opencode-ai": "1.3.13",
+    "systeminformation": "^5.23.5",
+    "zod": "4.2.1",
+    "typescript": "~5.4.5",
+    "proper-lockfile": "^4.1.2"
   },
   "devDependencies": {
+    "@types/d3-path": "3.1.1",
     "@types/node": "22.19.21",
-    "rimraf": "^5.0.0",
-    "typescript": "~5.4.5"
+    "rimraf": "^5.0.0"
   },
   "scripts": {
     "prepare": "yarn run clean && yarn run build",
     "clean": "rimraf lib",
-    "build": "tsc",
-    "test": "tsc --skipLibCheck --strictNullChecks --noImplicitAny --experimentalDecorators --emitDecoratorMetadata --types node --module commonjs --moduleResolution node --target ES2017 --lib ES2018,DOM --downlevelIteration --outDir lib --rootDir src src/common/fabi-chat-input-visibility.ts src/common/fabi-chat-turn-queue.ts src/common/fabi-code-mode.ts src/common/fabi-code-permission-mode.ts src/common/fabi-code-turn-event-gate.ts src/common/fabi-runtime-launcher-policy.ts src/common/fabi-update-gate.ts src/common/fabi-worker-host-policy.ts src/browser/maestro/maestro-animation-runtime.ts src/node/fabi-runtime-install.ts src/node/fabi-runtime-manager.ts src/node/fabi-worker-bootstrap.ts src/node/fabi-worker-log.ts src/node/fabi-worker-tuning.ts src/node/fabi-model-storage.ts src/node/fabi-request-agent-events.ts src/node/fabi-request-agent.ts src/node/fabi-swarm-service.ts src/node/fabi-connection.ts src/node/fabi-code-config.ts src/node/fabi-code-part-stream.ts src/node/fabi-code-server.ts src/node/fabi-code-turn-state.ts src/node/fabi-maestro-hooks.ts src/node/fabi-maestro-service.ts && node --test test/*.test.js",
-    "watch": "tsc -w"
+    "build": "tsc && node ../tools/build-assist-tools.mjs",
+    "test": "yarn build && node --test test/*.test.js",
+    "watch": "tsc -w",
+    "test:assist": "yarn build && node --test test/assist.test.js test/assist-runtime.test.js"
   },
   "theiaExtensions": [
     {

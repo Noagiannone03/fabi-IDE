@@ -98,3 +98,86 @@ conservation du workspace. Le succès du build seul ne prouve pas cette
 transaction. Une bascule du lien `current` permet un rollback serveur, mais
 `allowDowngrade=false` interdit volontairement de rétrograder une machine déjà
 mise à jour; un correctif utilisateur doit donc porter une version supérieure.
+
+## Préparation locale des extensions
+
+Les scripts `bundle` et `watch` passent par `prepare:plugins`. Le préparateur vérifie les manifestes installés, les versions Open VSX épinglées dans `package.json`, les points d’entrée main/browser et les dépendances/packs transitifs. Un cache complet n’effectue aucune requête réseau. Sinon, le téléchargeur Theia reste responsable de l’installation ; son échec est bloquant, et les fichiers sont revérifiés après son succès. Les scripts de packaging appellent seulement `bundle`, sans téléchargements redondants. `download:plugins` reste disponible explicitement.
+
+Motif : le téléchargeur Theia résolvait à nouveau sur Open VSX deux dépendances déjà présentes parmi les 60 extensions locales. Une expiration réseau empêchait donc un packaging complet de démarrer. Le correctif ne repose pas sur `--ignore-errors` et ne modifie pas `node_modules`. Tests : `node --test tools/prepare-plugins.test.mjs` (cache complet sans réseau, dépendance manquante, version incorrecte, point d’entrée absent, panne réseau).
+
+### Icône produit et édition sans Swarm
+
+L'icône installée et l'icône utilisée dans le Dock doivent montrer uniquement le
+renard sur fond sombre arrondi pour l’application installée. Pendant son
+exécution, le Dock utilise le renard transparent (`fox-512.png`). Ce choix
+remplace la tentative de silhouette transparente dans Finder sur Tahoe. `node tools/gen-logo.mjs` génère les PNG/ICO, le logo embarqué
+et, sur macOS via `iconutil`, les deux fichiers ICNS de branding et de packaging.
+Le générateur préserve les autres fichiers du dossier branding. Recompiler les
+extensions puis repackager après modification du logo.
+
+La distribution actuelle désactive Swarm via `SWARM_ENGINE_ENABLED` (voir
+`FABI-ASSIST.md`), mais conserve `Resources/assist-runtime` pour Assist/RunPod.
+Ne pas supprimer ce runtime en cherchant à enlever le moteur local Swarm.
+
+`electron-app/product.json` est inclus à la racine de `app.asar`, correspondant
+à `vscode.env.appRoot`. L’extension intégrée Extension Authoring le lit à son
+activation pour connaître la politique de badges SVG et de propositions d’API.
+Les listes Fabi sont explicitement vides : aucune autorisation spéciale implicite.
+Le smoke test packagé active cette extension et contrôle ses erreurs dans les logs.
+
+### Limite confirmée sur macOS Tahoe (rendu Finder)
+
+Attention : la transparence de `icon.icns` ne garantit pas un renard détouré
+dans Finder. `NSWorkspace.shared.icon(forFile:)` reproduit sur cette machine
+un carré clair ajouté par macOS autour de notre ICNS transparent, alors que
+`app.dock.setIcon` affiche bien le renard seul pendant l’exécution.
+`swift tools/inspect-macos-icon.swift /chemin/Fabi.app /tmp/fabi-icon.png`
+permet de contrôler le rendu réel, pas seulement le fichier source.
+
+Un essai de `NSWorkspace.setIcon` sur une copie temporaire a supprimé le carré,
+mais a fait échouer `codesign --verify --deep --strict` (Finder information /
+resource fork). Cette modification n’est donc pas livrée dans le DMG signé.
+Ne pas annoncer ce problème résolu sur Tahoe sur la seule base d’un contrôle
+d’alpha PNG/ICNS. Cette piste est abandonnée ; le Dock est désormais traité par un plug-in
+AppKit signé, décrit ci-dessous. Finder garde son icône sombre.
+
+Décision utilisateur : retour au fond sombre arrondi d’origine pour Finder et
+le DMG ; conservation de la silhouette transparente pendant l’exécution.
+
+### Renard détouré dans le Dock, application fermée
+
+La solution est `NSDockTilePlugIn`, API AppKit prévue pour personnaliser la tuile
+d’une application inactive. `resources/dock-tile/FabiDockTile.m` installe un
+`NSImageView` avec le même `branding/png/fox-512.png` que le Dock pendant
+l’exécution. Aucun timer, réseau, observateur ou processus Fabi permanent.
+Le système héberge le petit module ; le callback nil détache sa vue.
+
+`tools/package-dock-tile.cjs` (afterPack macOS) compile le bundle pour l’architecture
+cible et le place dans `Contents/PlugIns` avant la signature electron-builder. electron-builder exclut systématiquement `Contents/PlugIns` de sa signature.
+Le hook scelle donc le bundle natif avec l’identité et le trousseau sélectionnés
+par electron-builder, avant la signature du paquet principal. La signature
+stricte du bundle est vérifiée immédiatement.
+La clé `NSDockTilePlugIn` désigne ce bundle. Les versions DMG hors Mac App Store
+sont concernées ; cette API ne personnalise pas Finder/Spotlight. Le fond sombre
+est conservé à ces endroits. Aucune modification FinderInfo après signature.
+
+Validation : compiler `tools/check-dock-tile.m` avec clang/AppKit, puis lui passer
+le chemin absolu du bundle et un PNG de sortie. Le test charge la classe principale,
+vérifie le contenu opaque du renard et la transparence des marges, puis détache
+et rattache la tuile. Vérifier aussi `codesign --verify --deep --strict Fabi.app`.
+Sur une application déjà épinglée, le Dock doit recharger le nouveau bundle
+(réépinglage ou redémarrage du Dock après installation).
+
+Références :
+- https://developer.apple.com/documentation/appkit/nsdocktileplugin
+- https://developer.apple.com/documentation/bundleresources/information-property-list/nsdocktileplugin
+- https://github.com/marioaguzman/NSDockTilePlugIn-Example (référence d’intégration ; code Fabi original)
+
+Validation sur le Mac Tahoe : le paquet signé a été installé, Fabi fermé, et
+`lsof` a confirmé le chargement de `FabiDockTile` par
+`com.apple.dock.external.extra.arm64`. L’ancienne entrée épinglée conservait
+`tile-data.dock-extra = false` ; le rechargement du Dock seul ne suffisait pas.
+Cette entrée Fabi a été actualisée (équivalent du retrait/réépinglage) sans
+changer les autres tuiles. Pour une mise à jour manuelle, retirer puis réépingler
+Fabi si l’ancienne icône persiste. Vérification stricte de signature réussie
+après installation ; Fabi n’est pas lancé pour maintenir l’icône.

@@ -151,10 +151,7 @@ strong,
 code,
 pre,
 kbd,
-samp,
-.terminal,
-.xterm,
-.xterm .xterm-rows {
+samp {
     font-family: var(--fabi-code-font-family) !important;
     font-variant-ligatures: contextual common-ligatures;
 }
